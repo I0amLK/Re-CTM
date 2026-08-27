@@ -317,14 +317,18 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         read_only=True,
     ),
     "rethlas_start": ToolSpec(
-        "Start Rethlas workflow",
-        "Create a private mathematical reasoning run from a LaTeX problem statement and optional inline references.",
+        "Start verified mathematical workflow",
+        "Call this first for every concrete mathematical proof, derivation, or verification task unless the user explicitly asks for a direct informal answer. Create a private Rethlas reasoning run; after verification, rethlas_next automatically writes proof_verified.tex to the workspace export path.",
         {
             **OBJECT,
             "required": ["problem_tex"],
             "properties": {
                 "problem_tex": {"type": "string", "minLength": 1},
                 "problem_id": {"type": "string"},
+                "export_path": {
+                    "type": "string",
+                    "description": "Optional workspace-relative .tex destination. Defaults to rethlas-output/<run_id>/proof_verified.tex.",
+                },
                 "references": {
                     "type": "array",
                     "items": {
@@ -339,7 +343,6 @@ TOOL_SPECS: dict[str, ToolSpec] = {
                 },
             },
         },
-        destructive=True,
     ),
     "rethlas_next": ToolSpec(
         "Get next Rethlas task",
@@ -490,13 +493,17 @@ TOOL_SPECS: dict[str, ToolSpec] = {
     ),
     "rethlas_export_final": ToolSpec(
         "Export verified LaTeX",
-        "Copy the mechanically finalized proof_verified.tex into a workspace-relative .tex path through the controlled trust-domain bridge.",
+        "Ensure the mechanically finalized proof_verified.tex exists in the workspace through the controlled trust-domain bridge. When path is omitted, use the run's automatic workspace_export_path; an explicit alternate path may be overwritten only with expected_sha256.",
         {
             **OBJECT,
-            "required": ["run_id", "path"],
+            "required": ["run_id"],
             "properties": {
                 "run_id": {"type": "string"},
-                "path": {"type": "string", "minLength": 1},
+                "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Optional alternate workspace-relative .tex path. Defaults to the run's workspace_export_path.",
+                },
                 "expected_sha256": {"type": "string"},
             },
         },
@@ -787,6 +794,14 @@ class ToolRuntime:
             "rethlas_tool_count": len(RETHLAS_TOOL_NAMES),
             "ctm_native_tools": list(CTM_NATIVE_TOOL_NAMES),
             "tool_catalog_stable": True,
+            "mathematical_task_routing": (
+                "Concrete proof, derivation, proof-repair, and rigorous verification tasks should start with rethlas_start unless the user explicitly requests a direct informal answer."
+            ),
+            "verified_latex_delivery": {
+                "automatic_on_done": True,
+                "default_workspace_path": "rethlas-output/<run_id>/proof_verified.tex",
+                "explicit_alternate_export_tool": "rethlas_export_final",
+            },
             "native": native_info,
             "authorization_axioms": {
                 "native": "OAuth identity AND native mode",
@@ -801,21 +816,34 @@ class ToolRuntime:
         references = arguments.get("references") or []
         if not isinstance(references, list):
             raise invalid_argument("references must be an array")
+        export_path = str(arguments.get("export_path") or "").strip()
+        if export_path:
+            if not export_path.lower().endswith(".tex"):
+                raise invalid_argument("export_path must end in .tex", export_path=export_path)
+            export_path = self.native.workspace.resolve_for_write(export_path).display
         return self.workflow.start(
             owner_id=principal.client_id,
             problem_tex=str(arguments.get("problem_tex") or ""),
             problem_id=str(arguments.get("problem_id") or "problem"),
             references=[item for item in references if isinstance(item, Mapping)],
             native_mode=self.native.mode.value,
+            workspace_export_path=export_path or None,
             trace_id=trace_id,
         )
 
     def _rethlas_next(self, principal: OAuthPrincipal, arguments: dict[str, Any], trace_id: str) -> dict[str, Any]:
-        return self.workflow.next_task(
+        result = self.workflow.next_task(
             owner_id=principal.client_id,
             run_id=str(arguments.get("run_id") or ""),
             trace_id=trace_id,
         )
+        if result.get("state") == "done" and result.get("terminal") is True:
+            result = self._attach_automatic_final_export(
+                principal=principal,
+                result=result,
+                trace_id=trace_id,
+            )
+        return result
 
     def _rethlas_read(self, principal: OAuthPrincipal, arguments: dict[str, Any], trace_id: str) -> dict[str, Any]:
         return self.workflow.read(
@@ -921,21 +949,74 @@ class ToolRuntime:
             run_id=run_id,
             artifact="final_tex",
         )
-        export = self.native.export_verified_latex(
-            path=str(arguments.get("path") or ""),
-            content=str(artifact["content"]),
-            expected_sha256=(
-                str(arguments["expected_sha256"])
-                if arguments.get("expected_sha256") is not None
-                else None
-            ),
-            trace_id=trace_id,
-        )
+        requested_path = str(arguments.get("path") or "").strip()
+        if requested_path:
+            export_path = requested_path
+            export = self.native.export_verified_latex(
+                path=export_path,
+                content=str(artifact["content"]),
+                expected_sha256=(
+                    str(arguments["expected_sha256"])
+                    if arguments.get("expected_sha256") is not None
+                    else None
+                ),
+                trace_id=trace_id,
+            )
+        else:
+            export_path = str(
+                artifact.get("workspace_export_path")
+                or f"rethlas-output/{run_id}/proof_verified.tex"
+            )
+            export = self.native.ensure_verified_latex(
+                path=export_path,
+                content=str(artifact["content"]),
+                trace_id=trace_id,
+            )
         return {
             "ok": True,
             "run_id": run_id,
             "artifact": "final_tex",
+            "workspace_export_path": export_path,
             "export": export,
+            "workflow_authority_inherited_by_native": False,
+        }
+
+    def _attach_automatic_final_export(
+        self,
+        *,
+        principal: OAuthPrincipal,
+        result: dict[str, Any],
+        trace_id: str,
+    ) -> dict[str, Any]:
+        run_id = str(result.get("run_id") or "")
+        artifact = self.workflow.get_artifact(
+            owner_id=principal.client_id,
+            run_id=run_id,
+            artifact="final_tex",
+        )
+        export_path = str(
+            result.get("workspace_export_path")
+            or artifact.get("workspace_export_path")
+            or f"rethlas-output/{run_id}/proof_verified.tex"
+        )
+        try:
+            export = self.native.ensure_verified_latex(
+                path=export_path,
+                content=str(artifact["content"]),
+                trace_id=trace_id,
+            )
+        except ReCTMError as exc:
+            return {
+                **result,
+                "workspace_export_path": export_path,
+                "workspace_export": {"ok": False, "error": exc.to_payload()},
+                "final_artifact_available": True,
+            }
+        return {
+            **result,
+            "workspace_export_path": export_path,
+            "workspace_export": export,
+            "final_artifact_available": True,
             "workflow_authority_inherited_by_native": False,
         }
 
@@ -965,10 +1046,31 @@ def _tool_result(name: str, payload: dict[str, Any], *, is_error: bool) -> dict[
 
 
 def _render_summary(name: str, payload: Mapping[str, Any]) -> str:
+    if name == "rethlas_start":
+        return (
+            f"Run {payload.get('run_id')} started; verified LaTeX will be written to "
+            f"{payload.get('workspace_export_path')} when the workflow reaches done."
+        )
     if name == "rethlas_next":
+        if payload.get("state") == "done":
+            export = payload.get("workspace_export")
+            if isinstance(export, Mapping) and export.get("ok"):
+                return (
+                    f"Run {payload.get('run_id')} is done and the verified LaTeX was written to "
+                    f"{payload.get('workspace_export_path')}."
+                )
+            return (
+                f"Run {payload.get('run_id')} is done; final LaTeX is available, but automatic "
+                f"workspace export needs attention at {payload.get('workspace_export_path')}."
+            )
         return f"Run {payload.get('run_id')} is in {payload.get('state')} for role {payload.get('role', 'none')}."
     if name == "rethlas_status":
         return f"Run {payload.get('run_id')}: {payload.get('state')} ({payload.get('status')})."
+    if name == "rethlas_get_artifact" and payload.get("artifact") == "final_tex":
+        return (
+            f"Final verified LaTeX for run {payload.get('run_id')} is available; workspace path: "
+            f"{payload.get('workspace_export_path')}."
+        )
     if name == "server_info":
         return f"Re-CTM {payload.get('version')} with {payload.get('tool_count')} fixed tools."
     summary = payload.get("summary")

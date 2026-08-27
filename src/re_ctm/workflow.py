@@ -107,6 +107,7 @@ class WorkflowEngine:
         problem_id: str | None = None,
         references: Iterable[Mapping[str, Any]] = (),
         native_mode: str = "safe",
+        workspace_export_path: str | None = None,
         trace_id: str | None = None,
     ) -> dict[str, Any]:
         trace = trace_id or new_trace_id()
@@ -116,6 +117,11 @@ class WorkflowEngine:
             raise invalid_argument("problem_tex is required")
         resolved_problem_id = _safe_component(problem_id or "problem")
         run_id = f"run-{resolved_problem_id}-{secrets.token_hex(6)}"
+        resolved_export_path = (
+            workspace_export_path.strip()
+            if workspace_export_path and workspace_export_path.strip()
+            else f"rethlas-output/{run_id}/proof_verified.tex"
+        )
         vault_result = self.vault.initialize_run(
             run_id,
             problem_tex=problem_tex,
@@ -139,6 +145,7 @@ class WorkflowEngine:
                 "active_plans": [],
                 "branch_requests": [],
                 "latex_result": None,
+                "workspace_export_path": resolved_export_path,
             },
         )
         self.debug.emit(
@@ -167,6 +174,7 @@ class WorkflowEngine:
             "ok": True,
             "run_id": run_id,
             "state": WorkflowState.ASSESS.value,
+            "workspace_export_path": resolved_export_path,
             "manual_validation_required": True,
             "trace_id": trace,
         }
@@ -189,6 +197,9 @@ class WorkflowEngine:
                 "state": state.value,
                 "terminal": True,
                 "verdict": run.get("verdict"),
+                "workspace_export_path": run.get("metadata", {}).get(
+                    "workspace_export_path"
+                ),
                 "trace_id": trace,
             }
         role = role_for_state(state)
@@ -441,6 +452,9 @@ class WorkflowEngine:
             "latex_passed": run["latex_passed"],
             "verdict": run["verdict"],
             "sealed": run["sealed"],
+            "workspace_export_path": run.get("metadata", {}).get(
+                "workspace_export_path"
+            ),
             "branches": [
                 {
                     "branch_id": branch["branch_id"],
@@ -558,7 +572,15 @@ class WorkflowEngine:
             content = self._manual_validation_manifest(run)
         else:
             raise invalid_argument("unknown artifact", artifact=artifact)
-        return {"ok": True, "run_id": run_id, "artifact": artifact, "content": content}
+        return {
+            "ok": True,
+            "run_id": run_id,
+            "artifact": artifact,
+            "content": content,
+            "workspace_export_path": run.get("metadata", {}).get(
+                "workspace_export_path"
+            ),
+        }
 
     def _advance_mechanical(self, run: dict[str, Any], trace_id: str) -> dict[str, Any]:
         while True:

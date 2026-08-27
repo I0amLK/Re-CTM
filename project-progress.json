@@ -1,9 +1,9 @@
 {
   "project": {
     "name": "Re-CTM",
-    "status": "ctm_origin_policy_fix_committed_pending_push",
+    "status": "math_routing_and_auto_export_checkpoint_in_progress",
     "target": "A single installable OAuth MCP runtime combining streamlined CMT computer tools with a Rethlas-derived mathematical reasoning workflow.",
-    "updated_at": "2026-08-27T01:10:00-07:00",
+    "updated_at": "2026-08-27T02:11:00-07:00",
     "source_references": {
       "cmt_local_repo": "../coding-tools-mcp",
       "rethlas_local_repo": "../Rethlas",
@@ -105,6 +105,16 @@
     {
       "id": "AD-016",
       "decision": "Preserve CTM-class OAuth operator convenience: RE_CTM_OAUTH_PASSWORD is optional for interactive serve; if absent, generate a high-entropy authorization key for that serve session and reveal it only to the local operator terminal, never to structured logs, reports, HTTP responses, or persistent state.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-017",
+      "decision": "Use MCP server instructions and the rethlas_start tool contract to route concrete mathematical proof, derivation, proof-repair, and rigorous verification requests into the Rethlas workflow by default; allow a direct chat answer only when the user explicitly requests an informal bypass.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-018",
+      "decision": "When an MCP-driven Rethlas run reaches done, automatically export the mechanically finalized final_tex through the controlled artifact bridge to a workspace-relative path, defaulting to rethlas-output/<run_id>/proof_verified.tex. Repeated identical exports are idempotent; different existing content is never overwritten automatically.",
       "status": "accepted"
     }
   ],
@@ -306,6 +316,7 @@
       ],
       "completed_evidence": [
         "Generation, branch, join, assembler, verifier, and repair methodology tasks are embedded in the package",
+        "MCP initialization instructions and the rethlas_start tool description direct concrete proof/derivation/repair/verification requests into the workflow by default, while preserving an explicit informal-answer opt-out",
         "Generation, verifier, and branch-local memory channels are persisted in the private vault",
         "Multiple decomposition plans, complete per-plan/per-subgoal direct screening, one-branch-per-plan rounds, explicit all-branch join, failure synthesis, replanning, verification audit records, changed-proof repair, and strict stopping rules are server-enforced",
         "Capability-gated rethlas_retrieve provides bounded HTTPS theorem search and persists results as external_unverified evidence in generation, branch, verifier, or repair memory",
@@ -362,11 +373,12 @@
         "A regression proves that an absolute host-only document class cannot be loaded by model-generated TeX",
         "Only the mechanical finalizer can create proof_verified.tex",
         "Final LaTeX can be returned through owner-authorized rethlas_get_artifact",
-        "rethlas_export_final is the only private-to-native artifact bridge and exports only final_tex into a workspace-relative .tex path; overwrites require an expected SHA-256 baseline"
+        "The controlled private-to-native artifact bridge automatically writes final_tex when MCP rethlas_next reaches done, defaulting to rethlas-output/<run_id>/proof_verified.tex; identical retries are idempotent and different content is never overwritten automatically",
+        "rethlas_export_final remains available for alternate workspace-relative .tex destinations; overwrites require an expected SHA-256 baseline"
       ],
       "remaining": [
         "Validate required latexmk policy with every intended target LaTeX distribution",
-        "Exercise final export from the real webpage host and verify overwrite conflict behavior"
+        "Exercise automatic and explicit final export from the real webpage host and verify idempotence plus overwrite conflict behavior"
       ]
     },
     {
@@ -385,10 +397,10 @@
         "95-percent Rethlas behavior acceptance suite"
       ],
       "completed_evidence": [
-        "44 deterministic and local integration tests pass",
+        "46 deterministic and local integration tests pass",
         "Loopback DCR to OAuth authorization to PKCE token to MCP tools/list passes",
         "Modern mirror-header and result-shaping tests pass",
-        "Dangerous path confinement, native fail-closed execution, packaged bubblewrap attestation/private-canary denial, branch barrier, complete screening/join contracts, verifier denial/audit prerequisites, owner-bound capability, wrong-verdict, finalization, isolated LaTeX, external retrieval normalization, and debug redaction tests pass",
+        "Dangerous path confinement, native fail-closed execution, packaged bubblewrap attestation/private-canary denial, branch barrier, complete screening/join contracts, verifier denial/audit prerequisites, owner-bound capability, wrong-verdict, finalization, automatic run-specific workspace export, idempotent terminal retry, isolated LaTeX, external retrieval normalization, and debug redaction tests pass",
         "scripts/run_local_checks.py writes local-validation.json"
       ],
       "remaining": [
@@ -415,8 +427,8 @@
         "Apache-2.0 LICENSE and NOTICE retain Coding Tools MCP and Rethlas attribution",
         "GitHub Actions CI covers Python 3.11/3.13, bubblewrap, latexmk, deterministic checks, wheel/sdist build, and installed command surfaces",
         "docs/DEPLOYMENT.md and scripts/smoke_oauth_mcp.py provide target setup, redacted OAuth/MCP verification, isolation evidence, and claims boundaries",
-        "uv built the current re_ctm-0.1.0.dev1 sdist and wheel on top of the earlier dev0 packaging checks, installed the wheel into a clean virtual environment, and the installed re-ctm service, helper version/attestation, OAuth DCR/PKCE, legacy/modern MCP, 31-tool catalog, and non-inheritance smokes passed",
-        "A fresh 0.1.0.dev1 wheel installed-service smoke started without RE_CTM_SERVER_URL or RE_CTM_OAUTH_PASSWORD on loopback, generated a 43-character local-terminal OAuth authorization key with no structured-state leak, and resolved Cloudflare-style forwarded metadata to the matching public trycloudflare.com origin"
+        "uv built the current re_ctm-0.1.0.dev2 sdist and wheel, installed the wheel into a clean virtual environment, and confirmed the 31-tool catalog, concrete-mathematics routing instructions, terminal workspace-export reporting, and optional rethlas_start export_path contract",
+        "The earlier installed-service smoke started without RE_CTM_SERVER_URL or RE_CTM_OAUTH_PASSWORD on loopback, generated a 43-character local-terminal OAuth authorization key with no structured-state leak, and resolved Cloudflare-style forwarded metadata to the matching public trycloudflare.com origin"
       ],
       "remaining": [
         "Push the repository and observe first remote CI on GitHub",
@@ -425,9 +437,9 @@
     }
   ],
   "progress": {
-    "overall_percent": 83,
-    "implementation_percent": 92,
-    "deterministic_local_validation_percent": 82,
+    "overall_percent": 84,
+    "implementation_percent": 93,
+    "deterministic_local_validation_percent": 83,
     "post_push_manual_acceptance_percent": 0,
     "target_95_percent_equivalence_verified": false,
     "completed_phase_ids": [
@@ -437,20 +449,20 @@
       "P5"
     ],
     "current_phase_id": "P3/P4/P6/P7/P8",
-    "current_focus": "CTM native compatibility remains additive at 18 native tools plus 13 Rethlas tools. Cloudflare Quick Tunnel convenience is restored end-to-end locally: the loopback server can start first without RE_CTM_SERVER_URL, an OAuth authorization key is generated when needed, and OAuth routes follow Coding Tools MCP's Origin-policy boundary instead of being globally rejected. Nine real webpage/target-PC/compatibility/methodology acceptance checks remain post-push.",
+    "current_focus": "CTM native compatibility remains additive at 18 native tools plus 13 Rethlas tools. Concrete mathematical proof/derivation/repair/verification requests are now explicitly routed into Rethlas by the MCP contract, and a completed MCP run automatically writes proof_verified.tex to a run-specific workspace path while retaining the explicit alternate export tool. Nine real webpage/target-PC/compatibility/methodology acceptance checks remain post-push.",
     "next_actions": [
       "Push the latest compatibility checkpoint to origin/main using the authenticated GitHub credential",
       "Observe the first GitHub Actions run after the push",
       "Run all checks in manual-validation.json and attach redacted evidence",
       "Run the packaged bubblewrap isolation harness on the target PC before enabling native exec",
-      "Run representative mathematical problems through the real webpage client",
-      "Validate rethlas_export_final from the real webpage host"
+      "Run ordinary natural-language mathematical problems through the real webpage client and confirm it selects rethlas_start without tool-name prompting",
+      "Validate automatic workspace export plus rethlas_export_final alternate-path behavior from the real webpage host"
     ]
   },
   "local_validation": {
     "report": "local-validation.json",
     "last_result": "passed",
-    "test_count": 44,
+    "test_count": 46,
     "graph_metrics": {
       "vertices": 31,
       "edges": 60,
@@ -476,12 +488,13 @@
       "Branch information barrier",
       "Verifier data firewall",
       "Mechanical verdict and finalization",
+      "MCP instructions and rethlas_start metadata contain the default concrete-mathematics routing contract",
       "Native workspace boundary and fail-closed execution",
       "Reference Linux bubblewrap helper attestation and private-vault canary denial",
       "Debug redaction and content-minimized bundle",
       "Static and bubblewrap-isolated required LaTeX policy",
       "Capability-gated theorem-search normalization and domain-local persistence",
-      "Mechanical final-artifact export into the native workspace with overwrite baseline enforcement",
+      "Mechanical final-artifact export into the native workspace, automatic run-specific creation on terminal rethlas_next, idempotent identical retry, and explicit overwrite baseline enforcement",
       "Steering delivery, engine rebuild resume, cancellation sealing, and stale-capability denial",
       "Redacted standalone OAuth DCR/PKCE plus legacy and modern MCP smoke",
       "HTTP bind-failure cleanup preserves the original operating-system error",
@@ -513,19 +526,19 @@
       "basis": "Identity confirmed from public commits owned by GitHub account I0amLK; configured only in this repository."
     },
     "remote": "https://github.com/I0amLK/Re-CTM.git",
-    "push_status": "ctm_origin_policy_fix_committed_fast_forward_ready",
+    "push_status": "math_routing_auto_export_checkpoint_committed_push_blocked_by_noninteractive_https_credentials",
     "latest_local_commit": "Resolve with `git rev-parse HEAD`; the ledger intentionally avoids a self-referential commit hash.",
     "push_attempt": {
       "transport": "https",
-      "remote_observed_head": "4f63814ee4e44d493ed611fa8cd6a9e4de7a29ec",
-      "result": "origin_policy_fix_committed_fast_forward_ready",
-      "reason": "A fresh ls-remote confirmed GitHub main already contains the OAuth auto-key and confirmed-redundancy checkpoints through 4f63814. The CTM Origin-policy routing fix is committed directly on top of that exact remote baseline and can be pushed as a normal fast-forward.",
+      "remote_observed_head": "dcb77299254bdebbdaa37cd1dd741a449c5643f2",
+      "result": "fast_forward_push_failed_before_interactive_https_authentication",
+      "reason": "GitHub main contains dcb7729 and the mathematical-routing/automatic-export checkpoint is directly on top, so no pull, merge, or force is required. The automated runtime attempted a noninteractive HTTPS push but cannot read the user's GitHub username/PAT.",
       "ssh_fallback": "not_needed_for_current_remote_state"
     },
     "initial_files": [
       "All current source, tests, graph, debug, validation, and planning files are intended for the initial commit."
     ],
-    "working_tree_note": "The CTM Origin-policy routing fix is committed directly on top of remote 4f63814; after this ledger amendment the working tree is intended to be clean."
+    "working_tree_note": "The mathematical-routing and automatic workspace-export checkpoint is committed directly on top of remote dcb7729; after this push-status amendment the working tree is intended to be clean."
   },
   "engineering_debug_notes": [
     {
@@ -626,6 +639,11 @@
       "id": "R-011",
       "risk": "Automatically generated OAuth authorization keys improve tunnel usability but become sensitive local-terminal material that could leak if copied into structured diagnostics or persistent state.",
       "mitigation": "Generate the key only for interactive serve, reveal it only after successful HTTP bind to the local operator terminal, keep check-config secret-free, never include the raw key in structured debug/state/report payloads, and cover the behavior with INV-010/MV-001."
+    },
+    {
+      "id": "R-012",
+      "risk": "MCP server instructions and tool descriptions strongly influence mathematical task routing but a particular webpage host may ignore or truncate them and answer directly instead of starting Rethlas.",
+      "mitigation": "Make the routing rule explicit in both initialize instructions and rethlas_start metadata, keep an ordinary-language real-client test in MV-008, report this host limitation honestly, and retain explicit user wording as a fallback rather than pretending server-side prompt interception exists."
     }
   ],
   "change_log": [
@@ -728,6 +746,10 @@
     {
       "timestamp": "2026-08-27T01:18:00-07:00",
       "event": "Compared the OAuth authorization HTML response with Coding Tools MCP after observing successful /oauth/authorize 302 responses with no subsequent /oauth/token request. Removed Re-CTM's extra Content-Security-Policy form-action 'self' header, which can block a form-submission redirect to the registered ChatGPT callback in Chromium, and added a regression that the authorization response no longer carries that CSP. The OAuth code/token protocol itself was left unchanged."
+    },
+    {
+      "timestamp": "2026-08-27T02:11:00-07:00",
+      "event": "Strengthened the MCP mathematical-routing contract so concrete proof/derivation/repair/verification requests default to rethlas_start, added an optional workspace export_path to run creation, and made terminal rethlas_next automatically create the mechanically verified proof_verified.tex under rethlas-output/<run_id>/ by default. Automatic export is idempotent for identical bytes and refuses to overwrite different content; the explicit alternate export tool remains available."
     }
   ]
 }

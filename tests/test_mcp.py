@@ -67,6 +67,8 @@ class MCPDispatcherTestCase(unittest.TestCase):
             self.principal,
         )
         self.assertEqual(initialized["result"]["serverInfo"]["name"], "re-ctm")
+        self.assertIn("every concrete mathematical", initialized["result"]["instructions"])
+        self.assertIn("workspace_export_path", initialized["result"]["instructions"])
         listed = self.dispatcher.dispatch(
             {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
             self.principal,
@@ -75,6 +77,13 @@ class MCPDispatcherTestCase(unittest.TestCase):
         self.assertEqual(names, list(TOOL_SPECS))
         self.assertEqual(len(names), 31)
         self.assertEqual(listed["result"]["tools"][0]["outputSchema"]["required"], ["ok"])
+        rethlas_start = next(
+            item for item in listed["result"]["tools"] if item["name"] == "rethlas_start"
+        )
+        self.assertIn("every concrete mathematical", rethlas_start["description"])
+        self.assertIn("export_path", rethlas_start["inputSchema"]["properties"])
+        self.assertFalse(rethlas_start["annotations"]["destructiveHint"])
+        self.assertFalse(rethlas_start["annotations"]["readOnlyHint"])
 
         modern_requested_in_handshake = self.dispatcher.dispatch(
             {
@@ -125,6 +134,33 @@ class MCPDispatcherTestCase(unittest.TestCase):
         )
         self.assertEqual(unknown_tool["error"]["code"], -32602)
         self.assertEqual(unknown_tool["error"]["data"]["reason"], "unknown_tool")
+
+    def test_rethlas_start_records_workspace_export_path(self) -> None:
+        started = self.tools.call(
+            "rethlas_start",
+            {
+                "problem_tex": r"\textbf{Problem.} Prove $1=1$.",
+                "problem_id": "one-equals-one",
+                "export_path": "results/one-equals-one.tex",
+            },
+            self.principal,
+        )
+        self.assertFalse(started["isError"])
+        self.assertEqual(
+            started["structuredContent"]["workspace_export_path"],
+            "results/one-equals-one.tex",
+        )
+
+        denied = self.tools.call(
+            "rethlas_start",
+            {
+                "problem_tex": r"\textbf{Problem.} Prove $2=2$.",
+                "export_path": "/tmp/proof.tex",
+            },
+            self.principal,
+        )
+        self.assertTrue(denied["isError"])
+        self.assertEqual(denied["structuredContent"]["error"]["code"], "ABSOLUTE_PATH_DENIED")
 
     def test_modern_request_is_shaped_per_request(self) -> None:
         modern_meta = {

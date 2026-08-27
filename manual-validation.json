@@ -133,6 +133,7 @@
         "Submit malformed, external-input, shell-escape, and valid self-contained documents.",
         "Create a host-only readable LaTeX class or file outside the compiler scratch directory and confirm the proof cannot load it even by absolute path.",
         "Complete a correct verification report for the valid document.",
+        "Advance the MCP workflow with rethlas_next until done and confirm the returned workspace_export_path exists under the native workspace without a separate export command; repeat the terminal call and confirm the identical file is reported unchanged.",
         "Call rethlas_export_final to a new workspace-relative .tex path, then retry the same path without expected_sha256 and confirm the overwrite is denied."
       ],
       "expected": [
@@ -140,6 +141,7 @@
         "The compiler receives only a scratch workspace plus read-only system TeX/toolchain roots; Re-CTM private state is not mounted.",
         "Only a compiled proof with empty findings reaches done.",
         "The sole final delivery artifact is proof_verified.tex.",
+        "The MCP completion path automatically writes the verified bytes to rethlas-output/<run_id>/proof_verified.tex or the requested export_path, and identical retries are idempotent.",
         "The controlled export writes exactly the finalized bytes inside the native workspace and refuses baseline-free overwrite."
       ],
       "evidence": []
@@ -149,11 +151,13 @@
       "name": "Rethlas methodology behavior acceptance",
       "status": "pending",
       "steps": [
+        "Submit a concrete mathematical proof request in ordinary natural language without naming rethlas_start and confirm the MCP client follows the server instructions by starting and completing a Rethlas run; separately request a direct informal answer and confirm the explicit opt-out is respected.",
         "Use representative easy, difficult, citation-heavy, counterexample-sensitive, and repair-requiring math problems.",
         "Inspect memory channels, multiple plan generation, exact per-plan/per-subgoal direct screening, one-branch-per-plan work, all-branch join, failure synthesis, replanning, verification audits, and changed-proof repair.",
         "Use rethlas_retrieve for nontrivial claims; for useful results, inspect the source paper context/proof and persist definitions, applicability checks, and identifiers before relying on them."
       ],
       "expected": [
+        "Concrete proof/derivation/repair/verification requests route into Rethlas by default rather than ending as an unverified chat-only proof.",
         "Core Rethlas methodology is observably preserved despite sequential domains.",
         "Failures remain queryable and influence new plans.",
         "External results include complete statements and applicability checks.",

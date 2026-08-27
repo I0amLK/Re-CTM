@@ -331,11 +331,6 @@ class WorkflowTestCase(unittest.TestCase):
         verified = self._commit(verifier, "verification_submitted")
         self.assertEqual(verified["verdict"], "correct")
 
-        terminal = self._next(run_id)
-        self.assertEqual(terminal["state"], WorkflowState.DONE.value)
-        final = self.engine.get_artifact(owner_id=self.owner, run_id=run_id, artifact="final_tex")
-        self.assertEqual(final["content"], VALID_PROOF)
-
         native_workspace = self.root / "native-workspace"
         native_workspace.mkdir()
         native = NativeRuntime(
@@ -344,10 +339,39 @@ class WorkflowTestCase(unittest.TestCase):
             self.debug,
         )
         tools = ToolRuntime(native, self.engine, self.debug)
+        principal = OAuthPrincipal(client_id=self.owner, subject=self.owner, scope="mcp")
+        terminal_result = tools.call(
+            "rethlas_next",
+            {"run_id": run_id},
+            principal,
+        )
+        terminal = terminal_result["structuredContent"]
+        self.assertEqual(terminal["state"], WorkflowState.DONE.value)
+        self.assertTrue(terminal["workspace_export"]["ok"])
+        automatic_path = native_workspace / terminal["workspace_export_path"]
+        self.assertEqual(automatic_path.read_text(encoding="utf-8"), VALID_PROOF)
+        repeated = tools.call("rethlas_next", {"run_id": run_id}, principal)
+        self.assertEqual(
+            repeated["structuredContent"]["workspace_export"]["status"],
+            "unchanged",
+        )
+
+        final = self.engine.get_artifact(owner_id=self.owner, run_id=run_id, artifact="final_tex")
+        self.assertEqual(final["content"], VALID_PROOF)
+        self.assertEqual(final["workspace_export_path"], terminal["workspace_export_path"])
+
+        default_export = tools.call(
+            "rethlas_export_final",
+            {"run_id": run_id},
+            principal,
+        )
+        self.assertFalse(default_export["isError"])
+        self.assertEqual(default_export["structuredContent"]["export"]["status"], "unchanged")
+
         exported = tools.call(
             "rethlas_export_final",
             {"run_id": run_id, "path": "exports/proof_verified.tex"},
-            OAuthPrincipal(client_id=self.owner, subject=self.owner, scope="mcp"),
+            principal,
         )
         export_path = native_workspace / "exports" / "proof_verified.tex"
         self.assertEqual(export_path.read_text(encoding="utf-8"), VALID_PROOF)
@@ -355,7 +379,7 @@ class WorkflowTestCase(unittest.TestCase):
         baseline_required = tools.call(
             "rethlas_export_final",
             {"run_id": run_id, "path": "exports/proof_verified.tex"},
-            OAuthPrincipal(client_id=self.owner, subject=self.owner, scope="mcp"),
+            principal,
         )
         self.assertTrue(baseline_required["isError"])
         self.assertEqual(

@@ -873,6 +873,73 @@ class NativeRuntime:
             "bytes": len(content.encode("utf-8")),
         }
 
+    def ensure_verified_latex(
+        self,
+        *,
+        path: str,
+        content: str,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Create the default verified export once and make retries idempotent.
+
+        This is the automatic finalization bridge used by the MCP workflow. It
+        never overwrites different workspace content. Explicit replacement
+        remains available through export_verified_latex with an expected hash.
+        """
+
+        if not path.lower().endswith(".tex"):
+            raise invalid_argument("verified LaTeX export path must end in .tex", path=path)
+        resolved = self.workspace.resolve_for_write(path)
+        content_bytes = content.encode("utf-8")
+        content_sha256 = hashlib.sha256(content_bytes).hexdigest()
+        if resolved.existed:
+            if not resolved.path.is_file():
+                raise ReCTMError(
+                    "EXPORT_PATH_CONFLICT",
+                    "Automatic verified export target is not a regular file.",
+                    category="conflict",
+                    details={"path": resolved.display},
+                )
+            existing_sha256 = _sha256_file(resolved.path)
+            if existing_sha256 != content_sha256:
+                raise ReCTMError(
+                    "EXPORT_PATH_CONFLICT",
+                    "Automatic verified export will not overwrite different workspace content.",
+                    category="conflict",
+                    retryable=True,
+                    details={
+                        "path": resolved.display,
+                        "actual_sha256": existing_sha256,
+                        "verified_sha256": content_sha256,
+                    },
+                )
+            self.debug.emit(
+                "native.verified_latex_export_confirmed",
+                "native_runtime",
+                trace_id=trace_id or new_trace_id(),
+                decision="allow",
+                reason="automatic_export_already_matches",
+                details={
+                    "path": resolved.display,
+                    "content_sha256": content_sha256,
+                    "content_bytes": len(content_bytes),
+                    "workflow_authority_inherited": False,
+                },
+            )
+            return {
+                "ok": True,
+                "status": "unchanged",
+                "path": resolved.display,
+                "sha256": content_sha256,
+                "bytes": len(content_bytes),
+            }
+        result = self.export_verified_latex(
+            path=resolved.display,
+            content=content,
+            trace_id=trace_id,
+        )
+        return {"ok": True, **result, "status": "created"}
+
     def exec_command(self, **arguments: Any) -> dict[str, Any]:
         trace_id = str(arguments.get("trace_id") or new_trace_id())
         cmd = str(arguments.get("cmd") or "")

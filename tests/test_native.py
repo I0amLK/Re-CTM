@@ -71,6 +71,27 @@ class NativeRuntimeTestCase(unittest.TestCase):
             )
         self.assertEqual(conflict.exception.code, "PATCH_CONFLICT")
 
+    def test_automatic_verified_export_is_idempotent_and_non_overwriting(self) -> None:
+        content = "\\documentclass{article}\n\\begin{document}ok\\end{document}\n"
+        created = self.runtime.ensure_verified_latex(
+            path="rethlas-output/run-test/proof_verified.tex",
+            content=content,
+        )
+        self.assertEqual(created["status"], "created")
+        repeated = self.runtime.ensure_verified_latex(
+            path="rethlas-output/run-test/proof_verified.tex",
+            content=content,
+        )
+        self.assertEqual(repeated["status"], "unchanged")
+        target = self.workspace / "rethlas-output" / "run-test" / "proof_verified.tex"
+        target.write_text("different\n", encoding="utf-8")
+        with self.assertRaises(ReCTMError) as conflict:
+            self.runtime.ensure_verified_latex(
+                path="rethlas-output/run-test/proof_verified.tex",
+                content=content,
+            )
+        self.assertEqual(conflict.exception.code, "EXPORT_PATH_CONFLICT")
+
 
 if __name__ == "__main__":
     unittest.main()

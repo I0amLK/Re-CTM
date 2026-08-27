@@ -336,6 +336,8 @@ export RE_CTM_NATIVE_ISOLATION_ATTESTED=1
 
 不需要单独下载或启动 Rethlas。
 
+连接器读取 Re-CTM 的 MCP instructions 后，遇到具体的数学证明、推导、证明修复或严格验证任务时，应优先启动 Rethlas workflow，而不是直接在聊天中给出未经 workflow 验证的证明。只有你明确要求“直接给出非正式回答，不使用 Rethlas”时，客户端才应跳过该流程。
+
 直接在网页中说：
 
 ```text
@@ -352,6 +354,18 @@ export RE_CTM_NATIVE_ISOLATION_ATTESTED=1
 ```
 
 启动后请保留返回的 `run_id`。后续查看进度、恢复、干预和取最终结果都使用同一个 `run_id`。
+
+默认最终文件会自动写到：
+
+```text
+rethlas-output/<run_id>/proof_verified.tex
+```
+
+也可以在开始任务时指定另一个 workspace-relative `.tex` 路径，例如：
+
+```text
+使用 Rethlas 证明下面的问题，并把最终验证通过的 LaTeX 写到 results/group-pushout.tex。
+```
 
 ## 11. 查看数学任务进度
 
@@ -414,19 +428,29 @@ export RE_CTM_THEOREM_SEARCH_TIMEOUT_SECONDS=30
 
 ## 16. 获取最终 proof_verified.tex
 
-任务完成后说：
+当最后一次 `rethlas_next` 把任务推进到 `done` 时，Re-CTM 会通过受控 final-artifact bridge 自动把验证后的 LaTeX 写进 workspace，并在返回结果中提供 `workspace_export_path`。默认路径是：
+
+```text
+rethlas-output/<run_id>/proof_verified.tex
+```
+
+任务完成后仍可以说：
 
 ```text
 给我这个 run 的最终 verified LaTeX。
 ```
 
-如果希望把最终文件写进 native workspace，可以说：
+这会读取已经机械 finalization 的 `final_tex` artifact；它不再是把文件落盘所必需的额外步骤。
+
+如果希望把同一份最终文件另外导出到其他路径，可以说：
 
 ```text
 把最终 proof_verified.tex 导出到 workspace 的 result/proof_verified.tex。
 ```
 
-如果目标文件已经存在，Re-CTM 会要求当前文件的 SHA-256 baseline 后才能覆盖。
+自动默认导出是幂等的：重复取得 `done` 状态时，如果文件内容完全相同，不会重复改写。若自动目标路径已有不同内容，Re-CTM 不会覆盖它；显式导出到已有目标时仍要求当前文件的 SHA-256 baseline。
+
+对已经完成但尚未落盘的旧 run，可以直接要求“把这个 run 的最终文件写到默认位置”；`rethlas_export_final` 省略路径时会使用该 run 的 `workspace_export_path`。
 
 ## 17. LaTeX 模式
 

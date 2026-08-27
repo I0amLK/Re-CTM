@@ -87,7 +87,7 @@
     },
     {
       "id": "PC-007",
-      "constraint": "The final user artifact is a self-contained LaTeX source file named proof_verified.tex."
+      "constraint": "The final user artifact is a self-contained LaTeX source file named proof_verified.tex. When an MCP-driven run reaches done, the controlled artifact bridge automatically writes it to a workspace-relative path, defaulting to rethlas-output/<run_id>/proof_verified.tex."
     },
     {
       "id": "PC-008",
@@ -104,10 +104,14 @@
     {
       "id": "PC-011",
       "constraint": "Interactive serve must not require users to pre-create an OAuth authorization password: when RE_CTM_OAUTH_PASSWORD is unset, Re-CTM generates a high-entropy authorization key at startup and reveals it only to the local operator terminal for first-page OAuth authorization."
+    },
+    {
+      "id": "PC-012",
+      "constraint": "The MCP contract routes concrete mathematical proof, derivation, proof-repair, and rigorous verification tasks into rethlas_start unless the user explicitly requests a direct informal answer; the client must continue the workflow through done rather than substitute an unverified chat response."
     }
   ],
   "implementation_snapshot": {
-    "as_of": "2026-08-27T00:30:00-07:00",
+    "as_of": "2026-08-27T02:11:00-07:00",
     "authority": "This snapshot supersedes the original per-vertex planning labels without erasing the design-time history stored on each vertex.",
     "implemented_local": [
       "V02",
@@ -156,6 +160,7 @@
       "rethlas_export_final and NativeRuntime.export_verified_latex implement the only mechanically-finalized private-to-native artifact bridge with workspace confinement and overwrite baselines.",
       "scripts/manual_native_isolation_test.py provides target-PC adversarial evidence before RE_CTM_NATIVE_ISOLATION_ATTESTED=1 is permitted operationally.",
       "tests/ exercises OAuth, legacy and modern MCP, fixed catalogs, native path confinement, capability ownership, branch barriers, verifier firewall, mechanical verdict/finalization, diagnostics, LaTeX safety, and the reference bubblewrap helper.",
+      "MCP server instructions and the rethlas_start tool contract route concrete mathematical work into the capability-gated workflow, and terminal rethlas_next performs an idempotent workspace export through the controlled artifact bridge.",
       "manual-validation.json remains the authority for browser, target-PC, external-retrieval, real-LaTeX, and 95-percent methodology acceptance."
     ]
   },
@@ -519,6 +524,8 @@
       "responsibilities": [
         "Import problem/reference snapshots from native workspace",
         "Export only approved artifacts from private vault",
+        "Automatically create the run-specific workspace proof_verified.tex when the MCP workflow reaches done",
+        "Treat repeated identical automatic exports as idempotent and refuse to overwrite different workspace content",
         "Hash and audit every transfer",
         "Prevent arbitrary path bridging"
       ],
@@ -955,7 +962,7 @@
       "source": "V28",
       "target": "V07",
       "type": "controlled_cross_plane_transfer",
-      "guard": "Approved import/export operation with content hash",
+      "guard": "Approved import/export operation with content hash; automatic final export requires done plus sealed verified artifact and never overwrites different content",
       "debug_event": "artifact.bridge"
     },
     {
@@ -1127,9 +1134,9 @@
     },
     {
       "id": "INV-006",
-      "statement": "The model cannot set verdict=correct or publish proof_verified.tex directly.",
-      "formal": "finalize_authority originates only at V25 after V23 pass and empty findings",
-      "test": "Attempt finalize from generator, assembler, verifier, repair, and native dangerous contexts."
+      "statement": "The model cannot set verdict=correct or publish proof_verified.tex directly; automatic workspace publication occurs only after mechanical finalization.",
+      "formal": "finalize_authority originates only at V25 after V23 pass and empty findings; auto_export => state=done AND sealed AND verified_artifact",
+      "test": "Attempt finalize from generator, assembler, verifier, repair, and native dangerous contexts; complete a valid run through MCP rethlas_next, assert the default workspace file is created, repeat the terminal call to prove idempotence, and refuse a conflicting different target."
     },
     {
       "id": "INV-007",

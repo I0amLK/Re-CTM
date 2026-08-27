@@ -12,16 +12,18 @@ Re-CTM combines a native CMT plane and a Rethlas workflow plane in one OAuth MCP
 6. Native arbitrary execution fails closed unless an external hard-isolation backend is configured and attested. The private vault must not be mounted in that worker.
 7. OAuth authenticates a client but does not replace run ownership or workflow capability validation.
 8. If `RE_CTM_OAUTH_PASSWORD` is unset for an interactive `serve`, generate a high-entropy authorization key at startup and reveal it only to the local operator terminal. Never write the raw generated key to structured debug events, project ledgers, validation reports, HTTP responses, or persistent state.
-8. `RE_CTM_SERVER_URL` is a fixed OAuth-origin override, not a mandatory startup dependency. Without it, dynamic OAuth-origin discovery is allowed only on a loopback-bound HTTP server; forwarded proxy headers are trusted only from a loopback peer, and the resulting authorization code/token issuer/audience remain bound to that effective origin.
+9. `RE_CTM_SERVER_URL` is a fixed OAuth-origin override, not a mandatory startup dependency. Without it, dynamic OAuth-origin discovery is allowed only on a loopback-bound HTTP server; forwarded proxy headers are trusted only from a loopback peer, and the resulting authorization code/token issuer/audience remain bound to that effective origin.
 
 ## Workflow invariants
 
 - Keep one fixed, truthful MCP tool catalog. Authorization is server-side, not `tools/list` filtering.
+- Keep the concrete-mathematics routing rule in both MCP initialize instructions and `rethlas_start` metadata: proof, derivation, proof-repair, and rigorous verification tasks use Rethlas by default unless the user explicitly requests an informal bypass.
 - Branch domains read one frozen snapshot and their own branch only until every branch is sealed and the join barrier opens.
 - Sealing a domain revokes its capabilities.
 - Verifier domains cannot read generation memory, branch internals, steering history, join internals, or generator confidence.
 - The server computes `correct` iff both `critical_errors` and `gaps` are empty.
 - Only the mechanical finalization gate may create `proof_verified.tex`.
+- On terminal MCP `rethlas_next`, export the mechanically finalized bytes through the controlled bridge to the run's workspace-relative path. The default is `rethlas-output/<run_id>/proof_verified.tex`; identical retries are idempotent and different content must never be overwritten automatically.
 - The final artifact is self-contained LaTeX; Zola and Markdown delivery are out of scope.
 
 ## Debugging and evidence

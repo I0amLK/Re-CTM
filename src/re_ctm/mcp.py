@@ -211,9 +211,11 @@ def server_identity() -> dict[str, str]:
 
 def server_instructions() -> str:
     return (
-        "Use native tools under the configured native authority. "
-        "Use rethlas_* tools as a separate capability-gated workflow; "
-        "native dangerous mode never grants workflow authority."
+        "Use native tools for ordinary workspace and computer operations under the configured native authority. "
+        "For every concrete mathematical proof, derivation, proof repair, or rigorous verification task, start with rethlas_start and continue with rethlas_next plus the capability-authorized rethlas_* tools until the run reaches done, unless the user explicitly requests a direct informal answer. "
+        "Do not replace a required Rethlas branch, join, LaTeX, verifier, repair, or finalization stage with an unverified answer in chat. "
+        "When rethlas_next reports done, report the workspace_export_path where proof_verified.tex was automatically written. "
+        "The rethlas_* workflow is a separate capability-gated authority; native dangerous mode never grants workflow authority."
     )
 
 
