@@ -554,6 +554,7 @@ def run_server(
     *,
     host: str = "127.0.0.1",
     port: int = 8765,
+    reveal_generated_oauth_password: bool = False,
 ) -> int:
     server = ReCTMHTTPServer((host, port), application)
     oauth_mode = (
@@ -561,6 +562,16 @@ def run_server(
         if application.settings.oauth_server_url
         else "dynamic OAuth origin from loopback tunnel/request headers"
     )
+    if reveal_generated_oauth_password:
+        print(
+            f"Re-CTM OAuth authorization key: {application.oauth.password}",
+            file=sys.stderr,
+        )
+        print(
+            "Enter this key on the first Re-CTM OAuth authorization page. "
+            "It is not a Cloudflare Tunnel token.",
+            file=sys.stderr,
+        )
     print(
         f"Re-CTM OAuth MCP listening on http://{host}:{port}{MCP_PATH}; "
         f"{oauth_mode}; complete browser workflow requires post-push manual validation.",

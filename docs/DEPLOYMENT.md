@@ -51,12 +51,13 @@ Start from `config.example.env`. At minimum configure:
 RE_CTM_WORKSPACE=/srv/re-ctm/workspace
 RE_CTM_DATA_ROOT=/var/lib/re-ctm
 RE_CTM_PRIVATE_ROOT=/var/lib/re-ctm/private
-RE_CTM_OAUTH_PASSWORD=<long-random-operator-password>
 RE_CTM_ALLOWED_ORIGINS=https://the-real-web-client.example
 RE_CTM_LATEX_POLICY=required
 RE_CTM_NATIVE_MODE=safe
 RE_CTM_NATIVE_EXEC_BACKEND=disabled
 ```
+
+`RE_CTM_OAUTH_PASSWORD` is optional for an interactive operator launch. If omitted, `re-ctm serve` generates a high-entropy authorization key and prints it once to the local terminal. Set it explicitly only when a stable operator password is preferred or automation must know it in advance.
 
 `RE_CTM_SERVER_URL` is optional. For a stable public hostname or named tunnel, set it explicitly:
 
@@ -115,15 +116,15 @@ For a disposable Cloudflare Quick Tunnel, the convenient startup order is intent
 PORT=54567
 fuser -k -9 ${PORT}/tcp 2>/dev/null || true
 
-unset RE_CTM_SERVER_URL
-export RE_CTM_OAUTH_PASSWORD='<operator-password>'
-
-/opt/re-ctm/venv/bin/re-ctm serve --host 127.0.0.1 --port ${PORT} &
+env -u RE_CTM_SERVER_URL -u RE_CTM_OAUTH_PASSWORD \
+  /opt/re-ctm/venv/bin/re-ctm serve --host 127.0.0.1 --port ${PORT} &
 MCP_PID=$!
 sleep 2
 
 cloudflared tunnel --url http://127.0.0.1:${PORT}
 ```
+
+The Re-CTM terminal prints `Re-CTM OAuth authorization key: ...`. Enter that value on the first OAuth authorization page. It is a Re-CTM authorization credential, not a Cloudflare Tunnel Token.
 
 Use the printed `https://<random>.trycloudflare.com/mcp` URL in the MCP client. No Re-CTM restart is required after Cloudflare assigns the random hostname.
 

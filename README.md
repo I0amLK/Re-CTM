@@ -75,7 +75,8 @@ mkdir -p ~/.re-ctm
 ## 4. 最小配置
 
 ```bash
-export RE_CTM_OAUTH_PASSWORD='请换成你自己的登录密码'
+# 可选：不设置时，re-ctm serve 会自动生成 OAuth authorization key 并打印到本机终端。
+# export RE_CTM_OAUTH_PASSWORD='请换成你自己的登录密码'
 
 export RE_CTM_WORKSPACE="$HOME/re-ctm-workspace"
 export RE_CTM_DATA_ROOT="$HOME/.re-ctm"
@@ -141,7 +142,7 @@ http://127.0.0.1:8765/mcp
 
 客户端应自动进入 OAuth 注册和授权流程。
 
-浏览器打开 Re-CTM 授权页面后，输入 `RE_CTM_OAUTH_PASSWORD` 对应的密码。
+浏览器打开 Re-CTM 授权页面后，输入启动终端显示的 `Re-CTM OAuth authorization key`。如果你显式设置了 `RE_CTM_OAUTH_PASSWORD`，则输入你设置的值。
 
 授权完成后，网页客户端即可使用 Re-CTM。
 
@@ -152,17 +153,23 @@ PORT=54567
 
 fuser -k -9 ${PORT}/tcp 2>/dev/null || true
 
-unset RE_CTM_SERVER_URL
-export RE_CTM_OAUTH_PASSWORD='请换成你自己的登录密码'
-export RE_CTM_NATIVE_MODE=dangerous
-
-re-ctm serve --host 127.0.0.1 --port ${PORT} &
+env -u RE_CTM_SERVER_URL -u RE_CTM_OAUTH_PASSWORD \
+  RE_CTM_NATIVE_MODE=dangerous \
+  re-ctm serve --host 127.0.0.1 --port ${PORT} &
 MCP_PID=$!
 
 sleep 2
 
 cloudflared tunnel --url http://127.0.0.1:${PORT}
 ```
+
+Re-CTM 启动后会在本机终端打印类似：
+
+```text
+Re-CTM OAuth authorization key: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+这串 key 是 Re-CTM 首次 OAuth 授权页面的登录凭据，不是 Cloudflare Tunnel Token。Cloudflare Quick Tunnel 只负责给你公网 HTTPS URL。
 
 `cloudflared` 打印出类似下面的地址后：
 
@@ -466,7 +473,7 @@ python3 scripts/run_local_checks.py
 服务已经启动时，在源码仓库运行：
 
 ```bash
-export RE_CTM_OAUTH_PASSWORD='你的 OAuth 密码'
+export RE_CTM_OAUTH_PASSWORD='你的 OAuth 密码'  # 独立烟测建议显式设置，方便脚本读取
 python3 scripts/smoke_oauth_mcp.py \
   --base-url http://127.0.0.1:8765 \
   --output oauth-mcp-smoke.json

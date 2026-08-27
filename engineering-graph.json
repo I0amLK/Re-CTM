@@ -100,6 +100,10 @@
     {
       "id": "PC-010",
       "constraint": "RE_CTM_SERVER_URL is an optional fixed OAuth-origin override. When it is absent, Re-CTM may derive the OAuth issuer/resource from request Host and trusted reverse-proxy headers only while the HTTP server is loopback-bound; this preserves one-command Cloudflare Quick Tunnel startup without trusting public proxy headers."
+    },
+    {
+      "id": "PC-011",
+      "constraint": "Interactive serve must not require users to pre-create an OAuth authorization password: when RE_CTM_OAUTH_PASSWORD is unset, Re-CTM generates a high-entropy authorization key at startup and reveals it only to the local operator terminal for first-page OAuth authorization."
     }
   ],
   "implementation_snapshot": {
@@ -1144,6 +1148,12 @@
       "statement": "Dynamic OAuth issuer discovery cannot turn untrusted public forwarding headers into authority.",
       "formal": "fixed_server_url wins; otherwise dynamic_issuer => loopback_bind AND trusted_loopback_peer AND validated_origin_host",
       "test": "Run the Cloudflare-style forwarded OAuth flow on loopback, assert fixed origin ignores forwarded host, assert tokens fail under a different effective origin, and reject dynamic mode on a non-loopback bind."
+    },
+    {
+      "id": "INV-010",
+      "statement": "An automatically generated OAuth authorization key is operator-terminal-only secret material.",
+      "formal": "generated_oauth_key => local_terminal_reveal AND NOT(debug_log OR state_store OR validation_report OR http_response)",
+      "test": "Start serve without RE_CTM_OAUTH_PASSWORD, confirm a generated key is passed to the OAuth service and terminal reveal path, then scan structured events/reports for absence of the raw key."
     }
   ],
   "workflow_transition_graph": {

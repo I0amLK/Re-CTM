@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import subprocess
 import sys
 from dataclasses import replace
@@ -112,12 +113,6 @@ def main(argv: list[str] | None = None) -> int:
             settings = replace(settings, latex_policy=LatexPolicy(args.latex_policy))
         settings.validate()
         settings = materialize_secrets(settings)
-        if not settings.oauth_password:
-            raise ReCTMError(
-                "OAUTH_PASSWORD_REQUIRED",
-                "RE_CTM_OAUTH_PASSWORD is required for the OAuth-only service.",
-                category="validation",
-            )
         if args.command == "check-config":
             print(
                 json.dumps(
@@ -134,6 +129,9 @@ def main(argv: list[str] | None = None) -> int:
                         "oauth_server_url_mode": (
                             "fixed" if settings.oauth_server_url else "dynamic_loopback_reverse_proxy"
                         ),
+                        "oauth_authorization_key_mode": (
+                            "configured" if settings.oauth_password else "generated_on_serve"
+                        ),
                         "oauth_only": True,
                         "theorem_search_url": settings.theorem_search_url,
                         "theorem_search_timeout_seconds": settings.theorem_search_timeout_seconds,
@@ -144,8 +142,16 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
             return 0
+        generated_oauth_password = not bool(settings.oauth_password)
+        if generated_oauth_password:
+            settings = replace(settings, oauth_password=secrets.token_urlsafe(32))
         application = build_application(settings)
-        return run_server(application, host=args.host, port=args.port)
+        return run_server(
+            application,
+            host=args.host,
+            port=args.port,
+            reveal_generated_oauth_password=generated_oauth_password,
+        )
     except ReCTMError as exc:
         print(json.dumps({"ok": False, "error": exc.to_payload()}, indent=2), file=sys.stderr)
         return 2
