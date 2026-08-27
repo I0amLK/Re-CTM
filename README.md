@@ -171,6 +171,8 @@ Re-CTM OAuth authorization key: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 这串 key 是 Re-CTM 首次 OAuth 授权页面的登录凭据，不是 Cloudflare Tunnel Token。Cloudflare Quick Tunnel 只负责给你公网 HTTPS URL。
 
+建议把启动 Re-CTM 的终端保留在当前窗口中，直到首次 OAuth 授权完成，方便随时核对这串 authorization key 和服务日志。
+
 `cloudflared` 打印出类似下面的地址后：
 
 ```text
