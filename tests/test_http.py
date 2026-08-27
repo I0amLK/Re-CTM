@@ -104,12 +104,13 @@ class HTTPGatewayTestCase(unittest.TestCase):
             "resource": f"http://127.0.0.1:{self.port}",
             "state": "unit-state",
         }
-        status, _headers, page = self.request(
+        status, headers, page = self.request(
             "GET",
             "/oauth/authorize?" + urllib.parse.urlencode(auth_params),
         )
         self.assertEqual(status, 200)
         self.assertIn(b"Authorize Re-CTM", page)
+        self.assertNotIn("Content-Security-Policy", headers)
 
         form = urllib.parse.urlencode({**auth_params, "password": "operator-password"}).encode()
         status, headers, _body = self.request(

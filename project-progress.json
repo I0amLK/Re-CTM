@@ -99,7 +99,7 @@
     },
     {
       "id": "AD-015",
-      "decision": "Preserve CTM-class reverse-proxy OAuth convenience: RE_CTM_SERVER_URL is an optional fixed override, while an unset value enables per-request OAuth-origin derivation only on loopback-bound servers using validated Host and loopback-trusted forwarded headers. Fixed origins always win and dynamic mode is rejected on non-loopback binds. Preserve the Coding Tools MCP Origin-policy route boundary: actual OAuth metadata/registration/authorization/token routes do not inherit the MCP Origin rejection gate, while MCP transport and OPTIONS remain origin-gated.",
+      "decision": "Preserve CTM-class reverse-proxy OAuth convenience: RE_CTM_SERVER_URL is an optional fixed override, while an unset value enables per-request OAuth-origin derivation only on loopback-bound servers using validated Host and loopback-trusted forwarded headers. Fixed origins always win and dynamic mode is rejected on non-loopback binds. Preserve the Coding Tools MCP Origin-policy route boundary: actual OAuth metadata/registration/authorization/token routes do not inherit the MCP Origin rejection gate, while MCP transport and OPTIONS remain origin-gated. Keep the OAuth authorization page compatible with the registered external callback; unlike the earlier Re-CTM page, do not emit form-action 'self', which Chromium may apply to the post-submit 302 redirect chain.",
       "status": "accepted"
     },
     {
@@ -724,6 +724,10 @@
     {
       "timestamp": "2026-08-27T01:10:00-07:00",
       "event": "Corrected Re-CTM's over-broad browser Origin gate after comparing the Coding Tools MCP reference implementation and compliance tests: actual OAuth metadata/registration/authorization/token routes no longer inherit MCP Origin rejection, while /mcp and OPTIONS remain origin-gated. Added regressions for an Origin-bearing Quick Tunnel authorization POST and preserved denial of unapproved MCP/OPTIONS origins; the deterministic suite now contains 44 passing tests."
+    },
+    {
+      "timestamp": "2026-08-27T01:18:00-07:00",
+      "event": "Compared the OAuth authorization HTML response with Coding Tools MCP after observing successful /oauth/authorize 302 responses with no subsequent /oauth/token request. Removed Re-CTM's extra Content-Security-Policy form-action 'self' header, which can block a form-submission redirect to the registered ChatGPT callback in Chromium, and added a regression that the authorization response no longer carries that CSP. The OAuth code/token protocol itself was left unchanged."
     }
   ]
 }

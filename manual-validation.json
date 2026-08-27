@@ -20,6 +20,7 @@
         "Run Re-CTM on 127.0.0.1 without RE_CTM_SERVER_URL or RE_CTM_OAUTH_PASSWORD; record the generated Re-CTM OAuth authorization key shown only in the local operator terminal, then start a Cloudflare Quick Tunnel after the server is already listening and confirm no Re-CTM restart is needed when the random trycloudflare.com hostname appears.",
         "Fetch OAuth authorization-server and protected-resource metadata through the Quick Tunnel and confirm issuer/resource/endpoint URLs use the public HTTPS trycloudflare.com origin.",
         "Complete the browser authorization form through the Quick Tunnel and confirm its Origin-bearing POST is accepted as an OAuth route while an unapproved external Origin sent to /mcp is still rejected.",
+        "After submitting the authorization key, confirm the browser follows the 302 to the registered ChatGPT callback and Re-CTM subsequently receives POST /oauth/token rather than restarting a fresh authorization request.",
         "Run scripts/smoke_oauth_mcp.py against the public base URL and save its redacted report.",
         "Connect the webpage client to /.well-known/oauth-protected-resource and the MCP URL.",
         "Confirm DCR creates a client and the browser is redirected to /oauth/authorize.",

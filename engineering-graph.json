@@ -99,7 +99,7 @@
     },
     {
       "id": "PC-010",
-      "constraint": "RE_CTM_SERVER_URL is an optional fixed OAuth-origin override. When it is absent, Re-CTM may derive the OAuth issuer/resource from request Host and trusted reverse-proxy headers only while the HTTP server is loopback-bound; this preserves one-command Cloudflare Quick Tunnel startup without trusting public proxy headers. Browser Origin enforcement follows the Coding Tools MCP route boundary: MCP transport and OPTIONS remain origin-gated, while OAuth authorization, token, registration, and metadata routes are not rejected by the MCP Origin gate."
+      "constraint": "RE_CTM_SERVER_URL is an optional fixed OAuth-origin override. When it is absent, Re-CTM may derive the OAuth issuer/resource from request Host and trusted reverse-proxy headers only while the HTTP server is loopback-bound; this preserves one-command Cloudflare Quick Tunnel startup without trusting public proxy headers. Browser Origin enforcement follows the Coding Tools MCP route boundary: MCP transport and OPTIONS remain origin-gated, while OAuth authorization, token, registration, and metadata routes are not rejected by the MCP Origin gate. The OAuth authorization page must also permit the standards-defined external registered redirect callback after successful form submission; do not add a form-action 'self' CSP that can block the 302 callback in Chromium."
     },
     {
       "id": "PC-011",
