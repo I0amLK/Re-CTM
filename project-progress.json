@@ -182,7 +182,7 @@
       "id": "P0",
       "name": "Bootstrap local repository and project ledger",
       "weight_percent": 5,
-      "status": "in_progress",
+      "status": "done",
       "tasks": [
         {
           "id": "P0-T1",
@@ -202,7 +202,7 @@
         {
           "id": "P0-T4",
           "task": "Create initial Git commit",
-          "status": "ready"
+          "status": "done"
         }
       ]
     },
@@ -407,14 +407,14 @@
     "post_push_manual_acceptance_percent": 0,
     "target_95_percent_equivalence_verified": false,
     "completed_phase_ids": [
+      "P0",
       "P1",
       "P2",
       "P5"
     ],
-    "current_phase_id": "P0/P3/P4/P6/P7/P8",
+    "current_phase_id": "P3/P4/P6/P7/P8",
     "current_focus": "A remote-ready engineering checkpoint exists; Git commit/push and the eight real webpage/target-PC/methodology acceptance checks remain.",
     "next_actions": [
-      "Configure Git user.name and user.email at the desired scope, then create the initial commit",
       "Push to https://github.com/I0amLK/Re-CTM.git and observe GitHub Actions",
       "Run all checks in manual-validation.json and attach redacted evidence",
       "Run the packaged bubblewrap isolation harness on the target PC before enabling native exec",
@@ -468,7 +468,8 @@
   "git": {
     "initialized": true,
     "branch": "main",
-    "initial_commit": false,
+    "initial_commit": true,
+    "initial_commit_hash": "f003d43973a02df45ba011b3c6041645cd379b03",
     "initial_commit_blocker": null,
     "local_identity": {
       "name": "Peter Liu",
@@ -476,10 +477,11 @@
       "basis": "Identity confirmed from public commits owned by GitHub account I0amLK; configured only in this repository."
     },
     "remote": "https://github.com/I0amLK/Re-CTM.git",
+    "push_status": "pending_attempt",
     "initial_files": [
       "All current source, tests, graph, debug, validation, and planning files are intended for the initial commit."
     ],
-    "working_tree_note": "All current engineering files are staged and pass git diff --check; initial commit is ready."
+    "working_tree_note": "Initial implementation commit exists; this ledger update will be committed before the first push attempt."
   },
   "engineering_debug_notes": [
     {
@@ -605,6 +607,10 @@
     {
       "timestamp": "2026-08-26T21:45:00-07:00",
       "event": "Added capability-gated theorem retrieval, live endpoint smoke, Apache-2.0 attribution, GitHub Actions CI, 26 passing tests, clean wheel installation, and installed helper attestation. Full post-push manual acceptance remains at zero percent."
+    },
+    {
+      "timestamp": "2026-08-26T21:48:00-07:00",
+      "event": "Created root commit f003d43973a02df45ba011b3c6041645cd379b03 using the public GitHub commit identity Peter Liu <51688491+I0amLK@users.noreply.github.com>."
     }
   ]
 }
