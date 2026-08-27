@@ -4,7 +4,7 @@ import hashlib
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from .debug import redact, utc_now
 from .errors import ReCTMError

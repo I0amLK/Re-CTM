@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
@@ -9,6 +8,7 @@ from .debug import DebugEventBus, new_trace_id
 from .errors import ReCTMError, invalid_argument
 from .native import NativeRuntime
 from .oauth import OAuthPrincipal
+from .processes import COMMAND_BUFFER_BYTES, COMMAND_HEAD_BUFFER_DIVISOR
 from .workflow import WorkflowEngine
 
 
@@ -770,8 +770,8 @@ class ToolRuntime:
             "shell_env_include_only": [],
             "shell_env_exclude": [],
             "output_retention": {
-                "buffer_bytes_per_stream": 524288,
-                "head_bytes_per_stream": 65536,
+                "buffer_bytes_per_stream": COMMAND_BUFFER_BYTES,
+                "head_bytes_per_stream": COMMAND_BUFFER_BYTES // COMMAND_HEAD_BUFFER_DIVISOR,
             },
             "endpoint_path": "/mcp",
             "project_context": {

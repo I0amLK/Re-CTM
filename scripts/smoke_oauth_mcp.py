@@ -8,7 +8,6 @@ import hashlib
 import json
 import os
 import secrets
-import sys
 import urllib.error
 import urllib.parse
 import urllib.request

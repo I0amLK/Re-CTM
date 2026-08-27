@@ -166,7 +166,7 @@ class ReCTMHandler(http.server.BaseHTTPRequestHandler):
                     params,
                     base_url=self._oauth_base_url(trace_id=trace),
                 )
-                self._send_authorization_page(validated, params, trace)
+                self._send_authorization_page(validated, trace)
                 return
             self._json_error(404, "NOT_FOUND", "Unknown endpoint.", trace)
         except ReCTMError as exc:
@@ -354,7 +354,6 @@ class ReCTMHandler(http.server.BaseHTTPRequestHandler):
     def _send_authorization_page(
         self,
         validated: Mapping[str, str],
-        original: Mapping[str, str],
         trace_id: str,
     ) -> None:
         hidden = {

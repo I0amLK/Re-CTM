@@ -4,7 +4,6 @@ import base64
 import fnmatch
 import hashlib
 import io
-import json
 import mimetypes
 import re
 import shlex
