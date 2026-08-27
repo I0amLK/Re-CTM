@@ -3,7 +3,7 @@
     "name": "Re-CTM",
     "status": "local_checkpoint_committed_push_blocked",
     "target": "A single installable OAuth MCP runtime combining streamlined CMT computer tools with a Rethlas-derived mathematical reasoning workflow.",
-    "updated_at": "2026-08-26T22:12:00-07:00",
+    "updated_at": "2026-08-26T22:38:00-07:00",
     "source_references": {
       "cmt_local_repo": "../coding-tools-mcp",
       "rethlas_local_repo": "../Rethlas",
@@ -663,6 +663,10 @@
     {
       "timestamp": "2026-08-26T22:12:00-07:00",
       "event": "Built both sdist and wheel, installed the wheel in a clean environment, passed installed helper attestation, started the installed service from RE_CTM_HOST/RE_CTM_PORT, and passed the redacted OAuth/MCP smoke against that installed service."
+    },
+    {
+      "timestamp": "2026-08-26T22:38:00-07:00",
+      "event": "Rewrote README.md as an end-user usage guide covering installation from GitHub, directory preparation, OAuth configuration, web MCP connection, native modes, isolated exec enablement, Rethlas runs, progress/steering/resume/cancel, theorem retrieval, proof_verified.tex export, LaTeX policy, smoke testing, and debugging without exposing implementation internals."
     }
   ]
 }
