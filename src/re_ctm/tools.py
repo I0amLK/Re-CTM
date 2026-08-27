@@ -20,6 +20,7 @@ class ToolSpec:
     read_only: bool = False
     destructive: bool = False
     open_world: bool = False
+    idempotent: bool | None = None
 
     def definition(self, name: str) -> dict[str, Any]:
         return {
@@ -27,111 +28,293 @@ class ToolSpec:
             "title": self.title,
             "description": self.description,
             "inputSchema": self.input_schema,
+            "outputSchema": tool_output_schema(),
             "annotations": {
                 "title": self.title,
                 "readOnlyHint": self.read_only,
                 "destructiveHint": self.destructive,
-                "idempotentHint": self.read_only,
+                "idempotentHint": self.read_only if self.idempotent is None else self.idempotent,
                 "openWorldHint": self.open_world,
             },
         }
 
 
-OBJECT = {"type": "object", "additionalProperties": False}
+def tool_output_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "ok": {"type": "boolean"},
+            "error": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string"},
+                    "message": {"type": "string"},
+                    "category": {"type": "string"},
+                    "retryable": {"type": "boolean"},
+                    "details": {"type": "object", "additionalProperties": True},
+                },
+                "required": ["code", "message", "category", "retryable", "details"],
+                "additionalProperties": True,
+            },
+        },
+        "required": ["ok"],
+        "additionalProperties": True,
+    }
+
+
+OBJECT = {"type": "object", "additionalProperties": False, "required": []}
+
+CTM_NATIVE_TOOL_NAMES = (
+    "server_info",
+    "check_exec_environment",
+    "read_file",
+    "list_dir",
+    "list_files",
+    "search_text",
+    "apply_patch",
+    "exec_command",
+    "write_stdin",
+    "kill_command",
+    "read_output",
+    "git_status",
+    "git_diff",
+    "git_log",
+    "git_show",
+    "git_blame",
+    "request_permissions",
+    "view_image",
+)
+
+RETHLAS_TOOL_NAMES = (
+    "rethlas_start",
+    "rethlas_next",
+    "rethlas_read",
+    "rethlas_write",
+    "rethlas_search",
+    "rethlas_retrieve",
+    "rethlas_commit",
+    "rethlas_status",
+    "rethlas_steer",
+    "rethlas_resume",
+    "rethlas_cancel",
+    "rethlas_get_artifact",
+    "rethlas_export_final",
+)
 
 
 TOOL_SPECS: dict[str, ToolSpec] = {
     "server_info": ToolSpec(
         "Server info",
-        "Return Re-CTM version, native authority, isolation status, and workflow non-inheritance facts.",
+        "Return server, workspace, project-context, auth, policy, and fixed-tool metadata.",
+        {**OBJECT, "properties": {}},
+        read_only=True,
+    ),
+    "check_exec_environment": ToolSpec(
+        "Check exec environment",
+        "Return lightweight exec_command sandbox and environment status known to the server.",
         {**OBJECT, "properties": {}},
         read_only=True,
     ),
     "read_file": ToolSpec(
-        "Read native file",
-        "Read a UTF-8 file inside the native workspace.",
+        "Read file",
+        "Read a UTF-8 text file slice inside the configured workspace.",
         {
             **OBJECT,
             "required": ["path"],
             "properties": {
-                "path": {"type": "string"},
-                "start_line": {"type": "integer", "minimum": 1},
-                "max_lines": {"type": "integer", "minimum": 1, "maximum": 10000},
-                "max_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576},
+                "path": {"type": "string", "minLength": 1},
+                "start_line": {"type": "integer", "minimum": 1, "default": 1},
+                "end_line": {"type": "integer", "minimum": 1},
+                "max_lines": {"type": "integer", "minimum": 1},
+                "max_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 131072},
+                "encoding": {"type": "string", "enum": ["utf-8"], "default": "utf-8"},
+            },
+        },
+        read_only=True,
+    ),
+    "list_dir": ToolSpec(
+        "List directory",
+        "List directory entries inside the configured workspace.",
+        {
+            **OBJECT,
+            "properties": {
+                "path": {"type": "string", "default": "."},
+                "recursive": {"type": "boolean", "default": False},
+                "max_depth": {"type": "integer", "minimum": 1, "maximum": 20, "default": 1},
+                "max_entries": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 1000},
+                "include_hidden": {"type": "boolean", "default": False},
+                "include_ignored": {"type": "boolean", "default": False},
+                "sort": {"type": "string", "enum": ["name", "type", "modified"], "default": "name"},
             },
         },
         read_only=True,
     ),
     "list_files": ToolSpec(
-        "List native files",
-        "Recursively list files inside the native workspace.",
+        "List files",
+        "List workspace files using glob filters.",
         {
             **OBJECT,
             "properties": {
-                "path": {"type": "string"},
-                "include_hidden": {"type": "boolean"},
-                "include_ignored": {"type": "boolean"},
-                "max_results": {"type": "integer", "minimum": 1, "maximum": 10000},
+                "path": {"type": "string", "default": "."},
+                "patterns": {"type": "array", "items": {"type": "string"}},
+                "glob": {"type": "string"},
+                "exclude_patterns": {"type": "array", "items": {"type": "string"}},
+                "include_hidden": {"type": "boolean", "default": False},
+                "include_ignored": {"type": "boolean", "default": False},
+                "max_results": {"type": "integer", "minimum": 1, "maximum": 50000, "default": 5000},
+                "sort": {"type": "string", "enum": ["path", "modified"], "default": "path"},
             },
         },
         read_only=True,
     ),
     "search_text": ToolSpec(
-        "Search native text",
-        "Search UTF-8 text inside the native workspace.",
+        "Search text",
+        "Search UTF-8 workspace files for text or regex matches.",
         {
             **OBJECT,
             "required": ["query"],
             "properties": {
                 "query": {"type": "string", "minLength": 1},
-                "path": {"type": "string"},
-                "case_sensitive": {"type": "boolean"},
-                "max_results": {"type": "integer", "minimum": 1, "maximum": 10000},
+                "path": {"type": "string", "default": "."},
+                "regex": {"type": "boolean", "default": False},
+                "case_sensitive": {"type": "boolean", "default": False},
+                "include_globs": {"type": "array", "items": {"type": "string"}},
+                "glob": {"type": "string"},
+                "exclude_globs": {"type": "array", "items": {"type": "string"}},
+                "context_lines": {"type": "integer", "minimum": 0, "maximum": 5, "default": 0},
+                "max_results": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 1000},
+                "max_preview_bytes": {"type": "integer", "minimum": 80, "maximum": 4096, "default": 512},
             },
         },
         read_only=True,
     ),
     "apply_patch": ToolSpec(
-        "Apply native patch",
-        "Atomically apply structured add/update/delete operations inside the native workspace.",
+        "Apply patch",
+        "Stage, validate, and atomically apply a patch envelope. Example: *** Begin Patch\n*** Update File: app.py\n@@\n-old\n+new\n*** End Patch",
         {
             **OBJECT,
-            "required": ["operations"],
+            "required": ["patch"],
             "properties": {
-                "operations": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "required": ["op", "path"],
-                        "properties": {
-                            "op": {"type": "string", "enum": ["add", "update", "delete"]},
-                            "path": {"type": "string"},
-                            "content": {"type": "string"},
-                            "expected_sha256": {"type": "string"},
-                        },
-                    },
-                },
-                "dry_run": {"type": "boolean"},
+                "patch": {"type": "string", "minLength": 1},
+                "dry_run": {"type": "boolean", "default": False},
             },
         },
         destructive=True,
     ),
     "exec_command": ToolSpec(
-        "Execute isolated native command",
-        "Delegate argv execution to an attested external isolation helper. Fails closed when no helper is configured.",
+        "Execute command",
+        "Run a bounded command under runtime policy. Pass workdir explicitly for reconnect-safe paths. A still-running command returns command_id. Example: {\"cmd\":\"pytest -q\",\"workdir\":\".\",\"yield_time_ms\":30000}. Retained output is bounded per stream; for very large output redirect to a file (cmd > out.log 2>&1) and page it with read_file or search_text.",
         {
             **OBJECT,
-            "required": ["argv"],
+            "required": ["cmd"],
             "properties": {
-                "argv": {"type": "array", "minItems": 1, "items": {"type": "string"}},
-                "workdir": {"type": "string"},
-                "timeout_ms": {"type": "integer", "minimum": 1, "maximum": 600000},
+                "cmd": {"type": "string", "minLength": 1},
+                "workdir": {"type": "string", "default": "."},
+                "cwd": {"type": "string"},
+                "timeout_ms": {"type": "integer", "minimum": 1, "maximum": 600000, "default": 30000},
+                "yield_time_ms": {"type": "integer", "minimum": 0, "maximum": 30000, "default": 10000},
+                "max_output_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 65536},
+                "verbosity": {"type": "string", "enum": ["summary", "preview", "full"]},
+                "preview_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 4096},
+                "stdin": {"type": "string", "default": ""},
+                "tty": {"type": "boolean", "default": False},
+                "env": {"type": "object", "additionalProperties": {"type": "string"}, "default": {}},
             },
         },
         destructive=True,
         open_world=True,
+    ),
+    "write_stdin": ToolSpec(
+        "Write stdin",
+        "Poll or interact with a running command by command_id. Empty chars wait for output; non-empty chars writes to stdin. Example: {\"command_id\":\"abc\",\"chars\":\"\",\"yield_time_ms\":10000}.",
+        {
+            **OBJECT,
+            "required": ["command_id"],
+            "properties": {
+                "command_id": {"type": "string", "minLength": 1},
+                "chars": {"type": "string", "default": ""},
+                "yield_time_ms": {"type": "integer", "minimum": 0, "maximum": 30000, "default": 10000},
+                "max_output_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 65536},
+                "verbosity": {"type": "string", "enum": ["summary", "preview", "full"]},
+                "preview_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 4096},
+            },
+        },
+    ),
+    "kill_command": ToolSpec(
+        "Kill command",
+        "Terminate a server-managed command by command_id. Example: {\"command_id\":\"abc\",\"signal\":\"KILL\"}.",
+        {
+            **OBJECT,
+            "required": ["command_id"],
+            "properties": {
+                "command_id": {"type": "string", "minLength": 1},
+                "signal": {"type": "string", "enum": ["TERM", "KILL", "INT"], "default": "TERM"},
+                "wait_ms": {"type": "integer", "minimum": 0, "maximum": 30000, "default": 5000},
+                "kill_wait_ms": {"type": "integer", "minimum": 0, "maximum": 30000, "default": 2000},
+                "max_output_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 65536},
+                "verbosity": {"type": "string", "enum": ["summary", "preview", "full"]},
+                "preview_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 4096},
+            },
+        },
+        destructive=True,
+    ),
+    "read_output": ToolSpec(
+        "Read output",
+        "Read retained command output using an output_ref returned by exec_command/write_stdin. Each stream retains the earliest output (head) plus the most recent output (rolling tail); bytes between them may be evicted and are reported via evicted_gap_bytes. Example: {\"output_ref\":\"command:abc:stdout\",\"offset\":0,\"limit\":4096}.",
+        {
+            **OBJECT,
+            "required": ["output_ref"],
+            "properties": {
+                "output_ref": {"type": "string", "minLength": 1},
+                "stream": {"type": "string", "enum": ["stdout", "stderr"]},
+                "offset": {"type": "integer", "minimum": 0, "default": 0},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 4096},
+            },
+        },
+        read_only=True,
+    ),
+    "git_status": ToolSpec(
+        "Git status",
+        "Return git working tree status for the workspace.",
+        {**OBJECT, "properties": {"path": {"type": "string", "default": "."}, "include_untracked": {"type": "boolean", "default": True}, "max_entries": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 1000}}},
+        read_only=True,
+    ),
+    "git_diff": ToolSpec(
+        "Git diff",
+        "Return unified git diff for workspace changes.",
+        {**OBJECT, "properties": {"path": {"type": "string"}, "paths": {"type": "array", "items": {"type": "string"}}, "staged": {"type": "boolean", "default": False}, "unstaged": {"type": "boolean", "default": True}, "context_lines": {"type": "integer", "minimum": 0, "maximum": 20, "default": 3}, "max_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 262144}}},
+        read_only=True,
+    ),
+    "git_log": ToolSpec(
+        "Git log",
+        "Return recent git commits with bounded structured metadata.",
+        {**OBJECT, "properties": {"path": {"type": "string", "default": "."}, "ref": {"type": "string", "default": "HEAD"}, "max_count": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}, "skip": {"type": "integer", "minimum": 0, "maximum": 10000, "default": 0}}},
+        read_only=True,
+    ),
+    "git_show": ToolSpec(
+        "Git show",
+        "Return bounded git show output for a revision.",
+        {**OBJECT, "properties": {"rev": {"type": "string", "default": "HEAD"}, "path": {"type": "string"}, "paths": {"type": "array", "items": {"type": "string"}}, "include_diff": {"type": "boolean", "default": True}, "context_lines": {"type": "integer", "minimum": 0, "maximum": 20, "default": 3}, "max_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 262144}}},
+        read_only=True,
+    ),
+    "git_blame": ToolSpec(
+        "Git blame",
+        "Return bounded git blame metadata for a workspace file.",
+        {**OBJECT, "required": ["path"], "properties": {"path": {"type": "string", "minLength": 1}, "rev": {"type": "string"}, "start_line": {"type": "integer", "minimum": 1, "default": 1}, "end_line": {"type": "integer", "minimum": 1}, "max_lines": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 200}}},
+        read_only=True,
+    ),
+    "request_permissions": ToolSpec(
+        "Request permissions",
+        "Report scoped permission-request status without silently granting operations.",
+        {**OBJECT, "required": ["tool_name", "permission", "reason", "arguments"], "properties": {"tool_name": {"type": "string", "enum": ["exec_command", "apply_patch"]}, "permission": {"type": "string", "enum": ["network", "destructive_command", "long_timeout", "sensitive_env", "shell_expansion", "inline_script", "privileged_executable", "write_generated_or_ignored"]}, "reason": {"type": "string", "minLength": 1}, "arguments": {"type": "object", "additionalProperties": True}, "scope": {"type": "string", "enum": ["once", "session"], "default": "once"}, "ttl_seconds": {"type": "integer", "minimum": 1, "maximum": 3600, "default": 300}}},
+        read_only=True,
+        idempotent=False,
+    ),
+    "view_image": ToolSpec(
+        "View image",
+        "Return a workspace image as MCP image content.",
+        {**OBJECT, "required": ["path"], "properties": {"path": {"type": "string", "minLength": 1}, "max_bytes": {"type": "integer", "minimum": 1024, "maximum": 10485760, "default": 5242880}, "max_width": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 2000}, "max_height": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 2000}, "auto_resize": {"type": "boolean", "default": True}}},
+        read_only=True,
     ),
     "rethlas_start": ToolSpec(
         "Start Rethlas workflow",
@@ -321,6 +504,88 @@ TOOL_SPECS: dict[str, ToolSpec] = {
     ),
 }
 
+if tuple(TOOL_SPECS) != CTM_NATIVE_TOOL_NAMES + RETHLAS_TOOL_NAMES:
+    raise RuntimeError("Re-CTM fixed tool catalog must remain CTM 18-tool compatible plus Rethlas tools")
+
+
+def validate_tool_arguments(name: str, arguments: Mapping[str, Any]) -> None:
+    spec = TOOL_SPECS.get(name)
+    if spec is None:
+        raise ReCTMError("UNKNOWN_TOOL", f"Unknown tool: {name}", category="validation")
+    _validate_schema_value(dict(arguments), spec.input_schema, path="arguments")
+
+
+def _validate_schema_value(value: Any, schema: Mapping[str, Any], *, path: str) -> None:
+    expected_type = schema.get("type")
+    if expected_type is not None and not _schema_type_matches(value, expected_type):
+        raise invalid_argument(f"{path} must be {_schema_type_name(expected_type)}")
+    if isinstance(value, str):
+        minimum = schema.get("minLength")
+        if isinstance(minimum, int) and len(value) < minimum:
+            raise invalid_argument(f"{path} is shorter than {minimum}")
+        if "enum" in schema and value not in schema["enum"]:
+            raise invalid_argument(f"{path} must be one of {schema['enum']!r}")
+    if isinstance(value, int) and not isinstance(value, bool):
+        minimum = schema.get("minimum")
+        maximum = schema.get("maximum")
+        if isinstance(minimum, (int, float)) and value < minimum:
+            raise invalid_argument(f"{path} must be >= {minimum}")
+        if isinstance(maximum, (int, float)) and value > maximum:
+            raise invalid_argument(f"{path} must be <= {maximum}")
+    if isinstance(value, list):
+        minimum_items = schema.get("minItems")
+        if isinstance(minimum_items, int) and len(value) < minimum_items:
+            raise invalid_argument(f"{path} must contain at least {minimum_items} items")
+        item_schema = schema.get("items")
+        if isinstance(item_schema, Mapping):
+            for index, item in enumerate(value):
+                _validate_schema_value(item, item_schema, path=f"{path}[{index}]")
+    if isinstance(value, dict):
+        properties = schema.get("properties", {})
+        required = schema.get("required", [])
+        for key in required if isinstance(required, list) else []:
+            if key not in value:
+                raise invalid_argument(f"{path}.{key} is required")
+        additional = schema.get("additionalProperties", True)
+        for key, item in value.items():
+            child_path = f"{path}.{key}"
+            if isinstance(properties, Mapping) and key in properties:
+                child_schema = properties[key]
+                if isinstance(child_schema, Mapping):
+                    _validate_schema_value(item, child_schema, path=child_path)
+            elif additional is False:
+                raise invalid_argument(f"{child_path} is not a recognized argument")
+            elif isinstance(additional, Mapping):
+                _validate_schema_value(item, additional, path=child_path)
+
+
+def _schema_type_matches(value: Any, expected_type: Any) -> bool:
+    if isinstance(expected_type, list):
+        return any(_schema_type_matches(value, item) for item in expected_type)
+    if expected_type == "array":
+        return isinstance(value, list)
+    if expected_type == "boolean":
+        return isinstance(value, bool)
+    if expected_type == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected_type == "null":
+        return value is None
+    if expected_type == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if expected_type == "object":
+        return isinstance(value, dict)
+    if expected_type == "string":
+        return isinstance(value, str)
+    return False
+
+
+def _schema_type_name(expected_type: Any) -> str:
+    return (
+        " or ".join(str(item) for item in expected_type)
+        if isinstance(expected_type, list)
+        else str(expected_type)
+    )
+
 
 class ToolRuntime:
     def __init__(
@@ -334,11 +599,23 @@ class ToolRuntime:
         self.debug = debug
         self._handlers: dict[str, Callable[[OAuthPrincipal, dict[str, Any], str], dict[str, Any]]] = {
             "server_info": self._server_info,
+            "check_exec_environment": self._native("check_exec_environment"),
             "read_file": self._native("read_file"),
+            "list_dir": self._native("list_dir"),
             "list_files": self._native("list_files"),
             "search_text": self._native("search_text"),
             "apply_patch": self._native("apply_patch"),
             "exec_command": self._native("exec_command"),
+            "write_stdin": self._native("write_stdin"),
+            "kill_command": self._native("kill_command"),
+            "read_output": self._native("read_output"),
+            "git_status": self._native("git_status"),
+            "git_diff": self._native("git_diff"),
+            "git_log": self._native("git_log"),
+            "git_show": self._native("git_show"),
+            "git_blame": self._native("git_blame"),
+            "request_permissions": self._native("request_permissions"),
+            "view_image": self._native("view_image"),
             "rethlas_start": self._rethlas_start,
             "rethlas_next": self._rethlas_next,
             "rethlas_read": self._rethlas_read,
@@ -435,11 +712,11 @@ class ToolRuntime:
             "tool.call_finished",
             "tool_runtime",
             trace_id=trace,
-            decision="allow",
-            reason="tool_completed",
+            decision="allow" if payload.get("ok") is not False else "deny",
+            reason="tool_completed" if payload.get("ok") is not False else "tool_reported_denial",
             details={"tool": name, "result_keys": sorted(payload)},
         )
-        return _tool_result(name, payload, is_error=False)
+        return _tool_result(name, payload, is_error=payload.get("ok") is False)
 
     def _native(
         self,
@@ -458,14 +735,59 @@ class ToolRuntime:
 
     def _server_info(self, principal: OAuthPrincipal, arguments: dict[str, Any], trace_id: str) -> dict[str, Any]:
         _ = arguments
+        exec_environment = self.native.check_exec_environment()
+        native_info = self.native.server_info()
+        global_tmp = str(exec_environment["global_tmp_write"])
+        permission_mode = self.native.mode.value
         return {
             "server": "re-ctm",
+            "title": "Re-CTM",
             "version": __version__,
+            "supported_protocol_versions": ["2026-07-28", "2025-11-25", "2025-06-18"],
+            "workspace": str(self.native.workspace.root),
+            "permission_mode": permission_mode,
+            "network_allowed": permission_mode != "safe",
+            "runtime_dir": "/tmp",
+            "home": "/home/re-ctm",
+            "tmpdir": "/tmp",
+            "cache_dir": "/tmp/cache",
+            "auth_enabled": True,
+            "dangerously_skip_all_permissions": permission_mode == "dangerous",
+            "annotation_override": None,
+            "landlock": {
+                "available": False,
+                "enabled": False,
+                "abi_version": None,
+                "replacement": "bubblewrap" if native_info.get("native_exec_backend") == "BubblewrapExecBackend" else None,
+            },
+            "exec_policy": {
+                "shell_expansion": "blocked" if permission_mode == "safe" else "allowed",
+                "inline_script": "blocked" if permission_mode == "safe" else "allowed",
+                "global_tmp_write": global_tmp,
+                "secret_env_filter": "disabled" if permission_mode == "dangerous" else "enabled",
+            },
+            "shell_env_inherit": "none",
+            "shell_env_include_only": [],
+            "shell_env_exclude": [],
+            "output_retention": {
+                "buffer_bytes_per_stream": 524288,
+                "head_bytes_per_stream": 65536,
+            },
+            "endpoint_path": "/mcp",
+            "project_context": {
+                "root_instruction_files": [],
+                "nested_instruction_files": [],
+                "warnings": [],
+            },
             "oauth_only": True,
             "oauth_client_id": principal.client_id,
             "tool_count": len(TOOL_SPECS),
+            "tools": list(TOOL_SPECS),
+            "ctm_native_tool_count": len(CTM_NATIVE_TOOL_NAMES),
+            "rethlas_tool_count": len(RETHLAS_TOOL_NAMES),
+            "ctm_native_tools": list(CTM_NATIVE_TOOL_NAMES),
             "tool_catalog_stable": True,
-            "native": self.native.server_info(),
+            "native": native_info,
             "authorization_axioms": {
                 "native": "OAuth identity AND native mode",
                 "workflow": "OAuth identity AND signed run capability AND role ACL AND workflow state",
@@ -619,14 +941,25 @@ class ToolRuntime:
 
 
 def _tool_result(name: str, payload: dict[str, Any], *, is_error: bool) -> dict[str, Any]:
+    structured = dict(payload)
+    image_data = structured.pop("_mcp_image_data", None)
     if is_error:
-        error = payload.get("error") or {}
+        error = structured.get("error") or {}
         text = f"{error.get('code', 'TOOL_ERROR')}: {error.get('message', 'Tool failed.')}"
     else:
-        text = _render_summary(name, payload)
+        text = _render_summary(name, structured)
+    content: list[dict[str, Any]] = [{"type": "text", "text": text}]
+    if name == "view_image" and isinstance(image_data, str) and image_data:
+        content.append(
+            {
+                "type": "image",
+                "data": image_data,
+                "mimeType": str(structured.get("mime_type", "application/octet-stream")),
+            }
+        )
     return {
-        "content": [{"type": "text", "text": text}],
-        "structuredContent": payload,
+        "content": content,
+        "structuredContent": structured,
         "isError": is_error,
     }
 

@@ -92,10 +92,14 @@
     {
       "id": "PC-008",
       "constraint": "The complete browser/OAuth/MCP/reasoning workflow cannot be fully validated in the current local environment and must have an explicit post-push manual acceptance plan."
+    },
+    {
+      "id": "PC-009",
+      "constraint": "Re-CTM is a strict tool-surface superset of Coding Tools MCP: all 18 CTM native tool names and public input schemas remain available, including the exec_command command_id lifecycle, while Rethlas tools are additive."
     }
   ],
   "implementation_snapshot": {
-    "as_of": "2026-08-26T21:24:54-07:00",
+    "as_of": "2026-08-26T23:25:00-07:00",
     "authority": "This snapshot supersedes the original per-vertex planning labels without erasing the design-time history stored on each vertex.",
     "implemented_local": [
       "V02",
@@ -138,6 +142,8 @@
     ],
     "evidence": [
       "src/re_ctm/native_helper_bwrap.py implements a separate-process bubblewrap boundary with namespace, environment, capability, timeout, and forbidden-path probes.",
+      "src/re_ctm/tools.py freezes the first 18 entries to the CTM native catalog and appends 13 Rethlas tools, for a fixed 31-tool catalog.",
+      "src/re_ctm/processes.py and tests/test_ctm_native_compat.py restore command_id lifecycle operations including polling, retained-output reads, TTY stdin interaction, timeout, and termination under bubblewrap.",
       "rethlas_export_final and NativeRuntime.export_verified_latex implement the only mechanically-finalized private-to-native artifact bridge with workspace confinement and overwrite baselines.",
       "scripts/manual_native_isolation_test.py provides target-PC adversarial evidence before RE_CTM_NATIVE_ISOLATION_ATTESTED=1 is permitted operationally.",
       "tests/ exercises OAuth, legacy and modern MCP, fixed catalogs, native path confinement, capability ownership, branch barriers, verifier firewall, mechanical verdict/finalization, diagnostics, LaTeX safety, and the reference bubblewrap helper.",
@@ -192,7 +198,8 @@
       "kind": "contract",
       "trust_domain": "gateway",
       "responsibilities": [
-        "Keep native and rethlas_* tools stable across permission modes and workflow states",
+        "Keep the complete 18-tool CTM native catalog plus 13 rethlas_* tools stable across permission modes and workflow states",
+        "Preserve CTM public input schemas so existing CTM clients can switch to Re-CTM without losing tool availability",
         "Publish truthful schemas and annotations",
         "Prevent client-side tool-catalog caching from becoming an authorization mechanism"
       ],
@@ -204,7 +211,7 @@
       "kind": "runtime_component",
       "trust_domain": "native_plane",
       "responsibilities": [
-        "Dispatch native file/search/patch/command tools",
+        "Dispatch all 18 CTM native tools including file, directory, search, patch, command lifecycle, Git, image, environment, and permission surfaces",
         "Apply only L0 OAuth and L1 native authority",
         "Never accept a workflow capability as native authority"
       ],
@@ -253,6 +260,8 @@
       "trust_domain": "native_plane_isolated",
       "responsibilities": [
         "Run bounded native commands",
+        "Retain command_id state for write_stdin, read_output, and kill_command lifecycle operations",
+        "Support POSIX TTY interaction when requested",
         "Honor native policy",
         "Expose no private-vault mount",
         "Return structured diagnostics"

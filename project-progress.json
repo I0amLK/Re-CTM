@@ -91,6 +91,11 @@
       "id": "AD-013",
       "decision": "The web conversation is the user-facing controller; persistent workflow state must live server-side and survive browser disconnects.",
       "status": "accepted"
+    },
+    {
+      "id": "AD-014",
+      "decision": "Re-CTM must be a strict tool-surface superset of Coding Tools MCP: preserve all 18 CTM native tools and command lifecycle semantics, then add Rethlas tools without removing or hiding CTM tools.",
+      "status": "accepted"
     }
   ],
   "authorization_model": {
@@ -258,15 +263,17 @@
       "completed_evidence": [
         "OAuth DCR, Authorization Code with PKCE, persisted single-use codes, and access-token validation are implemented",
         "HTTP MCP supports handshake-era and per-request 2026-07-28 dispatch with mirror headers",
-        "Fixed 19-tool catalog includes six native and thirteen rethlas_* tools",
-        "Native read/list/search and baseline-checked atomic patching are implemented",
+        "Fixed 31-tool catalog is a strict superset: all 18 Coding Tools MCP native tools plus thirteen rethlas_* tools",
+        "CTM-compatible read/list/search, patch-envelope, Git, image, environment, permission, and command-lifecycle surfaces are implemented",
         "Native paths stay workspace-confined in dangerous mode",
         "Arbitrary command execution fails closed unless an operator enables an attested isolation backend",
         "A packaged Linux bubblewrap helper implements a separate process, mount/user/PID/IPC/UTS namespaces, cleared environment, dropped capabilities, bounded output, timeout cleanup, safe-mode network isolation, nonce-bound responses, and startup attestation",
+        "The built-in bubblewrap path restores exec_command -> command_id -> write_stdin/read_output/kill_command lifecycle, including tty=true interaction and retained output paging",
         "The local adversarial harness proved that dangerous commands can write the native workspace but cannot observe the private-vault canary or inherited secret environment"
       ],
       "remaining": [
         "Run scripts/manual_native_isolation_test.py on every intended target-PC class before setting RE_CTM_NATIVE_ISOLATION_ATTESTED=1",
+        "Run MV-009 to compare all 18 CTM native schemas and representative behavior against the reference Coding Tools MCP on the target PC",
         "Validate trusted/dangerous network behavior and system-toolchain compatibility on the target PC",
         "Independently review or replace the reference helper for non-Linux deployment targets"
       ]
@@ -365,7 +372,7 @@
         "95-percent Rethlas behavior acceptance suite"
       ],
       "completed_evidence": [
-        "26 deterministic and local integration tests pass",
+        "38 deterministic and local integration tests pass",
         "Loopback DCR to OAuth authorization to PKCE token to MCP tools/list passes",
         "Modern mirror-header and result-shaping tests pass",
         "Dangerous path confinement, native fail-closed execution, packaged bubblewrap attestation/private-canary denial, branch barrier, complete screening/join contracts, verifier denial/audit prerequisites, owner-bound capability, wrong-verdict, finalization, isolated LaTeX, external retrieval normalization, and debug redaction tests pass",
@@ -395,7 +402,7 @@
         "Apache-2.0 LICENSE and NOTICE retain Coding Tools MCP and Rethlas attribution",
         "GitHub Actions CI covers Python 3.11/3.13, bubblewrap, latexmk, deterministic checks, wheel/sdist build, and installed command surfaces",
         "docs/DEPLOYMENT.md and scripts/smoke_oauth_mcp.py provide target setup, redacted OAuth/MCP verification, isolation evidence, and claims boundaries",
-        "uv built re_ctm-0.1.0.dev0 sdist and wheel, installed the wheel into a clean virtual environment, and the installed re-ctm service, helper version/attestation, OAuth DCR/PKCE, legacy/modern MCP, 19-tool catalog, and non-inheritance smokes passed"
+        "uv built re_ctm-0.1.0.dev0 sdist and wheel, installed the wheel into a clean virtual environment, and the installed re-ctm service, helper version/attestation, OAuth DCR/PKCE, legacy/modern MCP, 31-tool catalog, and non-inheritance smokes passed"
       ],
       "remaining": [
         "Push the repository and observe first remote CI on GitHub",
@@ -404,9 +411,9 @@
     }
   ],
   "progress": {
-    "overall_percent": 78,
-    "implementation_percent": 87,
-    "deterministic_local_validation_percent": 74,
+    "overall_percent": 82,
+    "implementation_percent": 91,
+    "deterministic_local_validation_percent": 80,
     "post_push_manual_acceptance_percent": 0,
     "target_95_percent_equivalence_verified": false,
     "completed_phase_ids": [
@@ -416,9 +423,9 @@
       "P5"
     ],
     "current_phase_id": "P3/P4/P6/P7/P8",
-    "current_focus": "A committed local checkpoint exists. Push is blocked only because this runtime has no GitHub HTTPS credentials or usable SSH transport; all eight real webpage/target-PC/methodology acceptance checks remain post-push.",
+    "current_focus": "CTM native compatibility is now additive rather than reduced: all 18 CTM tool surfaces plus 13 Rethlas tools are implemented locally, including command_id lifecycle. Nine real webpage/target-PC/compatibility/methodology acceptance checks remain post-push.",
     "next_actions": [
-      "Authenticate this machine for GitHub HTTPS or perform `git push -u origin main` from an authenticated shell",
+      "Push the CTM-compatibility checkpoint to origin/main using the authenticated GitHub credential and force-with-lease against the known placeholder README commit",
       "Observe the first GitHub Actions run after the push",
       "Run all checks in manual-validation.json and attach redacted evidence",
       "Run the packaged bubblewrap isolation harness on the target PC before enabling native exec",
@@ -429,7 +436,7 @@
   "local_validation": {
     "report": "local-validation.json",
     "last_result": "passed",
-    "test_count": 30,
+    "test_count": 38,
     "graph_metrics": {
       "vertices": 31,
       "edges": 60,
@@ -446,6 +453,9 @@
       "Loopback OAuth mechanics",
       "Handshake-era and modern MCP mechanics",
       "Fixed tool catalog",
+      "All 18 Coding Tools MCP native tool definitions are exact against the reference contract (name/order/title/description/inputSchema/outputSchema/annotations; SHA-256 17896146c5c024a2f81174b5869e9861b452419066500ac4e0a0c1b32d442ab4) before the 13 Rethlas tools",
+      "Bubblewrap command lifecycle: exec_command command_id, write_stdin polling and TTY input, read_output paging, timeout, and kill_command termination",
+      "CTM-compatible patch envelope, directory listing, regex search, Git status, and MCP image content",
       "OAuth owner-bound capabilities",
       "Workflow transitions and persistence",
       "Branch information barrier",
@@ -463,11 +473,12 @@
       "CLI serve host/port defaults follow RE_CTM_HOST and RE_CTM_PORT while explicit flags override them",
       "Live theorem-search endpoint smoke",
       "Wheel build, clean installation, installed helper version, and installed helper attestation",
-      "Installed-wheel service smoke covering redacted OAuth DCR/PKCE, legacy MCP, modern mirror headers, fixed 19-tool catalog, and dangerous non-inheritance"
+      "Installed-wheel service smoke covering redacted OAuth DCR/PKCE, legacy MCP, modern mirror headers, fixed 31-tool catalog, and dangerous non-inheritance"
     ],
     "explicitly_not_validated": [
       "Final webpage MCP host compatibility",
       "Target-PC dangerous-mode OS isolation",
+      "Full target-PC behavior parity for every edge case of the reference Coding Tools MCP 18-tool implementation (MV-009)",
       "Target-client external theorem/web retrieval quality and source-context review",
       "Long multi-turn mathematical quality",
       "Fresh-context-equivalent cognitive independence",
@@ -487,19 +498,19 @@
       "basis": "Identity confirmed from public commits owned by GitHub account I0amLK; configured only in this repository."
     },
     "remote": "https://github.com/I0amLK/Re-CTM.git",
-    "push_status": "blocked_missing_runtime_credentials",
+    "push_status": "ctm_compatibility_checkpoint_committed_pending_authenticated_push",
     "latest_local_commit": "Resolve with `git rev-parse HEAD`; the ledger intentionally avoids a self-referential commit hash.",
     "push_attempt": {
       "transport": "https",
-      "non_interactive": true,
-      "result": "failed_before_authentication",
-      "reason": "Git could not read a GitHub username because terminal prompts were disabled and no credential helper/token was available.",
-      "ssh_fallback": "unavailable; outbound SSH connection was closed before authentication"
+      "remote_observed_head": "9a94df3f9370017b31e7bfefc1df661faac90c08",
+      "result": "new_checkpoint_ready_for_fast_forward_push",
+      "reason": "A fresh fetch confirmed origin/main is the direct parent of the CTM compatibility checkpoint. The automated runtime cannot access the interactive shell's GitHub HTTPS credential, so the remaining push is authentication-only.",
+      "ssh_fallback": "not_needed_for_current_remote_state"
     },
     "initial_files": [
       "All current source, tests, graph, debug, validation, and planning files are intended for the initial commit."
     ],
-    "working_tree_note": "Two engineering commits exist and the tree was clean before this push-status ledger update."
+    "working_tree_note": "The CTM 18-tool compatibility checkpoint is committed locally on top of origin/main; the working tree is intended to be clean after this ledger correction."
   },
   "engineering_debug_notes": [
     {
@@ -585,6 +596,11 @@
       "id": "R-008",
       "risk": "The theorem-search service may return irrelevant, incorrectly matched, context-dependent, or unavailable external statements.",
       "mitigation": "Bound response size and HTTPS endpoint configuration, mark every result external_unverified, persist provenance identifiers, require source-context/definition/applicability checks, and keep web/manual fallback in the methodology."
+    },
+    {
+      "id": "R-009",
+      "risk": "The built-in bubblewrap backend supports the full CTM command_id lifecycle, while arbitrary third-party external helper protocols may only implement synchronous execution unless extended with an equivalent lifecycle transport.",
+      "mitigation": "Treat bubblewrap as the reference Linux compatibility backend, expose lifecycle support in check_exec_environment, fail clearly for unsupported helper behavior, and complete MV-009 on every supported deployment backend."
     }
   ],
   "change_log": [
@@ -667,6 +683,10 @@
     {
       "timestamp": "2026-08-26T22:38:00-07:00",
       "event": "Rewrote README.md as an end-user usage guide covering installation from GitHub, directory preparation, OAuth configuration, web MCP connection, native modes, isolated exec enablement, Rethlas runs, progress/steering/resume/cancel, theorem retrieval, proof_verified.tex export, LaTeX policy, smoke testing, and debugging without exposing implementation internals."
+    },
+    {
+      "timestamp": "2026-08-26T22:38:00-07:00",
+      "event": "Promoted CTM compatibility to a hard non-regression contract: restored all 18 CTM native tool definitions exactly (including input/output schemas and annotations), patch envelopes, Git/image/environment/permission tools, server-side argument validation, and bubblewrap command_id lifecycle with TTY stdin, retained-output paging, polling, timeout, and termination. The fixed catalog is now 31 tools and 38 local tests pass; MV-009 tracks target CTM parity."
     }
   ]
 }

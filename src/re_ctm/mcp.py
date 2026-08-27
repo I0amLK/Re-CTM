@@ -8,7 +8,7 @@ from . import __version__
 from .debug import new_trace_id
 from .errors import ReCTMError
 from .oauth import OAuthPrincipal
-from .tools import ToolRuntime
+from .tools import TOOL_SPECS, ToolRuntime, validate_tool_arguments
 
 
 LEGACY_PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18")
@@ -170,6 +170,16 @@ class MCPDispatcher:
             raise JSONRPCError(-32602, "tools/call requires a tool name")
         if not isinstance(arguments, Mapping):
             raise JSONRPCError(-32602, "tools/call arguments must be an object")
+        if name not in TOOL_SPECS:
+            raise JSONRPCError(-32602, f"Unknown tool: {name}", {"reason": "unknown_tool"})
+        try:
+            validate_tool_arguments(name, arguments)
+        except ReCTMError as exc:
+            raise JSONRPCError(
+                -32602,
+                exc.message,
+                {"reason": "invalid_arguments", "code": exc.code},
+            ) from exc
         return self.tools.call(
             name,
             dict(arguments),

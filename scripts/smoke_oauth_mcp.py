@@ -197,7 +197,24 @@ def main(argv: list[str] | None = None) -> int:
         _record(
             report,
             "fixed_tool_catalog",
-            len(names) == 19
+            len(names) == 31
+            and all(
+                tool in names
+                for tool in (
+                    "check_exec_environment",
+                    "list_dir",
+                    "write_stdin",
+                    "kill_command",
+                    "read_output",
+                    "git_status",
+                    "git_diff",
+                    "git_log",
+                    "git_show",
+                    "git_blame",
+                    "request_permissions",
+                    "view_image",
+                )
+            )
             and "exec_command" in names
             and "rethlas_retrieve" in names
             and "rethlas_export_final" in names,

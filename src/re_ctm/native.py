@@ -13,9 +13,12 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Protocol
 
+from . import ctm_compat
 from .debug import DebugEventBus, new_trace_id
 from .enums import NativeMode
 from .errors import ReCTMError, invalid_argument
+from .native_helper_bwrap import _bubblewrap_command, _helper_child_env
+from .processes import CommandManager, MAX_ACTIVE_COMMANDS
 
 
 DEFAULT_EXCLUDED = {
@@ -646,6 +649,7 @@ class NativeRuntime:
         self.debug = debug
         self.exec_backend = exec_backend or DisabledExecBackend()
         self.editor = AtomicNativeEditor(workspace)
+        self.command_manager = CommandManager()
 
     def server_info(self) -> dict[str, Any]:
         raw_attestation = getattr(self.exec_backend, "attestation", None)
@@ -677,37 +681,147 @@ class NativeRuntime:
             "private_vault_visible": False,
             "native_exec_backend": type(self.exec_backend).__name__,
             "native_exec_attestation": attestation,
+            "ctm_native_tool_compatibility": "18_of_18_surface",
+            "command_lifecycle": {
+                "max_active_commands": MAX_ACTIVE_COMMANDS,
+                "write_stdin": True,
+                "read_output": True,
+                "kill_command": True,
+            },
+        }
+
+    def close(self) -> None:
+        self.command_manager.close()
+
+    def check_exec_environment(self, **arguments: Any) -> dict[str, Any]:
+        _ = arguments
+        raw_attestation = getattr(self.exec_backend, "attestation", None)
+        global_tmp = {
+            NativeMode.SAFE: "blocked",
+            NativeMode.TRUSTED: "tmp-prefix",
+            NativeMode.DANGEROUS: "allowed",
+        }[self.mode]
+        warnings: list[str] = []
+        if self.mode is NativeMode.DANGEROUS:
+            warnings.append("permission_mode=dangerous disables MCP safety gates")
+        if not isinstance(self.exec_backend, BubblewrapExecBackend):
+            warnings.append(
+                "Full interactive command lifecycle requires the built-in bubblewrap backend; disabled/external helpers may execute synchronously only."
+            )
+        return {
+            "ok": True,
+            "native_mode": self.mode.value,
+            "permission_mode": self.mode.value,
+            "workspace": str(self.workspace.root),
+            "network_allowed": self.mode is not NativeMode.SAFE,
+            "runtime_dir": "/tmp",
+            "home": "/home/re-ctm",
+            "tmpdir": "/tmp",
+            "cache_dir": "/tmp/cache",
+            "native_exec_backend": type(self.exec_backend).__name__,
+            "hard_isolation_attested": bool(
+                isinstance(raw_attestation, Mapping)
+                and raw_attestation.get("hard_isolation") is True
+                and raw_attestation.get("private_vault_mounted") is False
+            ),
+            "command_lifecycle_supported": isinstance(self.exec_backend, BubblewrapExecBackend),
+            "max_active_commands": MAX_ACTIVE_COMMANDS,
+            "private_vault_visible": False,
+            "landlock_enabled": False,
+            "landlock_abi": None,
+            "global_tmp_write": global_tmp,
+            "warnings": warnings,
         }
 
     def read_file(self, **arguments: Any) -> dict[str, Any]:
+        encoding = str(arguments.get("encoding", "utf-8"))
+        if encoding != "utf-8":
+            raise ReCTMError("UNSUPPORTED_ENCODING", "Only utf-8 is supported.", category="validation")
+        start_line = int(arguments.get("start_line", 1))
+        end_line = arguments.get("end_line")
+        max_lines = arguments.get("max_lines")
+        if end_line is not None and max_lines is not None:
+            expected_end = start_line + int(max_lines) - 1
+            if int(end_line) != expected_end:
+                raise invalid_argument("end_line and max_lines select different ranges")
+        if end_line is not None:
+            max_lines = max(1, int(end_line) - start_line + 1)
         return self.workspace.read_file(
             str(arguments.get("path") or ""),
-            start_line=int(arguments.get("start_line", 1)),
-            max_lines=int(arguments.get("max_lines", 500)),
+            start_line=start_line,
+            max_lines=int(max_lines or 500),
             max_bytes=int(arguments.get("max_bytes", 131_072)),
         )
 
+    def list_dir(self, **arguments: Any) -> dict[str, Any]:
+        return ctm_compat.list_dir(self.workspace, arguments)
+
     def list_files(self, **arguments: Any) -> dict[str, Any]:
-        return self.workspace.list_files(
-            str(arguments.get("path") or "."),
-            include_hidden=bool(arguments.get("include_hidden", False)),
-            include_ignored=bool(arguments.get("include_ignored", False)),
-            max_results=int(arguments.get("max_results", 1000)),
-        )
+        return ctm_compat.list_files(self.workspace, arguments)
 
     def search_text(self, **arguments: Any) -> dict[str, Any]:
-        return self.workspace.search_text(
-            str(arguments.get("query") or ""),
-            raw_path=str(arguments.get("path") or "."),
-            case_sensitive=bool(arguments.get("case_sensitive", False)),
-            max_results=int(arguments.get("max_results", 1000)),
-        )
+        return ctm_compat.search_text(self.workspace, arguments)
 
     def apply_patch(self, **arguments: Any) -> dict[str, Any]:
+        if isinstance(arguments.get("patch"), str):
+            editor_ops, metadata = ctm_compat.patch_to_editor_operations(
+                self.workspace,
+                str(arguments["patch"]),
+            )
+            result = self.editor.apply(editor_ops, dry_run=bool(arguments.get("dry_run", False)))
+            return {"clean": True, **metadata, **result, "warnings": []}
         operations = arguments.get("operations")
         if not isinstance(operations, list):
-            raise invalid_argument("operations must be an array")
+            raise invalid_argument("patch must be a patch envelope")
         return self.editor.apply(operations, dry_run=bool(arguments.get("dry_run", False)))
+
+    def git_status(self, **arguments: Any) -> dict[str, Any]:
+        return ctm_compat.git_status(self.workspace, arguments)
+
+    def git_diff(self, **arguments: Any) -> dict[str, Any]:
+        return ctm_compat.git_diff(self.workspace, arguments)
+
+    def git_log(self, **arguments: Any) -> dict[str, Any]:
+        return ctm_compat.git_log(self.workspace, arguments)
+
+    def git_show(self, **arguments: Any) -> dict[str, Any]:
+        return ctm_compat.git_show(self.workspace, arguments)
+
+    def git_blame(self, **arguments: Any) -> dict[str, Any]:
+        return ctm_compat.git_blame(self.workspace, arguments)
+
+    def request_permissions(self, **arguments: Any) -> dict[str, Any]:
+        if self.mode is NativeMode.DANGEROUS:
+            return {
+                "ok": True,
+                "status": "granted",
+                "grant_id": "dangerously-skip-all-permissions",
+                "expires_at": None,
+                "constraints": {
+                    "mode": "dangerously_skip_all_permissions",
+                    "workspace": str(self.workspace.root),
+                    "requested": dict(arguments),
+                },
+                "warnings": [
+                    "dangerously-skip-all-permissions is enabled; permission-gated operations are auto-granted"
+                ],
+            }
+        return {
+            "ok": False,
+            "status": "unsupported",
+            "grant_id": None,
+            "expires_at": None,
+            "error": {
+                "code": "ELICITATION_UNSUPPORTED",
+                "message": "Permission elicitation is not available for this client.",
+                "category": "permission",
+                "retryable": False,
+                "details": {"requested": dict(arguments)},
+            },
+        }
+
+    def view_image(self, **arguments: Any) -> dict[str, Any]:
+        return ctm_compat.view_image(self.workspace, arguments)
 
     def export_verified_latex(
         self,
@@ -761,14 +875,39 @@ class NativeRuntime:
 
     def exec_command(self, **arguments: Any) -> dict[str, Any]:
         trace_id = str(arguments.get("trace_id") or new_trace_id())
+        cmd = str(arguments.get("cmd") or "")
         argv = arguments.get("argv")
-        if not isinstance(argv, list) or not argv or not all(isinstance(item, str) for item in argv):
-            raise invalid_argument("argv must be a non-empty array of strings")
-        workdir = str(arguments.get("workdir") or ".")
+        if cmd:
+            child_argv = ["/bin/sh", "-lc", cmd]
+        elif isinstance(argv, list) and argv and all(isinstance(item, str) for item in argv):
+            child_argv = list(argv)
+            cmd = " ".join(child_argv)
+        else:
+            raise invalid_argument("cmd is required")
+        workdir_arg = arguments.get("workdir", arguments.get("cwd", "."))
+        if "workdir" in arguments and "cwd" in arguments and str(arguments["workdir"]) != str(arguments["cwd"]):
+            raise invalid_argument("workdir and cwd refer to different directories")
+        workdir = str(workdir_arg or ".")
         resolved = self.workspace.resolve_existing(workdir)
         if not resolved.path.is_dir():
             raise ReCTMError("NOT_A_DIRECTORY", "workdir is not a directory.", category="validation")
         timeout_ms = int(arguments.get("timeout_ms", 30_000))
+        yield_time_ms = int(arguments.get("yield_time_ms", 10_000))
+        max_output_bytes = int(arguments.get("max_output_bytes", 65_536))
+        preview_bytes = int(arguments.get("preview_bytes", 4096))
+        verbosity = arguments.get("verbosity")
+        stdin_text = str(arguments.get("stdin", ""))
+        tty = bool(arguments.get("tty", False))
+        extra_env = arguments.get("env", {})
+        if not isinstance(extra_env, Mapping) or not all(
+            isinstance(key, str) and isinstance(value, str) for key, value in extra_env.items()
+        ):
+            raise invalid_argument("env must be an object whose values are strings")
+        ctm_compat.check_command_policy(
+            self.mode.value,
+            cmd,
+            {str(key): str(value) for key, value in extra_env.items()},
+        )
         self.debug.emit(
             "native.exec_requested",
             "native_runtime",
@@ -777,21 +916,70 @@ class NativeRuntime:
             reason="delegating_to_hard_isolation_backend",
             details={
                 "mode": self.mode.value,
-                "argv0": argv[0],
-                "argc": len(argv),
+                "command_sha256": hashlib.sha256(cmd.encode("utf-8")).hexdigest(),
                 "argv_sha256": hashlib.sha256(
-                    json.dumps(argv, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+                    json.dumps(child_argv, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
                 ).hexdigest(),
                 "workdir": resolved.display,
                 "timeout_ms": timeout_ms,
+                "tty": tty,
             },
         )
+        if isinstance(self.exec_backend, BubblewrapExecBackend):
+            command_argv = _bubblewrap_command(
+                workspace=self.workspace.root,
+                workdir=resolved.display,
+                mode=self.mode.value,
+                argv=child_argv,
+                extra_env={str(key): str(value) for key, value in extra_env.items()},
+            )
+            return self.command_manager.start(
+                command_argv,
+                env=_helper_child_env(),
+                timeout_ms=timeout_ms,
+                yield_time_ms=yield_time_ms,
+                max_output_bytes=max_output_bytes,
+                stdin_text=stdin_text,
+                tty=tty,
+                verbosity=str(verbosity) if verbosity is not None else None,
+                preview_bytes=preview_bytes,
+            )
         return self.exec_backend.execute(
             workspace=self.workspace.root,
-            argv=list(argv),
+            argv=child_argv,
             workdir=resolved.display,
             timeout_ms=timeout_ms,
             mode=self.mode,
+        )
+
+    def write_stdin(self, **arguments: Any) -> dict[str, Any]:
+        return self.command_manager.poll(
+            str(arguments.get("command_id") or ""),
+            chars=str(arguments.get("chars", "")),
+            yield_time_ms=int(arguments.get("yield_time_ms", 10_000)),
+            max_output_bytes=int(arguments.get("max_output_bytes", 65_536)),
+            verbosity=str(arguments["verbosity"]) if arguments.get("verbosity") is not None else None,
+            preview_bytes=int(arguments.get("preview_bytes", 4096)),
+        )
+
+    def kill_command(self, **arguments: Any) -> dict[str, Any]:
+        return self.command_manager.kill(
+            str(arguments.get("command_id") or ""),
+            signal_name=str(arguments.get("signal", "TERM")),
+            wait_ms=int(arguments.get("wait_ms", 5000)),
+            kill_wait_ms=int(arguments.get("kill_wait_ms", 2000)),
+            max_output_bytes=int(arguments.get("max_output_bytes", 65_536)),
+            verbosity=str(arguments["verbosity"]) if arguments.get("verbosity") is not None else None,
+            preview_bytes=int(arguments.get("preview_bytes", 4096)),
+        )
+
+    def read_output(self, **arguments: Any) -> dict[str, Any]:
+        stream = arguments.get("stream")
+        return self.command_manager.read_output(
+            str(arguments.get("output_ref") or ""),
+            stream=str(stream) if stream is not None else None,
+            offset=int(arguments.get("offset", 0)),
+            limit=int(arguments.get("limit", 4096)),
         )
 
 

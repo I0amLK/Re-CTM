@@ -36,6 +36,7 @@ class ReCTMApplication:
     mcp: MCPDispatcher
 
     def close(self) -> None:
+        self.native.close()
         self.state_store.close()
         self.oauth_store.close()
 

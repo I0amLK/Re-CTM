@@ -34,7 +34,7 @@
       "name": "Fixed tool catalog across native modes and workflow states",
       "status": "pending",
       "steps": [
-        "Confirm scripts/smoke_oauth_mcp.py reports exactly 19 tools and a modern non-inheritance result.",
+        "Confirm scripts/smoke_oauth_mcp.py reports exactly 31 tools (18 CTM Native + 13 Rethlas) and a modern non-inheritance result.",
         "Capture tools/list in safe, trusted, and dangerous native modes.",
         "Capture tools/list during generator, branch, join, verifier, and repair states."
       ],
@@ -150,6 +150,24 @@
         "Failures remain queryable and influence new plans.",
         "External results include complete statements and applicability checks.",
         "Operator judges the target 95-percent functional-equivalence criterion."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "MV-009",
+      "name": "Coding Tools MCP 18-tool compatibility",
+      "status": "pending",
+      "steps": [
+        "Capture tools/list from the reference Coding Tools MCP and Re-CTM, and compare the 18 CTM native names, order, required fields, enums, defaults, and annotations.",
+        "Exercise read_file, list_dir, list_files, search_text, apply_patch, Git tools, request_permissions, and view_image against the same disposable workspace.",
+        "With the Re-CTM bubblewrap backend enabled, run a long command that returns command_id, poll with write_stdin, page retained stdout/stderr with read_output, interact with a tty=true command, and terminate another command with kill_command.",
+        "Repeat command lifecycle checks in safe, trusted, and dangerous native modes and confirm dangerous does not grant any rethlas_* workflow capability."
+      ],
+      "expected": [
+        "No CTM native tool is missing from Re-CTM; the fixed catalog is exactly 18 CTM native tools plus 13 Rethlas tools.",
+        "Existing CTM-style calls using patch envelopes and cmd/workdir command arguments remain accepted.",
+        "Long-running command IDs remain usable through write_stdin, read_output, and kill_command for the lifetime of the Re-CTM server process.",
+        "Any documented Re-CTM differences are security-boundary adaptations rather than missing CTM lifecycle functionality."
       ],
       "evidence": []
     }

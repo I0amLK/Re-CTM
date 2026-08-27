@@ -444,6 +444,7 @@ def _bubblewrap_command(
     workdir: str,
     mode: str,
     argv: list[str],
+    extra_env: Mapping[str, str] | None = None,
 ) -> list[str]:
     bwrap = shutil.which("bwrap")
     if bwrap is None:
@@ -486,6 +487,14 @@ def _bubblewrap_command(
     ]
     if mode == "safe":
         command.append("--unshare-net")
+    for key, value in sorted((extra_env or {}).items()):
+        if not key or "=" in key or "\x00" in key or "\x00" in value:
+            raise HelperError(
+                "INVALID_ENVIRONMENT",
+                "Native command environment contains an invalid key or value.",
+                category="validation",
+            )
+        command.extend(["--setenv", key, value])
     for root in SYSTEM_READ_ROOTS:
         if Path(root).exists():
             command.extend(["--ro-bind", root, root])

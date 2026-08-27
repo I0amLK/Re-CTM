@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import tempfile
 import unittest
 from pathlib import Path
@@ -29,6 +30,7 @@ class MCPDispatcherTestCase(unittest.TestCase):
         workspace = root / "workspace"
         private = root / "private"
         workspace.mkdir()
+        self.workspace = workspace
         private.mkdir()
         debug = DebugEventBus(root / "events.jsonl", private, enabled=True)
         self.store = StateStore(private / "state.sqlite3")
@@ -71,7 +73,8 @@ class MCPDispatcherTestCase(unittest.TestCase):
         )
         names = [item["name"] for item in listed["result"]["tools"]]
         self.assertEqual(names, list(TOOL_SPECS))
-        self.assertEqual(len(names), 19)
+        self.assertEqual(len(names), 31)
+        self.assertEqual(listed["result"]["tools"][0]["outputSchema"]["required"], ["ok"])
 
         modern_requested_in_handshake = self.dispatcher.dispatch(
             {
@@ -86,6 +89,42 @@ class MCPDispatcherTestCase(unittest.TestCase):
             modern_requested_in_handshake["result"]["protocolVersion"],
             "2025-11-25",
         )
+
+    def test_ctm_tool_arguments_are_validated_before_dispatch(self) -> None:
+        missing = self.dispatcher.dispatch(
+            {
+                "jsonrpc": "2.0",
+                "id": 6,
+                "method": "tools/call",
+                "params": {"name": "exec_command", "arguments": {}},
+            },
+            self.principal,
+        )
+        self.assertEqual(missing["error"]["code"], -32602)
+        self.assertEqual(missing["error"]["data"]["reason"], "invalid_arguments")
+
+        unknown_argument = self.dispatcher.dispatch(
+            {
+                "jsonrpc": "2.0",
+                "id": 7,
+                "method": "tools/call",
+                "params": {"name": "read_file", "arguments": {"path": "x", "bogus": True}},
+            },
+            self.principal,
+        )
+        self.assertEqual(unknown_argument["error"]["code"], -32602)
+
+        unknown_tool = self.dispatcher.dispatch(
+            {
+                "jsonrpc": "2.0",
+                "id": 8,
+                "method": "tools/call",
+                "params": {"name": "not_a_tool", "arguments": {}},
+            },
+            self.principal,
+        )
+        self.assertEqual(unknown_tool["error"]["code"], -32602)
+        self.assertEqual(unknown_tool["error"]["data"]["reason"], "unknown_tool")
 
     def test_modern_request_is_shaped_per_request(self) -> None:
         modern_meta = {
@@ -121,6 +160,29 @@ class MCPDispatcherTestCase(unittest.TestCase):
         self.assertEqual(structured["native"]["native_mode"], "dangerous")
         self.assertFalse(structured["native"]["workflow_authority_inherited"])
         self.assertIn("never implies", structured["authorization_axioms"]["non_inheritance"])
+        self.assertEqual(structured["permission_mode"], "dangerous")
+        self.assertTrue(structured["dangerously_skip_all_permissions"])
+        self.assertEqual(structured["endpoint_path"], "/mcp")
+        self.assertEqual(structured["output_retention"]["buffer_bytes_per_stream"], 524288)
+        self.assertEqual(structured["tools"][:18], list(TOOL_SPECS)[:18])
+
+    def test_view_image_returns_image_content_block(self) -> None:
+        png = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlS8AAAAASUVORK5CYII="
+        )
+        (self.workspace / "pixel.png").write_bytes(png)
+        result = self.dispatcher.dispatch(
+            {
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "tools/call",
+                "params": {"name": "view_image", "arguments": {"path": "pixel.png"}},
+            },
+            self.principal,
+        )["result"]
+        self.assertEqual(result["content"][1]["type"], "image")
+        self.assertEqual(result["content"][1]["mimeType"], "image/png")
+        self.assertNotIn("_mcp_image_data", result["structuredContent"])
 
 
 if __name__ == "__main__":

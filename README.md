@@ -170,6 +170,49 @@ https://re-ctm.example.com/mcp
 
 这些操作都只针对 `RE_CTM_WORKSPACE`。
 
+### 7.1 旧 CTM 工具兼容
+
+Re-CTM 保留旧 CTM 的完整 18 个 Native 工具，因此原来依赖 CTM 的普通工作流不需要再单独启动 CTM：
+
+```text
+server_info
+check_exec_environment
+read_file
+list_dir
+list_files
+search_text
+apply_patch
+exec_command
+write_stdin
+kill_command
+read_output
+git_status
+git_diff
+git_log
+git_show
+git_blame
+request_permissions
+view_image
+```
+
+同时额外提供 13 个 `rethlas_*` 数学工作流工具，所以网页客户端固定可以看到 **31 个工具**。
+
+原来 CTM 的长命令生命周期也继续使用。例如网页模型启动一个耗时测试后，可以得到 `command_id`，随后继续等待输出、读取保留输出、向 TTY 程序输入内容，或者终止进程。实际使用时仍然直接用自然语言即可，例如：
+
+```text
+运行测试；如果十秒内没有结束就继续监控输出，结束后告诉我失败项。
+```
+
+```text
+启动这个需要交互的终端程序，等它出现提示后输入 yes。
+```
+
+```text
+如果刚才的命令还没有结束，停止它。
+```
+
+需要 `exec_command`、`write_stdin`、`kill_command` 这组完整生命周期功能时，Linux 上推荐按下一节启用 Bubblewrap backend。
+
 ## 8. Native 权限模式
 
 默认建议：
