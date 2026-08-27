@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+.env.*
+dist/
+build/
+*.egg-info/
+
+# Re-CTM runtime state and private reasoning domains.
+.re-ctm/
+runs/
+runtime/
+logs/

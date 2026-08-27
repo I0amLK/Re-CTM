@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "re-ctm"
+version = "0.1.0.dev0"
+description = "OAuth MCP runtime combining native computer tools with a capability-gated Rethlas workflow."
+requires-python = ">=3.11"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Re-CTM Contributors" }]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/I0amLK/Re-CTM"
+Source = "https://github.com/I0amLK/Re-CTM"
+Issues = "https://github.com/I0amLK/Re-CTM/issues"
+
+[project.scripts]
+re-ctm = "re_ctm.cli:main"
+re-ctm-native-helper = "re_ctm.native_helper_bwrap:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+re_ctm = ["resources/*.json", "resources/*.md"]

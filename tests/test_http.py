@@ -1,0 +1,208 @@
+from __future__ import annotations
+
+import base64
+import hashlib
+import http.client
+import json
+import socket
+import tempfile
+import threading
+import unittest
+import urllib.parse
+from pathlib import Path
+
+from re_ctm.app import build_application
+from re_ctm.config import Settings
+from re_ctm.enums import LatexPolicy, NativeMode
+from re_ctm.server import ReCTMHTTPServer
+
+
+class HTTPGatewayTestCase(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        root = Path(self.temp.name)
+        workspace = root / "workspace"
+        data = root / "data"
+        private = data / "private"
+        workspace.mkdir()
+        port = _free_port()
+        settings = Settings(
+            workspace=workspace,
+            data_root=data,
+            private_root=private,
+            debug_root=data / "debug",
+            native_mode=NativeMode.SAFE,
+            latex_policy=LatexPolicy.STATIC_ONLY,
+            oauth_server_url=f"http://127.0.0.1:{port}",
+            oauth_password="operator-password",
+            token_secret=b"o" * 32,
+            capability_secret=b"c" * 32,
+        )
+        self.application = build_application(settings)
+        self.server = ReCTMHTTPServer(("127.0.0.1", port), self.application)
+        self.port = port
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=5)
+        self.temp.cleanup()
+
+    def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        body: bytes | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[int, dict[str, str], bytes]:
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        connection.request(method, path, body=body, headers=headers or {})
+        response = connection.getresponse()
+        data = response.read()
+        result = response.status, {key: value for key, value in response.getheaders()}, data
+        connection.close()
+        return result
+
+    def test_http_oauth_to_mcp_flow(self) -> None:
+        status, _headers, body = self.request("GET", "/health")
+        self.assertEqual(status, 200)
+        self.assertFalse(json.loads(body)["complete_flow_locally_validated"])
+
+        unauthorized = self.request(
+            "POST",
+            "/mcp",
+            body=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"}).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        self.assertEqual(unauthorized[0], 401)
+
+        registration = {
+            "redirect_uris": ["http://127.0.0.1/callback"],
+            "token_endpoint_auth_method": "none",
+        }
+        status, _headers, body = self.request(
+            "POST",
+            "/oauth/register",
+            body=json.dumps(registration).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        self.assertEqual(status, 201)
+        client = json.loads(body)
+        verifier = "B" * 43
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+        auth_params = {
+            "client_id": client["client_id"],
+            "redirect_uri": "http://127.0.0.1/callback",
+            "response_type": "code",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+            "resource": f"http://127.0.0.1:{self.port}",
+            "state": "unit-state",
+        }
+        status, _headers, page = self.request(
+            "GET",
+            "/oauth/authorize?" + urllib.parse.urlencode(auth_params),
+        )
+        self.assertEqual(status, 200)
+        self.assertIn(b"Authorize Re-CTM", page)
+
+        form = urllib.parse.urlencode({**auth_params, "password": "operator-password"}).encode()
+        status, headers, _body = self.request(
+            "POST",
+            "/oauth/authorize",
+            body=form,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 302)
+        code = urllib.parse.parse_qs(urllib.parse.urlsplit(headers["Location"]).query)["code"][0]
+
+        token_form = urllib.parse.urlencode(
+            {
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": "http://127.0.0.1/callback",
+                "code_verifier": verifier,
+                "client_id": client["client_id"],
+                "resource": f"http://127.0.0.1:{self.port}",
+            }
+        ).encode()
+        status, _headers, body = self.request(
+            "POST",
+            "/oauth/token",
+            body=token_form,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 200)
+        access_token = json.loads(body)["access_token"]
+
+        status, _headers, body = self.request(
+            "POST",
+            "/mcp",
+            body=json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 10,
+                    "method": "tools/list",
+                    "params": {},
+                }
+            ).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {access_token}",
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(len(json.loads(body)["result"]["tools"]), 18)
+
+        modern_request = {
+            "jsonrpc": "2.0",
+            "id": "modern-http",
+            "method": "tools/list",
+            "params": {
+                "_meta": {
+                    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                    "io.modelcontextprotocol/clientCapabilities": {},
+                }
+            },
+        }
+        status, _headers, body = self.request(
+            "POST",
+            "/mcp",
+            body=json.dumps(modern_request).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {access_token}",
+                "MCP-Protocol-Version": "2026-07-28",
+                "Mcp-Method": "tools/list",
+            },
+        )
+        self.assertEqual(status, 200)
+        modern_result = json.loads(body)["result"]
+        self.assertEqual(modern_result["resultType"], "complete")
+        self.assertEqual(modern_result["cacheScope"], "private")
+
+        status, _headers, body = self.request(
+            "POST",
+            "/mcp",
+            body=json.dumps(modern_request).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {access_token}",
+                "MCP-Protocol-Version": "2026-07-28",
+            },
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(json.loads(body)["error"]["code"], -32020)
+
+
+def _free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+if __name__ == "__main__":
+    unittest.main()

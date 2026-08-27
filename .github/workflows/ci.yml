@@ -1,0 +1,73 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic-core:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install OS isolation and LaTeX tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            bubblewrap \
+            latexmk \
+            texlive-latex-base \
+            texlive-latex-recommended
+
+      - name: Install build tooling and project
+        run: |
+          python -m pip install --upgrade pip build
+          python -m pip install --editable .
+
+      - name: Run deterministic checks
+        run: python scripts/run_local_checks.py
+
+      - name: Build wheel and source distribution
+        run: python -m build
+
+      - name: Verify installed command surfaces
+        run: |
+          re-ctm --help
+          re-ctm-native-helper --version
+
+      - name: Upload validation evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-validation-py${{ matrix.python-version }}
+          path: |
+            local-validation.json
+            dist/*
+
+  manual-boundary-reminder:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm manual validation remains explicit
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("manual-validation.json").read_text())
+          assert payload["status"] == "pending_post_push"
+          assert payload["checks"]
+          assert all(item["status"] in {"pending", "passed", "failed"} for item in payload["checks"])
+          print("manual validation boundary is explicit")
+          PY

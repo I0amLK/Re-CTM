@@ -1,0 +1,610 @@
+{
+  "project": {
+    "name": "Re-CTM",
+    "status": "engineering_checkpoint_ready_for_remote",
+    "target": "A single installable OAuth MCP runtime combining streamlined CMT computer tools with a Rethlas-derived mathematical reasoning workflow.",
+    "updated_at": "2026-08-26T21:45:00-07:00",
+    "source_references": {
+      "cmt_local_repo": "../coding-tools-mcp",
+      "rethlas_local_repo": "../Rethlas",
+      "cmt_analysis": "../architecture-undirected-cycle-graph.md",
+      "rethlas_analysis": "../rethlas-architecture-undirected-cycle-graph.md"
+    }
+  },
+  "product_constraints": {
+    "single_install": true,
+    "separate_rethlas_download": false,
+    "target_pc_has_codex": false,
+    "web_conversation_is_primary_model": true,
+    "authentication": "oauth_only",
+    "final_artifact": "latex",
+    "target_rethlas_functional_equivalence_percent": 95,
+    "native_cmt_permission_modes": [
+      "safe",
+      "trusted",
+      "dangerous"
+    ],
+    "dangerous_scope": "Native CMT computer-tool authority only; it must never bypass Rethlas workflow authorization."
+  },
+  "architecture_decisions": [
+    {
+      "id": "AD-001",
+      "decision": "Ship CMT-derived runtime and Rethlas-derived methodology in one Re-CTM package.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-002",
+      "decision": "Expose Re-CTM over HTTP MCP with OAuth only; bearer/noauth are out of product scope.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-003",
+      "decision": "Keep native CMT safe/trusted/dangerous modes. These modes govern native computer tools only.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-004",
+      "decision": "Implement a second, orthogonal Rethlas workflow authorization plane: OAuth identity AND run capability AND role ACL AND workflow state.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-005",
+      "decision": "CMT dangerous authority must not imply or grant any Rethlas workflow capability.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-006",
+      "decision": "Rethlas workflow isolation applies only while using the rethlas_* super-tool surface; native CMT tools retain their own permission semantics.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-007",
+      "decision": "Prevent dangerous native tools from bypassing Rethlas isolation by keeping the Rethlas private run store outside the native tool trust domain, with an OS-level boundary or equivalent hard isolation.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-008",
+      "decision": "Replace Rethlas subagents with isolated reasoning domains: frozen snapshot, branch-local read/write capability, sealed result, and explicit join. Physical execution may be sequential.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-009",
+      "decision": "Preserve Generator, branch, join, verifier, repair, and finalize roles as workflow domains even when one web model performs the turns sequentially.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-010",
+      "decision": "Make verifier final verdict and final artifact publication server-gated mechanical transitions, not model-controlled labels.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-011",
+      "decision": "Retain Rethlas memory, search, examples, counterexamples, decomposition plans, direct proving, recursive branch exploration, failure synthesis, independent verifier data firewall, repair loop, and strict stopping rules.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-012",
+      "decision": "Remove Zola/site delivery and Markdown final delivery; use proof.tex and proof_verified.tex, with a LaTeX compile gate before verification/finalization.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-013",
+      "decision": "The web conversation is the user-facing controller; persistent workflow state must live server-side and survive browser disconnects.",
+      "status": "accepted"
+    }
+  ],
+  "authorization_model": {
+    "layers": {
+      "L0": {
+        "name": "OAuth identity",
+        "purpose": "Authenticate the user/client controlling Re-CTM."
+      },
+      "L1": {
+        "name": "Native CMT authority",
+        "values": [
+          "safe",
+          "trusted",
+          "dangerous"
+        ],
+        "purpose": "Authorize native computer tools."
+      },
+      "L2": {
+        "name": "Rethlas workflow authority",
+        "roles": [
+          "generator",
+          "branch",
+          "join",
+          "assembler",
+          "verifier",
+          "repair",
+          "finalizer"
+        ],
+        "purpose": "Authorize private reasoning resources and workflow transitions."
+      }
+    },
+    "native_tool_rule": "allow = L0 AND L1",
+    "rethlas_tool_rule": "allow = L0 AND run_capability AND role_acl AND workflow_state",
+    "non_inheritance_axiom": "L1 dangerous does not imply any L2 capability.",
+    "private_store_rule": "Rethlas private state must not be directly readable through native CMT tools, including dangerous mode."
+  },
+  "planned_super_tools": [
+    "rethlas_start",
+    "rethlas_next",
+    "rethlas_read",
+    "rethlas_write",
+    "rethlas_search",
+    "rethlas_retrieve",
+    "rethlas_commit",
+    "rethlas_status",
+    "rethlas_steer",
+    "rethlas_resume",
+    "rethlas_cancel",
+    "rethlas_get_artifact"
+  ],
+  "workflow": {
+    "states": [
+      "created",
+      "assess",
+      "explore",
+      "propose_plans",
+      "direct_proving",
+      "branch_prepare",
+      "branch_run",
+      "branch_join",
+      "identify_failures",
+      "replan",
+      "assemble",
+      "latex_validate",
+      "verify",
+      "repair",
+      "finalize",
+      "done",
+      "cancelled",
+      "failed"
+    ],
+    "branch_semantics": {
+      "input": "frozen snapshot",
+      "visibility": "self branch plus snapshot only until join",
+      "execution": "sequential execution is allowed",
+      "completion": "sealed branch result",
+      "join": "other branch results become visible only after all required branches are sealed"
+    },
+    "verification_gate": {
+      "latex_compile_required": true,
+      "critical_errors_must_be_empty": true,
+      "gaps_must_be_empty": true,
+      "server_computes_final_verdict": true,
+      "only_gate_can_issue_finalize_capability": true
+    }
+  },
+  "implementation_phases": [
+    {
+      "id": "P0",
+      "name": "Bootstrap local repository and project ledger",
+      "weight_percent": 5,
+      "status": "in_progress",
+      "tasks": [
+        {
+          "id": "P0-T1",
+          "task": "Create Re-CTM project directory",
+          "status": "done"
+        },
+        {
+          "id": "P0-T2",
+          "task": "Create local Git repository",
+          "status": "done"
+        },
+        {
+          "id": "P0-T3",
+          "task": "Create project-progress.json engineering ledger",
+          "status": "done"
+        },
+        {
+          "id": "P0-T4",
+          "task": "Create initial Git commit",
+          "status": "ready"
+        }
+      ]
+    },
+    {
+      "id": "P1",
+      "name": "Freeze architecture and security contracts",
+      "weight_percent": 10,
+      "status": "done",
+      "tasks": [
+        "Define native-tool versus super-tool authorization boundary",
+        "Define hard isolation for Rethlas private store under CMT dangerous mode",
+        "Define capability token schema and revocation rules",
+        "Define workflow transition preconditions",
+        "Define verifier data firewall"
+      ],
+      "completed_evidence": [
+        "engineering-graph.json contains 31 vertices, 60 collapsed undirected edges, cycle rank 30, articulation/bridge analysis, eight security invariants, and a validation boundary",
+        "scripts/validate_engineering_graph.py recomputes and checks the graph metrics",
+        "AGENTS.md freezes the native/workflow non-inheritance and validation axioms"
+      ]
+    },
+    {
+      "id": "P2",
+      "name": "Create Re-CTM package skeleton",
+      "weight_percent": 10,
+      "status": "done",
+      "tasks": [
+        "Package metadata and CLI",
+        "OAuth-only HTTP MCP entry point",
+        "Native CMT runtime namespace",
+        "Rethlas workflow namespace",
+        "Persistent configuration layout"
+      ],
+      "completed_evidence": [
+        "pyproject.toml and src/re_ctm package exist",
+        "re-ctm CLI has serve, check-config, and validate-graph commands",
+        "server-owned data/private/debug roots and secret materialization are implemented"
+      ]
+    },
+    {
+      "id": "P3",
+      "name": "Port streamlined CMT runtime",
+      "weight_percent": 15,
+      "status": "reference_implemented_target_validation_pending",
+      "tasks": [
+        "Port OAuth 2.1 PKCE and dynamic registration",
+        "Port MCP protocol and HTTP routing",
+        "Retain native safe/trusted/dangerous semantics",
+        "Define native tool catalog for target product",
+        "Ensure native dangerous cannot access Rethlas private store"
+      ],
+      "completed_evidence": [
+        "OAuth DCR, Authorization Code with PKCE, persisted single-use codes, and access-token validation are implemented",
+        "HTTP MCP supports handshake-era and per-request 2026-07-28 dispatch with mirror headers",
+        "Fixed 18-tool catalog includes six native and twelve rethlas_* tools",
+        "Native read/list/search and baseline-checked atomic patching are implemented",
+        "Native paths stay workspace-confined in dangerous mode",
+        "Arbitrary command execution fails closed unless an operator enables an attested isolation backend",
+        "A packaged Linux bubblewrap helper implements a separate process, mount/user/PID/IPC/UTS namespaces, cleared environment, dropped capabilities, bounded output, timeout cleanup, safe-mode network isolation, nonce-bound responses, and startup attestation",
+        "The local adversarial harness proved that dangerous commands can write the native workspace but cannot observe the private-vault canary or inherited secret environment"
+      ],
+      "remaining": [
+        "Run scripts/manual_native_isolation_test.py on every intended target-PC class before setting RE_CTM_NATIVE_ISOLATION_ATTESTED=1",
+        "Validate trusted/dangerous network behavior and system-toolchain compatibility on the target PC",
+        "Independently review or replace the reference helper for non-Linux deployment targets"
+      ]
+    },
+    {
+      "id": "P4",
+      "name": "Port Rethlas core methodology",
+      "weight_percent": 20,
+      "status": "core_implemented_manual_quality_pending",
+      "tasks": [
+        "Port memory channels and search",
+        "Port mathematical retrieval/reference flow",
+        "Port examples and counterexamples",
+        "Port decomposition planning and direct proving",
+        "Port failure synthesis and replanning",
+        "Convert final proof contract to LaTeX"
+      ],
+      "completed_evidence": [
+        "Generation, branch, join, assembler, verifier, and repair methodology tasks are embedded in the package",
+        "Generation, verifier, and branch-local memory channels are persisted in the private vault",
+        "Multiple decomposition plans, complete per-plan/per-subgoal direct screening, one-branch-per-plan rounds, explicit all-branch join, failure synthesis, replanning, verification audit records, changed-proof repair, and strict stopping rules are server-enforced",
+        "Capability-gated rethlas_retrieve provides bounded HTTPS theorem search and persists results as external_unverified evidence in generation, branch, verifier, or repair memory",
+        "A live LeanSearch-compatible endpoint smoke returned a normalized theorem with arXiv and theorem identifiers",
+        "Final delivery contract is proof.tex to proof_verified.tex"
+      ],
+      "remaining": [
+        "Validate real web-model use of theorem retrieval, source download/context reading, and general web-search fallback",
+        "Validate citation context expansion and applicability checks on representative problems",
+        "Manually assess whether sequential reasoning domains retain the target 95-percent methodology behavior"
+      ]
+    },
+    {
+      "id": "P5",
+      "name": "Implement workflow capability engine",
+      "weight_percent": 20,
+      "status": "done_core",
+      "tasks": [
+        "Persistent workflow state",
+        "Capability handles",
+        "Frozen branch snapshots",
+        "Branch-local ACL",
+        "Seal and join barriers",
+        "Verifier ACL and data firewall",
+        "Mechanical verification and finalization gates",
+        "Resume, cancel, and steering checkpoints"
+      ],
+      "completed_evidence": [
+        "SQLite WAL store persists runs, domains, capabilities, branches, steering, and transitions",
+        "HMAC capabilities bind OAuth owner, run, domain, role, epoch, state, permissions, expiry, and revocation",
+        "Frozen snapshots, branch-local ACL, sealing, capability revocation, and join barriers are implemented",
+        "Verifier firewall and server-computed verdict are implemented",
+        "Browser-independent status, resume, cancel, and checkpoint steering are implemented"
+      ],
+      "remaining": [
+        "Run real browser disconnect/resume and multi-client adversarial tests after push"
+      ]
+    },
+    {
+      "id": "P6",
+      "name": "LaTeX and artifact pipeline",
+      "weight_percent": 5,
+      "status": "reference_implemented_target_validation_pending",
+      "tasks": [
+        "proof.tex draft contract",
+        "LaTeX syntax/compile validation",
+        "proof_verified.tex finalization",
+        "Controlled export from private store to native/user artifact surface"
+      ],
+      "completed_evidence": [
+        "Static self-contained-document checks reject input/include, shell escape, direct file I/O, bibliography files, graphics, external listings, PDFs, and auxiliary-document imports",
+        "latexmk gate supports required, if_available, and static_only policies and refuses host compilation when bubblewrap is unavailable",
+        "Required-policy compilation executes in a network-isolated bubblewrap scratch workspace; the original private run directory is absent from the compiler namespace",
+        "A regression proves that an absolute host-only document class cannot be loaded by model-generated TeX",
+        "Only the mechanical finalizer can create proof_verified.tex",
+        "Final LaTeX can be returned through owner-authorized rethlas_get_artifact"
+      ],
+      "remaining": [
+        "Validate required latexmk policy with every intended target LaTeX distribution",
+        "Decide whether a separate controlled native-workspace export is needed in addition to MCP artifact delivery"
+      ]
+    },
+    {
+      "id": "P7",
+      "name": "Integration and adversarial tests",
+      "weight_percent": 10,
+      "status": "in_progress",
+      "tasks": [
+        "OAuth-only access tests",
+        "dangerous-mode native tool tests",
+        "dangerous-mode attempts to bypass Rethlas ACL",
+        "cross-branch information barrier tests",
+        "verifier generation-memory denial tests",
+        "wrong-verdict cannot finalize tests",
+        "browser disconnect/resume tests",
+        "95-percent Rethlas behavior acceptance suite"
+      ],
+      "completed_evidence": [
+        "26 deterministic and local integration tests pass",
+        "Loopback DCR to OAuth authorization to PKCE token to MCP tools/list passes",
+        "Modern mirror-header and result-shaping tests pass",
+        "Dangerous path confinement, native fail-closed execution, packaged bubblewrap attestation/private-canary denial, branch barrier, complete screening/join contracts, verifier denial/audit prerequisites, owner-bound capability, wrong-verdict, finalization, isolated LaTeX, external retrieval normalization, and debug redaction tests pass",
+        "scripts/run_local_checks.py writes local-validation.json"
+      ],
+      "remaining": [
+        "All eight checks in manual-validation.json remain pending after push",
+        "No local result is accepted as complete browser/target-PC/95-percent validation"
+      ]
+    },
+    {
+      "id": "P8",
+      "name": "Packaging and local deployment",
+      "weight_percent": 5,
+      "status": "local_release_ready_remote_pending",
+      "tasks": [
+        "Single-package installation",
+        "No Codex dependency verification",
+        "No separate Rethlas download verification",
+        "Migration/setup documentation",
+        "Final local release smoke test"
+      ],
+      "completed_evidence": [
+        "Single Python package contains the Rethlas-derived methodology resources",
+        "Runtime has no Codex dependency",
+        "OAuth-only HTTP entry point and configuration template exist",
+        "Apache-2.0 LICENSE and NOTICE retain Coding Tools MCP and Rethlas attribution",
+        "GitHub Actions CI covers Python 3.11/3.13, bubblewrap, latexmk, deterministic checks, wheel/sdist build, and installed command surfaces",
+        "uv built re_ctm-0.1.0.dev0-py3-none-any.whl, installed it into a clean virtual environment, and the installed re-ctm, native helper version, and helper attestation smokes passed"
+      ],
+      "remaining": [
+        "Push the repository and observe first remote CI on GitHub",
+        "Complete target-PC setup documentation from the actual manual-validation results"
+      ]
+    }
+  ],
+  "progress": {
+    "overall_percent": 76,
+    "implementation_percent": 84,
+    "deterministic_local_validation_percent": 72,
+    "post_push_manual_acceptance_percent": 0,
+    "target_95_percent_equivalence_verified": false,
+    "completed_phase_ids": [
+      "P1",
+      "P2",
+      "P5"
+    ],
+    "current_phase_id": "P0/P3/P4/P6/P7/P8",
+    "current_focus": "A remote-ready engineering checkpoint exists; Git commit/push and the eight real webpage/target-PC/methodology acceptance checks remain.",
+    "next_actions": [
+      "Configure Git user.name and user.email at the desired scope, then create the initial commit",
+      "Push to https://github.com/I0amLK/Re-CTM.git and observe GitHub Actions",
+      "Run all checks in manual-validation.json and attach redacted evidence",
+      "Run the packaged bubblewrap isolation harness on the target PC before enabling native exec",
+      "Run representative mathematical problems through the real webpage client",
+      "Decide whether MCP final-artifact delivery is sufficient or a controlled native export tool is required"
+    ]
+  },
+  "local_validation": {
+    "report": "local-validation.json",
+    "last_result": "passed",
+    "test_count": 26,
+    "graph_metrics": {
+      "vertices": 31,
+      "edges": 60,
+      "connected_components": 1,
+      "cycle_rank": 30,
+      "articulation_points": [
+        "V08",
+        "V11"
+      ]
+    },
+    "validated_scope": [
+      "Python compilation",
+      "Engineering graph consistency",
+      "Loopback OAuth mechanics",
+      "Handshake-era and modern MCP mechanics",
+      "Fixed tool catalog",
+      "OAuth owner-bound capabilities",
+      "Workflow transitions and persistence",
+      "Branch information barrier",
+      "Verifier data firewall",
+      "Mechanical verdict and finalization",
+      "Native workspace boundary and fail-closed execution",
+      "Reference Linux bubblewrap helper attestation and private-vault canary denial",
+      "Debug redaction and content-minimized bundle",
+      "Static and bubblewrap-isolated required LaTeX policy",
+      "Capability-gated theorem-search normalization and domain-local persistence",
+      "Live theorem-search endpoint smoke",
+      "Wheel build, clean installation, installed helper version, and installed helper attestation"
+    ],
+    "explicitly_not_validated": [
+      "Final webpage MCP host compatibility",
+      "Target-PC dangerous-mode OS isolation",
+      "Target-client external theorem/web retrieval quality and source-context review",
+      "Long multi-turn mathematical quality",
+      "Fresh-context-equivalent cognitive independence",
+      "Every intended target LaTeX distribution",
+      "End-to-end 95-percent Rethlas equivalence"
+    ]
+  },
+  "git": {
+    "initialized": true,
+    "branch": "main",
+    "initial_commit": false,
+    "initial_commit_blocker": null,
+    "local_identity": {
+      "name": "Peter Liu",
+      "email": "51688491+I0amLK@users.noreply.github.com",
+      "basis": "Identity confirmed from public commits owned by GitHub account I0amLK; configured only in this repository."
+    },
+    "remote": "https://github.com/I0amLK/Re-CTM.git",
+    "initial_files": [
+      "All current source, tests, graph, debug, validation, and planning files are intended for the initial commit."
+    ],
+    "working_tree_note": "All current engineering files are staged and pass git diff --check; initial commit is ready."
+  },
+  "engineering_debug_notes": [
+    {
+      "id": "DBG-001",
+      "symptom": "A combined consistency command exited before project execution because the tool shell is /bin/sh and does not support set -o pipefail.",
+      "scope": "test driver only",
+      "resolution": "Re-ran with POSIX set -eu; no project files had been changed by the failed command.",
+      "preventive_action": "Keep repository scripts in Python or POSIX shell unless they explicitly invoke bash."
+    },
+    {
+      "id": "DBG-002",
+      "symptom": "python3 -m pip wheel failed because the current uv-managed Python interpreter has no pip module.",
+      "scope": "local build frontend only",
+      "resolution": "Used the installed uv build/uv pip toolchain; wheel build, clean installation, and installed CLI smoke passed.",
+      "preventive_action": "Do not infer a package metadata failure from a missing build frontend; preserve build logs and try an available standards-compatible frontend."
+    },
+    {
+      "id": "DBG-003",
+      "symptom": "Two large apply_patch envelopes were rejected as ambiguous or because they attempted delete-and-add of the same path in one envelope.",
+      "scope": "editing tool envelope only",
+      "resolution": "Split changes into narrow atomic patches; rejected envelopes did not modify source files.",
+      "preventive_action": "Use small exact-context patches for security-sensitive routing code and verify immediately after each patch."
+    },
+    {
+      "id": "DBG-004",
+      "symptom": "Initial Git identity was absent, so the repository could not be committed without choosing an author.",
+      "scope": "local repository metadata only",
+      "resolution": "Confirmed Peter Liu and the numeric GitHub noreply address from public I0amLK commits, then configured them only in Re-CTM/.git/config.",
+      "preventive_action": "Never infer or expose a private email; prefer an identity already present in public commits and record its provenance."
+    }
+  ],
+  "known_risks": [
+    {
+      "id": "R-001",
+      "risk": "A native dangerous tool could bypass branch/verifier isolation if Rethlas private state is visible in the same OS trust domain.",
+      "mitigation": "Use a hard OS-level boundary or equivalent isolation so native tools cannot directly access the private store."
+    },
+    {
+      "id": "R-002",
+      "risk": "One web model executing domains sequentially does not provide perfect cognitive amnesia between branches.",
+      "mitigation": "Enforce frozen inputs, resource ACLs, sealed branch outputs, materially different branch strategies, and strict verifier audit stages."
+    },
+    {
+      "id": "R-003",
+      "risk": "MCP clients may cache tool catalogs or annotations.",
+      "mitigation": "Keep a stable tool catalog; enforce role/state authorization server-side instead of dynamically hiding tools."
+    },
+    {
+      "id": "R-004",
+      "risk": "The word dangerous may be mistakenly interpreted as bypassing mathematical correctness gates.",
+      "mitigation": "Specify and test the non-inheritance axiom: native dangerous never grants workflow or finalization authority."
+    },
+    {
+      "id": "R-005",
+      "risk": "The packaged Linux bubblewrap helper is still an operational articulation point whose guarantees depend on the target kernel, bubblewrap packaging, mount layout, and operator configuration.",
+      "mitigation": "Keep exec_command fail-closed until re-ctm attest-native and scripts/manual_native_isolation_test.py pass on that target and the operator explicitly sets RE_CTM_NATIVE_ISOLATION_ATTESTED=1."
+    },
+    {
+      "id": "R-006",
+      "risk": "Loopback OAuth and MCP tests may not match the final webpage host's protocol and redirect behavior.",
+      "mitigation": "Retain dual-era MCP handling, mirror-header validation, fixed catalog, and execute MV-001/MV-002 on the real host after push."
+    },
+    {
+      "id": "R-007",
+      "risk": "A successful isolated compile on the reference host is not equivalent to compilation on every target TeX distribution.",
+      "mitigation": "Production defaults to latex_policy=required, compilation never falls back to the host namespace, and MV-007 must be completed with each target latexmk/TeX Live distribution."
+    },
+    {
+      "id": "R-008",
+      "risk": "The theorem-search service may return irrelevant, incorrectly matched, context-dependent, or unavailable external statements.",
+      "mitigation": "Bound response size and HTTPS endpoint configuration, mark every result external_unverified, persist provenance identifiers, require source-context/definition/applicability checks, and keep web/manual fallback in the methodology."
+    }
+  ],
+  "change_log": [
+    {
+      "timestamp": "2026-08-26T20:01:00-07:00",
+      "event": "Initial engineering ledger created from the CMT/Rethlas architecture analysis and Re-CTM design discussion."
+    },
+    {
+      "timestamp": "2026-08-26T20:01:00-07:00",
+      "event": "Initialized a local Git repository on branch main. Initial commit was intentionally not created because Git identity is not configured."
+    },
+    {
+      "timestamp": "2026-08-26T20:30:00-07:00",
+      "event": "Added engineering-graph.json and computed 31 vertices, 60 undirected edges, one connected component, cycle rank 30, articulation points V08/V11, and bridges V08-V09/V11-V13."
+    },
+    {
+      "timestamp": "2026-08-26T20:42:00-07:00",
+      "event": "Implemented SQLite workflow persistence, private vault, owner-bound signed capabilities, frozen branch domains, join barrier, verifier firewall, repair loop, server-computed verdict, and mechanical finalization."
+    },
+    {
+      "timestamp": "2026-08-26T20:49:00-07:00",
+      "event": "Implemented native workspace file/search/patch tools and a fail-closed external hard-isolation helper interface; dangerous mode does not relax path boundaries or grant workflow authority."
+    },
+    {
+      "timestamp": "2026-08-26T20:53:00-07:00",
+      "event": "Implemented OAuth-only HTTP MCP with DCR, PKCE, legacy and 2026-07-28 per-request dispatch, fixed 17-tool catalog, modern mirror headers, and structured tool results."
+    },
+    {
+      "timestamp": "2026-08-26T20:55:00-07:00",
+      "event": "Local deterministic validation passed: engineering graph, compileall, and 17 tests. Full browser, target isolation, real retrieval/LaTeX, and 95-percent methodology acceptance remain explicitly pending in manual-validation.json."
+    },
+    {
+      "timestamp": "2026-08-26T20:58:00-07:00",
+      "event": "Built re_ctm-0.1.0.dev0 wheel with uv, installed it into a clean virtual environment, and passed installed check-config and CLI smoke without Codex or a separate Rethlas download."
+    },
+    {
+      "timestamp": "2026-08-26T21:24:00-07:00",
+      "event": "Converted engineering-graph.json into machine-linked JSON-LD and added an exact implementation snapshot while preserving the 31-vertex, 60-edge, cycle-rank-30 graph metrics."
+    },
+    {
+      "timestamp": "2026-08-26T21:31:00-07:00",
+      "event": "Implemented a packaged bubblewrap native helper, nonce-bound attestation, dangerous-mode private-canary denial, parent-environment clearing, safe network namespace, bounded output, timeout cleanup, and a target-PC manual validation harness."
+    },
+    {
+      "timestamp": "2026-08-26T21:36:00-07:00",
+      "event": "Moved required LaTeX compilation into a private bubblewrap scratch namespace and added regressions proving model-generated TeX cannot load an absolute host-only class."
+    },
+    {
+      "timestamp": "2026-08-26T21:41:00-07:00",
+      "event": "Strengthened Rethlas workflow contracts: complete direct screening, exact one-branch-per-plan rounds, all-branch joins, branch evidence requirements, verifier audit prerequisites, persisted verification reports, and changed-proof repair."
+    },
+    {
+      "timestamp": "2026-08-26T21:45:00-07:00",
+      "event": "Added capability-gated theorem retrieval, live endpoint smoke, Apache-2.0 attribution, GitHub Actions CI, 26 passing tests, clean wheel installation, and installed helper attestation. Full post-push manual acceptance remains at zero percent."
+    }
+  ]
+}

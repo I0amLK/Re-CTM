@@ -1,0 +1,1487 @@
+{
+  "@context": {
+    "@base": "https://github.com/I0amLK/Re-CTM/blob/main/engineering-graph.json#",
+    "@vocab": "https://github.com/I0amLK/Re-CTM/schema#",
+    "id": "@id",
+    "kind": "@type",
+    "source": {
+      "@id": "source",
+      "@type": "@id"
+    },
+    "target": {
+      "@id": "target",
+      "@type": "@id"
+    },
+    "vertices": {
+      "@id": "hasVertex",
+      "@container": "@set"
+    },
+    "edges": {
+      "@id": "hasEdge",
+      "@container": "@set"
+    },
+    "implemented_local": {
+      "@id": "implementedLocal",
+      "@type": "@id",
+      "@container": "@set"
+    },
+    "implemented_reference_target_pending": {
+      "@id": "implementedReferenceTargetPending",
+      "@type": "@id",
+      "@container": "@set"
+    },
+    "partial_or_external": {
+      "@id": "partialOrExternal",
+      "@type": "@id",
+      "@container": "@set"
+    },
+    "manual_only": {
+      "@id": "manualOnly",
+      "@type": "@id",
+      "@container": "@set"
+    }
+  },
+  "@id": "urn:re-ctm:engineering-graph",
+  "@type": "EngineeringGraph",
+  "schema_version": "1.0.0",
+  "generated_for": "Re-CTM",
+  "updated_at": "2026-08-26T21:24:54-07:00",
+  "purpose": "A graph-theoretic engineering specification for implementing one OAuth MCP runtime that combines native CMT computer tools and a Rethlas-derived mathematical reasoning workflow without a Codex dependency.",
+  "source_baselines": {
+    "cmt_repository": "../coding-tools-mcp",
+    "rethlas_repository": "../Rethlas",
+    "cmt_architecture_analysis": "../architecture-undirected-cycle-graph.md",
+    "rethlas_architecture_analysis": "../rethlas-architecture-undirected-cycle-graph.md"
+  },
+  "graph_semantics": {
+    "vertex": "A runtime component, trust domain, persistent resource, validation gate, or external actor.",
+    "directed_edge": "A permitted call, controlled data transfer, authority delegation, state transition, or observability path.",
+    "undirected_projection": "Used only for connectivity, articulation-point, bridge, two-core, and cycle-rank analysis. Edge direction and guard remain authoritative for security.",
+    "cycle_rank_formula": "mu = E - V + C after parallel edges are collapsed in the undirected projection.",
+    "security_rule": "Graph reachability never implies authorization. Every protected edge must still have an explicit server-side guard."
+  },
+  "product_constraints": [
+    {
+      "id": "PC-001",
+      "constraint": "Re-CTM is delivered as one installable project; Rethlas is embedded and is never downloaded separately."
+    },
+    {
+      "id": "PC-002",
+      "constraint": "The target PC does not require Codex. The web conversation performs model turns through the fixed MCP tool surface."
+    },
+    {
+      "id": "PC-003",
+      "constraint": "External transport is HTTP MCP with OAuth only. Stdio, static bearer mode, and no-auth mode are outside the target product."
+    },
+    {
+      "id": "PC-004",
+      "constraint": "Native CMT safe/trusted/dangerous authority is orthogonal to Rethlas workflow authority. Dangerous never grants a workflow capability."
+    },
+    {
+      "id": "PC-005",
+      "constraint": "Rethlas branch and verifier isolation is enforced only on the rethlas_* super-tool plane, but native tools must be unable to bypass the private vault through the OS boundary."
+    },
+    {
+      "id": "PC-006",
+      "constraint": "Rethlas subagents are represented as frozen-snapshot reasoning domains with branch-local capabilities, sealed results, and an explicit join barrier. Physical execution may be sequential."
+    },
+    {
+      "id": "PC-007",
+      "constraint": "The final user artifact is a self-contained LaTeX source file named proof_verified.tex."
+    },
+    {
+      "id": "PC-008",
+      "constraint": "The complete browser/OAuth/MCP/reasoning workflow cannot be fully validated in the current local environment and must have an explicit post-push manual acceptance plan."
+    }
+  ],
+  "implementation_snapshot": {
+    "as_of": "2026-08-26T21:24:54-07:00",
+    "authority": "This snapshot supersedes the original per-vertex planning labels without erasing the design-time history stored on each vertex.",
+    "implemented_local": [
+      "V02",
+      "V03",
+      "V04",
+      "V05",
+      "V06",
+      "V07",
+      "V10",
+      "V11",
+      "V12",
+      "V13",
+      "V14",
+      "V15",
+      "V16",
+      "V17",
+      "V19",
+      "V20",
+      "V21",
+      "V22",
+      "V24",
+      "V25",
+      "V26",
+      "V27",
+      "V29",
+      "V30"
+    ],
+    "implemented_reference_target_pending": [
+      "V08",
+      "V09",
+      "V23"
+    ],
+    "partial_or_external": [
+      "V18",
+      "V28"
+    ],
+    "manual_only": [
+      "V01",
+      "V31"
+    ],
+    "evidence": [
+      "src/re_ctm/native_helper_bwrap.py implements a separate-process bubblewrap boundary with namespace, environment, capability, timeout, and forbidden-path probes.",
+      "scripts/manual_native_isolation_test.py provides target-PC adversarial evidence before RE_CTM_NATIVE_ISOLATION_ATTESTED=1 is permitted operationally.",
+      "tests/ exercises OAuth, legacy and modern MCP, fixed catalogs, native path confinement, capability ownership, branch barriers, verifier firewall, mechanical verdict/finalization, diagnostics, LaTeX safety, and the reference bubblewrap helper.",
+      "manual-validation.json remains the authority for browser, target-PC, external-retrieval, real-LaTeX, and 95-percent methodology acceptance."
+    ]
+  },
+  "vertices": [
+    {
+      "id": "V01",
+      "name": "web_conversation",
+      "kind": "external_actor",
+      "trust_domain": "browser",
+      "responsibilities": [
+        "Authenticate through OAuth",
+        "Call fixed MCP tools",
+        "Perform generator, branch, join, verifier, and repair reasoning turns sequentially",
+        "Present progress and final LaTeX to the user"
+      ],
+      "implementation_status": "external_manual_validation"
+    },
+    {
+      "id": "V02",
+      "name": "oauth_authority",
+      "kind": "security_component",
+      "trust_domain": "gateway",
+      "responsibilities": [
+        "OAuth Authorization Code with PKCE",
+        "Protected-resource metadata",
+        "Authorization-server metadata",
+        "Dynamic client registration",
+        "Access-token validation"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V03",
+      "name": "mcp_gateway",
+      "kind": "protocol_component",
+      "trust_domain": "gateway",
+      "responsibilities": [
+        "HTTP JSON-RPC parsing",
+        "initialize, ping, tools/list, and tools/call",
+        "Stable tool catalog",
+        "OAuth enforcement",
+        "Trace-id creation"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V04",
+      "name": "fixed_tool_catalog",
+      "kind": "contract",
+      "trust_domain": "gateway",
+      "responsibilities": [
+        "Keep native and rethlas_* tools stable across permission modes and workflow states",
+        "Publish truthful schemas and annotations",
+        "Prevent client-side tool-catalog caching from becoming an authorization mechanism"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V05",
+      "name": "native_tool_router",
+      "kind": "runtime_component",
+      "trust_domain": "native_plane",
+      "responsibilities": [
+        "Dispatch native file/search/patch/command tools",
+        "Apply only L0 OAuth and L1 native authority",
+        "Never accept a workflow capability as native authority"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V06",
+      "name": "native_policy",
+      "kind": "security_component",
+      "trust_domain": "native_plane",
+      "responsibilities": [
+        "Implement safe, trusted, and dangerous native modes",
+        "Preserve the invariant that dangerous does not grant workflow access",
+        "Fail closed when hard native/private isolation is unavailable"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V07",
+      "name": "native_workspace",
+      "kind": "persistent_resource",
+      "trust_domain": "native_plane",
+      "responsibilities": [
+        "Hold user-visible files",
+        "Reject absolute paths, traversal, NULs, and symlink escape",
+        "Receive controlled final-artifact export"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V08",
+      "name": "native_isolation_boundary",
+      "kind": "security_boundary",
+      "trust_domain": "os_boundary",
+      "responsibilities": [
+        "Make the private Rethlas vault unreachable to native commands even in dangerous mode",
+        "Require a container, mount namespace, separate OS identity, or an equivalent tested isolation backend",
+        "Refuse native arbitrary execution when isolation is not attested"
+      ],
+      "implementation_status": "planned_fail_closed"
+    },
+    {
+      "id": "V09",
+      "name": "native_exec_worker",
+      "kind": "runtime_component",
+      "trust_domain": "native_plane_isolated",
+      "responsibilities": [
+        "Run bounded native commands",
+        "Honor native policy",
+        "Expose no private-vault mount",
+        "Return structured diagnostics"
+      ],
+      "implementation_status": "manual_integration_required"
+    },
+    {
+      "id": "V10",
+      "name": "workflow_tool_router",
+      "kind": "runtime_component",
+      "trust_domain": "workflow_plane",
+      "responsibilities": [
+        "Dispatch rethlas_* tools",
+        "Require L0 OAuth plus run capability plus role ACL plus workflow state",
+        "Keep L1 native mode out of every workflow authorization decision"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V11",
+      "name": "workflow_engine",
+      "kind": "state_machine",
+      "trust_domain": "workflow_plane",
+      "responsibilities": [
+        "Own deterministic state transitions",
+        "Issue role tasks",
+        "Create branch rounds",
+        "Apply transition preconditions",
+        "Resume, cancel, and steering checkpoints",
+        "Never let the model label a proof verified"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V12",
+      "name": "capability_authority",
+      "kind": "security_component",
+      "trust_domain": "workflow_plane",
+      "responsibilities": [
+        "Issue signed, scoped, expiring capability handles",
+        "Validate run, domain, role, epoch, and state",
+        "Revoke capabilities when a domain is sealed",
+        "Record allow and deny decisions"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V13",
+      "name": "run_state_store",
+      "kind": "persistent_resource",
+      "trust_domain": "workflow_private",
+      "responsibilities": [
+        "Persist runs, domains, capabilities, branches, transitions, and steering messages",
+        "Survive browser disconnects and process restarts",
+        "Support deterministic debug inspection"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V14",
+      "name": "private_vault",
+      "kind": "persistent_resource",
+      "trust_domain": "workflow_private",
+      "responsibilities": [
+        "Store problem snapshots, references, memories, branch data, verifier data, draft LaTeX, and debug records",
+        "Remain outside native-tool reach",
+        "Expose data only through logical workflow resources"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V15",
+      "name": "methodology_prompts",
+      "kind": "embedded_resource",
+      "trust_domain": "workflow_private",
+      "responsibilities": [
+        "Embed Rethlas generation and verification methodology",
+        "Define phase-specific tasks",
+        "Preserve search, examples, counterexamples, planning, proving, failure synthesis, citation checking, and repair behavior"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V16",
+      "name": "generation_memory",
+      "kind": "persistent_resource",
+      "trust_domain": "workflow_private",
+      "responsibilities": [
+        "Append-only mathematical channels",
+        "Searchable prior conclusions and failures",
+        "Generation-visible but verifier-invisible records"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V17",
+      "name": "generator_domain",
+      "kind": "reasoning_domain",
+      "trust_domain": "workflow_generator",
+      "responsibilities": [
+        "Assess problem state",
+        "Search and reason",
+        "Create examples and counterexamples",
+        "Propose plans",
+        "Perform direct proving",
+        "Request branch rounds and proof assembly"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V18",
+      "name": "reference_search",
+      "kind": "integration_component",
+      "trust_domain": "workflow_private",
+      "responsibilities": [
+        "Search mathematical results",
+        "Snapshot user references",
+        "Record complete statements and identifiers",
+        "Expose only approved references to verifier"
+      ],
+      "implementation_status": "interface_planned_external_manual_validation"
+    },
+    {
+      "id": "V19",
+      "name": "branch_snapshot",
+      "kind": "immutable_resource",
+      "trust_domain": "workflow_private",
+      "responsibilities": [
+        "Freeze a common branch input",
+        "Prevent later generator writes from changing an active branch round",
+        "Provide the same logical starting point to every branch"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V20",
+      "name": "branch_domains",
+      "kind": "reasoning_domain_set",
+      "trust_domain": "workflow_branch",
+      "responsibilities": [
+        "Expose snapshot plus self branch only",
+        "Deny other branch reads and writes",
+        "Run sequentially if necessary",
+        "Seal result and revoke capability on commit"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V21",
+      "name": "join_domain",
+      "kind": "reasoning_domain",
+      "trust_domain": "workflow_join",
+      "responsibilities": [
+        "Open all required branch results only after the barrier is complete",
+        "Compare materially different approaches",
+        "Select a successful plan or request failure synthesis"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V22",
+      "name": "assembler_domain",
+      "kind": "reasoning_domain",
+      "trust_domain": "workflow_assembler",
+      "responsibilities": [
+        "Assemble a complete self-contained proof.tex",
+        "Put supporting statements before dependent statements",
+        "Put the target theorem last",
+        "Include complete external statements and identifiers"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V23",
+      "name": "latex_gate",
+      "kind": "validation_gate",
+      "trust_domain": "workflow_private",
+      "responsibilities": [
+        "Perform static LaTeX safety checks",
+        "Optionally require latexmk compilation",
+        "Block verification/finalization on failure",
+        "Record compiler diagnostics"
+      ],
+      "implementation_status": "planned_local_static_manual_compile"
+    },
+    {
+      "id": "V24",
+      "name": "verifier_domain",
+      "kind": "reasoning_domain",
+      "trust_domain": "workflow_verifier",
+      "responsibilities": [
+        "Read only statement, complete proof, approved cited references, and verifier memory",
+        "Check statements sequentially",
+        "Check referenced results and definitions",
+        "Record every critical error and gap",
+        "Never read generation memory or branch internals"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V25",
+      "name": "verdict_gate",
+      "kind": "validation_gate",
+      "trust_domain": "workflow_private",
+      "responsibilities": [
+        "Validate verification report shape",
+        "Compute correct iff critical_errors and gaps are empty",
+        "Issue no finalization authority on wrong",
+        "Route wrong verdict to repair"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V26",
+      "name": "repair_domain",
+      "kind": "reasoning_domain",
+      "trust_domain": "workflow_repair",
+      "responsibilities": [
+        "Read proof and verifier report",
+        "Resolve all reported findings",
+        "Backtrack or replan when a local patch is insufficient",
+        "Resubmit proof through LaTeX and verification gates"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V27",
+      "name": "finalizer_domain",
+      "kind": "mechanical_domain",
+      "trust_domain": "workflow_private",
+      "responsibilities": [
+        "Receive authority only from gates",
+        "Copy proof.tex to proof_verified.tex atomically",
+        "Seal the run",
+        "Never accept a model assertion as finalization evidence"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V28",
+      "name": "artifact_bridge",
+      "kind": "controlled_bridge",
+      "trust_domain": "cross_plane",
+      "responsibilities": [
+        "Import problem/reference snapshots from native workspace",
+        "Export only approved artifacts from private vault",
+        "Hash and audit every transfer",
+        "Prevent arbitrary path bridging"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V29",
+      "name": "debug_event_bus",
+      "kind": "observability_component",
+      "trust_domain": "diagnostics",
+      "responsibilities": [
+        "Generate trace IDs",
+        "Write structured transition and authorization events",
+        "Redact OAuth and capability secrets",
+        "Write last-error records and state snapshots",
+        "Produce a post-push manual validation bundle"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V30",
+      "name": "user_steering_queue",
+      "kind": "persistent_resource",
+      "trust_domain": "workflow_private",
+      "responsibilities": [
+        "Persist user guidance",
+        "Inject guidance only at safe checkpoints",
+        "Preserve steering history for debugging without exposing it to verifier"
+      ],
+      "implementation_status": "planned"
+    },
+    {
+      "id": "V31",
+      "name": "post_push_manual_validation",
+      "kind": "validation_process",
+      "trust_domain": "human_operator",
+      "responsibilities": [
+        "Validate real OAuth client compatibility",
+        "Validate webpage tool calling",
+        "Validate OS isolation under dangerous mode",
+        "Validate external search and multi-turn reasoning quality",
+        "Validate real LaTeX compilation and complete proof-repair loop"
+      ],
+      "implementation_status": "required_not_local"
+    }
+  ],
+  "edges": [
+    {
+      "id": "E001",
+      "source": "V01",
+      "target": "V02",
+      "type": "authentication_request",
+      "guard": "OAuth Authorization Code with PKCE",
+      "debug_event": "oauth.request"
+    },
+    {
+      "id": "E002",
+      "source": "V02",
+      "target": "V03",
+      "type": "authenticated_principal",
+      "guard": "Valid access token with issuer, audience, expiry, and registered client",
+      "debug_event": "oauth.accept_or_deny"
+    },
+    {
+      "id": "E003",
+      "source": "V03",
+      "target": "V04",
+      "type": "catalog_dispatch",
+      "guard": "Fixed schema version",
+      "debug_event": "mcp.tools_list"
+    },
+    {
+      "id": "E004",
+      "source": "V04",
+      "target": "V05",
+      "type": "native_tool_dispatch",
+      "guard": "Tool name belongs to native plane",
+      "debug_event": "tool.route.native"
+    },
+    {
+      "id": "E005",
+      "source": "V04",
+      "target": "V10",
+      "type": "workflow_tool_dispatch",
+      "guard": "Tool name begins with rethlas_ and is registered",
+      "debug_event": "tool.route.workflow"
+    },
+    {
+      "id": "E006",
+      "source": "V05",
+      "target": "V06",
+      "type": "native_authorization",
+      "guard": "L0 OAuth AND L1 native mode",
+      "debug_event": "native.authorization"
+    },
+    {
+      "id": "E007",
+      "source": "V06",
+      "target": "V07",
+      "type": "workspace_access",
+      "guard": "Workspace-relative path and native policy",
+      "debug_event": "native.workspace_access"
+    },
+    {
+      "id": "E008",
+      "source": "V06",
+      "target": "V08",
+      "type": "isolation_requirement",
+      "guard": "Arbitrary native execution requires attested hard isolation",
+      "debug_event": "native.isolation_check"
+    },
+    {
+      "id": "E009",
+      "source": "V08",
+      "target": "V09",
+      "type": "isolated_command_launch",
+      "guard": "Private vault absent from worker namespace",
+      "debug_event": "native.exec_launch"
+    },
+    {
+      "id": "E010",
+      "source": "V10",
+      "target": "V11",
+      "type": "workflow_dispatch",
+      "guard": "L0 OAuth plus workflow authorization input",
+      "debug_event": "workflow.request"
+    },
+    {
+      "id": "E011",
+      "source": "V11",
+      "target": "V12",
+      "type": "capability_issue_or_validate",
+      "guard": "Transition and role preconditions",
+      "debug_event": "capability.issue_validate_revoke"
+    },
+    {
+      "id": "E012",
+      "source": "V11",
+      "target": "V13",
+      "type": "state_persistence",
+      "guard": "Transactional state update",
+      "debug_event": "workflow.state_write"
+    },
+    {
+      "id": "E013",
+      "source": "V11",
+      "target": "V14",
+      "type": "private_resource_access",
+      "guard": "Logical resource mapping only",
+      "debug_event": "vault.resource_access"
+    },
+    {
+      "id": "E014",
+      "source": "V11",
+      "target": "V15",
+      "type": "methodology_task_selection",
+      "guard": "Current workflow state and domain role",
+      "debug_event": "methodology.task_selected"
+    },
+    {
+      "id": "E015",
+      "source": "V15",
+      "target": "V17",
+      "type": "generator_instruction",
+      "guard": "Generator role",
+      "debug_event": "domain.generator_task"
+    },
+    {
+      "id": "E016",
+      "source": "V11",
+      "target": "V17",
+      "type": "generator_domain_activation",
+      "guard": "Generator-compatible state",
+      "debug_event": "domain.generator_activate"
+    },
+    {
+      "id": "E017",
+      "source": "V12",
+      "target": "V17",
+      "type": "generator_capability",
+      "guard": "Scoped run/domain/role/state token",
+      "debug_event": "capability.generator"
+    },
+    {
+      "id": "E018",
+      "source": "V17",
+      "target": "V16",
+      "type": "generation_memory_read_write",
+      "guard": "Channel ACL and append-only rules",
+      "debug_event": "memory.generator"
+    },
+    {
+      "id": "E019",
+      "source": "V16",
+      "target": "V14",
+      "type": "private_storage",
+      "guard": "Generation memory subtree",
+      "debug_event": "vault.memory_write"
+    },
+    {
+      "id": "E020",
+      "source": "V17",
+      "target": "V18",
+      "type": "mathematical_retrieval",
+      "guard": "Search policy and result recording",
+      "debug_event": "research.search"
+    },
+    {
+      "id": "E021",
+      "source": "V18",
+      "target": "V14",
+      "type": "reference_snapshot",
+      "guard": "Approved reference manifest",
+      "debug_event": "research.reference_snapshot"
+    },
+    {
+      "id": "E022",
+      "source": "V17",
+      "target": "V19",
+      "type": "branch_snapshot_request",
+      "guard": "Direct-proving round complete",
+      "debug_event": "branch.snapshot_request"
+    },
+    {
+      "id": "E023",
+      "source": "V11",
+      "target": "V19",
+      "type": "branch_snapshot_creation",
+      "guard": "Plans are persisted and snapshot input is complete",
+      "debug_event": "branch.snapshot_created"
+    },
+    {
+      "id": "E024",
+      "source": "V19",
+      "target": "V20",
+      "type": "frozen_input",
+      "guard": "Read-only snapshot hash",
+      "debug_event": "branch.snapshot_opened"
+    },
+    {
+      "id": "E025",
+      "source": "V12",
+      "target": "V20",
+      "type": "branch_capability",
+      "guard": "Self branch only; other branches denied",
+      "debug_event": "capability.branch"
+    },
+    {
+      "id": "E026",
+      "source": "V20",
+      "target": "V14",
+      "type": "branch_local_storage",
+      "guard": "Branch-local subtree and sealed-write rule",
+      "debug_event": "branch.local_access"
+    },
+    {
+      "id": "E027",
+      "source": "V20",
+      "target": "V21",
+      "type": "sealed_branch_result",
+      "guard": "All required branches sealed before open",
+      "debug_event": "branch.barrier"
+    },
+    {
+      "id": "E028",
+      "source": "V11",
+      "target": "V21",
+      "type": "join_domain_activation",
+      "guard": "Barrier complete",
+      "debug_event": "domain.join_activate"
+    },
+    {
+      "id": "E029",
+      "source": "V12",
+      "target": "V21",
+      "type": "join_capability",
+      "guard": "Join state only",
+      "debug_event": "capability.join"
+    },
+    {
+      "id": "E030",
+      "source": "V21",
+      "target": "V16",
+      "type": "join_memory_update",
+      "guard": "Persist selected proof path or common failures",
+      "debug_event": "memory.join"
+    },
+    {
+      "id": "E031",
+      "source": "V21",
+      "target": "V22",
+      "type": "successful_plan_handoff",
+      "guard": "Join selected a complete proof strategy",
+      "debug_event": "join.to_assemble"
+    },
+    {
+      "id": "E032",
+      "source": "V11",
+      "target": "V22",
+      "type": "assembler_domain_activation",
+      "guard": "Assemble state",
+      "debug_event": "domain.assembler_activate"
+    },
+    {
+      "id": "E033",
+      "source": "V12",
+      "target": "V22",
+      "type": "assembler_capability",
+      "guard": "Draft proof resource only",
+      "debug_event": "capability.assembler"
+    },
+    {
+      "id": "E034",
+      "source": "V22",
+      "target": "V23",
+      "type": "proof_submission",
+      "guard": "Complete proof.tex supplied",
+      "debug_event": "latex.submitted"
+    },
+    {
+      "id": "E035",
+      "source": "V23",
+      "target": "V24",
+      "type": "validated_proof_handoff",
+      "guard": "Static checks pass and required compiler gate passes",
+      "debug_event": "latex.gate_result"
+    },
+    {
+      "id": "E036",
+      "source": "V11",
+      "target": "V24",
+      "type": "verifier_domain_activation",
+      "guard": "Verify state",
+      "debug_event": "domain.verifier_activate"
+    },
+    {
+      "id": "E037",
+      "source": "V12",
+      "target": "V24",
+      "type": "verifier_capability",
+      "guard": "Statement, proof, approved references, and verifier memory only",
+      "debug_event": "capability.verifier"
+    },
+    {
+      "id": "E038",
+      "source": "V24",
+      "target": "V18",
+      "type": "reference_verification",
+      "guard": "Approved citation lookup only",
+      "debug_event": "verifier.reference_check"
+    },
+    {
+      "id": "E039",
+      "source": "V24",
+      "target": "V14",
+      "type": "verifier_private_storage",
+      "guard": "Verifier subtree only; generation subtree denied",
+      "debug_event": "verifier.vault_access"
+    },
+    {
+      "id": "E040",
+      "source": "V24",
+      "target": "V25",
+      "type": "verification_findings",
+      "guard": "Structured report with every error and gap",
+      "debug_event": "verifier.report_submitted"
+    },
+    {
+      "id": "E041",
+      "source": "V25",
+      "target": "V11",
+      "type": "mechanical_verdict_transition",
+      "guard": "Server-computed verdict",
+      "debug_event": "verdict.computed"
+    },
+    {
+      "id": "E042",
+      "source": "V25",
+      "target": "V26",
+      "type": "wrong_verdict_route",
+      "guard": "One or more findings exist",
+      "debug_event": "verdict.to_repair"
+    },
+    {
+      "id": "E043",
+      "source": "V11",
+      "target": "V26",
+      "type": "repair_domain_activation",
+      "guard": "Repair state",
+      "debug_event": "domain.repair_activate"
+    },
+    {
+      "id": "E044",
+      "source": "V12",
+      "target": "V26",
+      "type": "repair_capability",
+      "guard": "Draft proof plus current verification report",
+      "debug_event": "capability.repair"
+    },
+    {
+      "id": "E045",
+      "source": "V26",
+      "target": "V23",
+      "type": "repaired_proof_resubmission",
+      "guard": "Updated proof.tex",
+      "debug_event": "repair.resubmit"
+    },
+    {
+      "id": "E046",
+      "source": "V25",
+      "target": "V27",
+      "type": "finalize_authority",
+      "guard": "LaTeX gate passed and findings are empty",
+      "debug_event": "capability.finalize"
+    },
+    {
+      "id": "E047",
+      "source": "V11",
+      "target": "V27",
+      "type": "finalizer_activation",
+      "guard": "Finalize state with gate evidence",
+      "debug_event": "domain.finalizer_activate"
+    },
+    {
+      "id": "E048",
+      "source": "V27",
+      "target": "V28",
+      "type": "verified_artifact_export",
+      "guard": "proof_verified.tex exists and run is sealed",
+      "debug_event": "artifact.export"
+    },
+    {
+      "id": "E049",
+      "source": "V28",
+      "target": "V07",
+      "type": "controlled_cross_plane_transfer",
+      "guard": "Approved import/export operation with content hash",
+      "debug_event": "artifact.bridge"
+    },
+    {
+      "id": "E050",
+      "source": "V03",
+      "target": "V29",
+      "type": "gateway_observability",
+      "guard": "Redacted structured event",
+      "debug_event": "debug.gateway"
+    },
+    {
+      "id": "E051",
+      "source": "V06",
+      "target": "V29",
+      "type": "native_policy_observability",
+      "guard": "No secrets or command-sensitive payload unless explicit debug mode",
+      "debug_event": "debug.native_policy"
+    },
+    {
+      "id": "E052",
+      "source": "V11",
+      "target": "V29",
+      "type": "workflow_observability",
+      "guard": "Before/after state plus transition reason",
+      "debug_event": "debug.workflow"
+    },
+    {
+      "id": "E053",
+      "source": "V12",
+      "target": "V29",
+      "type": "authorization_observability",
+      "guard": "Capability token is represented only by a hash prefix",
+      "debug_event": "debug.authorization"
+    },
+    {
+      "id": "E054",
+      "source": "V23",
+      "target": "V29",
+      "type": "latex_diagnostics",
+      "guard": "Bounded compiler/static diagnostics",
+      "debug_event": "debug.latex"
+    },
+    {
+      "id": "E055",
+      "source": "V25",
+      "target": "V29",
+      "type": "verdict_diagnostics",
+      "guard": "Finding counts and gate evidence",
+      "debug_event": "debug.verdict"
+    },
+    {
+      "id": "E056",
+      "source": "V01",
+      "target": "V30",
+      "type": "user_steering_submission",
+      "guard": "OAuth identity owns run",
+      "debug_event": "steering.submitted"
+    },
+    {
+      "id": "E057",
+      "source": "V30",
+      "target": "V11",
+      "type": "checkpoint_steering_injection",
+      "guard": "Safe workflow checkpoint; verifier excluded",
+      "debug_event": "steering.consumed"
+    },
+    {
+      "id": "E058",
+      "source": "V29",
+      "target": "V31",
+      "type": "manual_validation_bundle",
+      "guard": "Post-push operator access",
+      "debug_event": "manual.bundle_created"
+    },
+    {
+      "id": "E059",
+      "source": "V03",
+      "target": "V31",
+      "type": "client_compatibility_validation",
+      "guard": "Real webpage and OAuth client",
+      "debug_event": "manual.mcp_compatibility"
+    },
+    {
+      "id": "E060",
+      "source": "V08",
+      "target": "V31",
+      "type": "isolation_adversarial_validation",
+      "guard": "Real target OS/container",
+      "debug_event": "manual.isolation"
+    }
+  ],
+  "required_cycles": [
+    {
+      "id": "CYCLE-001",
+      "name": "proof_repair_loop",
+      "vertices": [
+        "V22",
+        "V23",
+        "V24",
+        "V25",
+        "V26"
+      ],
+      "meaning": "Assemble, validate, verify, repair, and resubmit until the mechanical verdict gate passes."
+    },
+    {
+      "id": "CYCLE-002",
+      "name": "branch_failure_replanning_loop",
+      "vertices": [
+        "V17",
+        "V19",
+        "V20",
+        "V21",
+        "V16"
+      ],
+      "meaning": "Direct proof failure creates isolated branch work, join results update memory, and the generator proposes a new round."
+    },
+    {
+      "id": "CYCLE-003",
+      "name": "workflow_capability_loop",
+      "vertices": [
+        "V10",
+        "V11",
+        "V12"
+      ],
+      "meaning": "Every super-tool action is dispatched, authorized, recorded, and returned to the workflow engine."
+    },
+    {
+      "id": "CYCLE-004",
+      "name": "debug_feedback_loop",
+      "vertices": [
+        "V03",
+        "V11",
+        "V29",
+        "V31"
+      ],
+      "meaning": "Runtime events produce a validation bundle whose findings drive later engineering corrections."
+    }
+  ],
+  "security_invariants": [
+    {
+      "id": "INV-001",
+      "statement": "Native dangerous authority never implies a workflow capability.",
+      "formal": "L1(dangerous) !-> L2(any)",
+      "test": "Create a dangerous-mode runtime and assert that a missing/foreign workflow capability is denied for every rethlas_* protected operation."
+    },
+    {
+      "id": "INV-002",
+      "statement": "The native workspace and private vault have no direct data edge.",
+      "formal": "all cross-plane data transfers pass through V28",
+      "test": "Graph validator rejects any V07<->V14 edge and runtime adversarial test attempts native reads of the private root."
+    },
+    {
+      "id": "INV-003",
+      "statement": "A branch capability can read its frozen snapshot and its own branch only.",
+      "formal": "branch_i.read = snapshot U branch_i; branch_i.read(branch_j)=deny for i!=j",
+      "test": "Seal branch A, enter branch B, and assert branch A result remains unavailable until join."
+    },
+    {
+      "id": "INV-004",
+      "statement": "A verifier cannot read generation memory, branch internals, steering history, or generator confidence.",
+      "formal": "verifier.read intersection generation_private = empty",
+      "test": "Use a verifier capability against every forbidden logical resource and assert ROLE_ACCESS_DENIED with a debug decision event."
+    },
+    {
+      "id": "INV-005",
+      "statement": "A sealed domain cannot be mutated and its capability is revoked.",
+      "formal": "sealed(domain) => no_write(domain) AND revoked(capability)",
+      "test": "Commit a branch then retry write/commit with the same handle."
+    },
+    {
+      "id": "INV-006",
+      "statement": "The model cannot set verdict=correct or publish proof_verified.tex directly.",
+      "formal": "finalize_authority originates only at V25 after V23 pass and empty findings",
+      "test": "Attempt finalize from generator, assembler, verifier, repair, and native dangerous contexts."
+    },
+    {
+      "id": "INV-007",
+      "statement": "Tool catalog stability is not an authorization mechanism.",
+      "formal": "tools_list(mode,state,role) is constant; allow decisions are server-side",
+      "test": "Compare tools/list across native modes and workflow states, then verify calls still enforce role/state ACLs."
+    },
+    {
+      "id": "INV-008",
+      "statement": "Every authorization and state transition has a traceable, redacted debug event.",
+      "formal": "decision or transition => exists event(trace_id, before, after, reason)",
+      "test": "Run deterministic unit transitions and assert event completeness without raw secrets."
+    }
+  ],
+  "workflow_transition_graph": {
+    "initial": "created",
+    "terminal": [
+      "done",
+      "cancelled",
+      "failed"
+    ],
+    "states": [
+      "created",
+      "assess",
+      "explore",
+      "propose_plans",
+      "direct_proving",
+      "branch_prepare",
+      "branch_run",
+      "branch_join",
+      "identify_failures",
+      "replan",
+      "assemble",
+      "latex_validate",
+      "verify",
+      "repair",
+      "finalize",
+      "done",
+      "cancelled",
+      "failed"
+    ],
+    "transitions": [
+      [
+        "created",
+        "assess"
+      ],
+      [
+        "assess",
+        "explore"
+      ],
+      [
+        "explore",
+        "propose_plans"
+      ],
+      [
+        "propose_plans",
+        "direct_proving"
+      ],
+      [
+        "direct_proving",
+        "assemble"
+      ],
+      [
+        "direct_proving",
+        "branch_prepare"
+      ],
+      [
+        "branch_prepare",
+        "branch_run"
+      ],
+      [
+        "branch_run",
+        "branch_run"
+      ],
+      [
+        "branch_run",
+        "branch_join"
+      ],
+      [
+        "branch_join",
+        "assemble"
+      ],
+      [
+        "branch_join",
+        "identify_failures"
+      ],
+      [
+        "identify_failures",
+        "replan"
+      ],
+      [
+        "replan",
+        "propose_plans"
+      ],
+      [
+        "assemble",
+        "latex_validate"
+      ],
+      [
+        "latex_validate",
+        "verify"
+      ],
+      [
+        "latex_validate",
+        "repair"
+      ],
+      [
+        "verify",
+        "finalize"
+      ],
+      [
+        "verify",
+        "repair"
+      ],
+      [
+        "repair",
+        "latex_validate"
+      ],
+      [
+        "finalize",
+        "done"
+      ]
+    ],
+    "global_transitions": [
+      "any_non_terminal -> cancelled",
+      "unrecoverable_error -> failed"
+    ]
+  },
+  "debug_design": {
+    "principles": [
+      "Every external request receives a trace_id.",
+      "Every state transition records before_state, after_state, actor, reason, and evidence identifiers.",
+      "Every authorization decision records allow/deny, policy layer, role, resource, and reason.",
+      "OAuth tokens, authorization codes, client secrets, capability tokens, passwords, and raw environment secrets are never logged.",
+      "Capability tokens are logged only as a one-way hash prefix.",
+      "Debug payload capture is opt-in and bounded.",
+      "A last_error.json record is written atomically after an unhandled failure.",
+      "State snapshots are written after each successful transition.",
+      "Manual-validation bundles are available only after a run is terminal or through an explicit operator path."
+    ],
+    "event_fields": [
+      "timestamp",
+      "trace_id",
+      "run_id",
+      "event_type",
+      "component",
+      "actor_role",
+      "domain_id",
+      "before_state",
+      "after_state",
+      "decision",
+      "reason",
+      "details"
+    ],
+    "files": {
+      "global_events": ".re-ctm/debug/events.jsonl",
+      "run_events": ".re-ctm/private/runs/<run_id>/debug/events.jsonl",
+      "state_snapshots": ".re-ctm/private/runs/<run_id>/debug/state/<sequence>.json",
+      "last_error": ".re-ctm/private/runs/<run_id>/debug/last_error.json",
+      "manual_manifest": ".re-ctm/private/runs/<run_id>/debug/manual-validation-manifest.json"
+    }
+  },
+  "implementation_graph": {
+    "phases": [
+      {
+        "id": "P0",
+        "name": "Engineering graph, repository, debug contract",
+        "depends_on": [],
+        "deliverables": [
+          "engineering-graph.json",
+          "graph validator",
+          "package skeleton",
+          "structured debug event bus",
+          "updated project-progress.json"
+        ]
+      },
+      {
+        "id": "P1",
+        "name": "Persistent state and capability authority",
+        "depends_on": [
+          "P0"
+        ],
+        "deliverables": [
+          "SQLite run store",
+          "private vault",
+          "signed capability handles",
+          "revocation and epoch checks",
+          "authorization tests"
+        ]
+      },
+      {
+        "id": "P2",
+        "name": "Rethlas workflow core",
+        "depends_on": [
+          "P1"
+        ],
+        "deliverables": [
+          "workflow state machine",
+          "generation memory",
+          "phase tasks",
+          "branch snapshot/seal/join",
+          "verifier firewall",
+          "repair/finalization gates"
+        ]
+      },
+      {
+        "id": "P3",
+        "name": "Native CMT plane",
+        "depends_on": [
+          "P0"
+        ],
+        "deliverables": [
+          "workspace-confined file tools",
+          "safe/trusted/dangerous policy",
+          "fail-closed native execution interface",
+          "cross-plane bypass tests"
+        ]
+      },
+      {
+        "id": "P4",
+        "name": "OAuth-only MCP gateway",
+        "depends_on": [
+          "P1",
+          "P2",
+          "P3"
+        ],
+        "deliverables": [
+          "OAuth metadata and DCR",
+          "Authorization Code with PKCE",
+          "Access-token enforcement",
+          "Fixed tools/list",
+          "tools/call routing"
+        ]
+      },
+      {
+        "id": "P5",
+        "name": "LaTeX and artifact pipeline",
+        "depends_on": [
+          "P2"
+        ],
+        "deliverables": [
+          "proof.tex contract",
+          "static safety checks",
+          "optional/required latexmk gate",
+          "mechanical proof_verified.tex publication",
+          "controlled artifact export"
+        ]
+      },
+      {
+        "id": "P6",
+        "name": "Local deterministic validation",
+        "depends_on": [
+          "P1",
+          "P2",
+          "P3",
+          "P4",
+          "P5"
+        ],
+        "deliverables": [
+          "unit tests",
+          "authorization adversarial tests",
+          "state-machine tests",
+          "graph consistency test",
+          "debug-event completeness test"
+        ]
+      },
+      {
+        "id": "P7",
+        "name": "Post-push manual validation",
+        "depends_on": [
+          "P6"
+        ],
+        "deliverables": [
+          "real webpage OAuth connection",
+          "real multi-turn domain execution",
+          "real target-PC isolation test",
+          "real theorem/web retrieval",
+          "real LaTeX engine",
+          "end-to-end proof repair and verified artifact"
+        ]
+      }
+    ],
+    "critical_path": [
+      "P0",
+      "P1",
+      "P2",
+      "P4",
+      "P6",
+      "P7"
+    ]
+  },
+  "validation_boundary": {
+    "locally_verifiable": [
+      "JSON and graph consistency",
+      "SQLite persistence",
+      "Capability signing, expiry, revocation, and role/state checks",
+      "Dangerous/native non-inheritance",
+      "Branch data firewall",
+      "Verifier data firewall",
+      "Mechanical verdict and finalization rules",
+      "Static LaTeX checks",
+      "MCP JSON-RPC dispatch with synthetic tokens",
+      "Debug event completeness and secret redaction"
+    ],
+    "not_claimed_locally": [
+      "Compatibility with the final webpage MCP host",
+      "Full browser OAuth redirect behavior",
+      "Hard isolation on the final target PC or container runtime",
+      "Real external theorem/web search quality and availability",
+      "Mathematical reasoning quality of the web model over many turns",
+      "Cognitive independence equivalent to fresh model contexts",
+      "Real LaTeX toolchain availability on the target system",
+      "Complete end-to-end 95-percent behavior acceptance"
+    ],
+    "manual_validation_rule": "No local test result may be described as full end-to-end validation. The post-push operator must execute the manual acceptance graph and attach the generated debug manifest."
+  },
+  "derived_undirected_metrics": {
+    "status": "computed_from_current_graph",
+    "vertex_count": 31,
+    "edge_count_after_parallel_collapse": 60,
+    "connected_components": 1,
+    "cycle_rank": 30,
+    "articulation_points": [
+      "V08",
+      "V11"
+    ],
+    "bridges": [
+      [
+        "V08",
+        "V09"
+      ],
+      [
+        "V11",
+        "V13"
+      ]
+    ],
+    "two_core_vertices": [
+      "V01",
+      "V02",
+      "V03",
+      "V04",
+      "V05",
+      "V06",
+      "V07",
+      "V08",
+      "V10",
+      "V11",
+      "V12",
+      "V14",
+      "V15",
+      "V16",
+      "V17",
+      "V18",
+      "V19",
+      "V20",
+      "V21",
+      "V22",
+      "V23",
+      "V24",
+      "V25",
+      "V26",
+      "V27",
+      "V28",
+      "V29",
+      "V30",
+      "V31"
+    ],
+    "interpretation": {
+      "V08": "The native isolation boundary is an articulation point because the current native execution worker has exactly one trusted entrance. This is intentional and must fail closed; availability can later be improved with multiple equivalent isolated workers behind the same boundary.",
+      "V11": "The workflow engine is an articulation point because it owns the state-machine contract. Its durability depends on transactional state in V13 and replayable events in V29.",
+      "V08-V09": "The isolated command worker is a leaf service in the current graph. Its loss disables native arbitrary execution but must not affect the Rethlas workflow plane.",
+      "V11-V13": "The run-state store is represented as a leaf persistence service. Debug replay and backups are required so this bridge is not a silent operational single point of failure.",
+      "cycle_rank": "Thirty independent undirected cycle directions reflect the deliberately feedback-heavy workflow: search-memory, branch-join, proof-repair, authorization-dispatch, and debug-validation loops. They are not import cycles."
+    }
+  }
+}

@@ -1,0 +1,153 @@
+{
+  "schema_version": "1.0.0",
+  "project": "Re-CTM",
+  "status": "pending_post_push",
+  "rule": "These checks are deliberately not claimed by local unit tests. Execute them after pushing the repository and attach the terminal run's debug manifest and relevant redacted logs.",
+  "prerequisites": [
+    "A target PC or target container matching the intended deployment",
+    "A real webpage MCP client supporting OAuth",
+    "HTTPS or an approved loopback development URL",
+    "A configured native isolation helper/container with no private-vault mount",
+    "A real LaTeX toolchain when RE_CTM_LATEX_POLICY=required",
+    "External theorem/web retrieval connectivity if used by the reasoning workflow"
+  ],
+  "checks": [
+    {
+      "id": "MV-001",
+      "name": "OAuth discovery and dynamic registration",
+      "status": "pending",
+      "steps": [
+        "Connect the webpage client to /.well-known/oauth-protected-resource and the MCP URL.",
+        "Confirm DCR creates a client and the browser is redirected to /oauth/authorize.",
+        "Complete PKCE authorization and token exchange."
+      ],
+      "expected": [
+        "No static bearer or no-auth path is offered.",
+        "The client reaches tools/list only with a valid OAuth access token.",
+        "Debug events contain fingerprints, not raw codes, secrets, passwords, or tokens."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "MV-002",
+      "name": "Fixed tool catalog across native modes and workflow states",
+      "status": "pending",
+      "steps": [
+        "Capture tools/list in safe, trusted, and dangerous native modes.",
+        "Capture tools/list during generator, branch, join, verifier, and repair states."
+      ],
+      "expected": [
+        "Catalog and schemas are identical.",
+        "Authorization changes server-side call results rather than catalog visibility."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "MV-003",
+      "name": "Dangerous native isolation",
+      "status": "pending",
+      "steps": [
+        "Install bubblewrap on Linux or provide an independently reviewed external helper.",
+        "Run `re-ctm attest-native --backend bubblewrap --workspace <workspace> --data-root <data-root> --private-root <private-root>` without enabling native execution.",
+        "Run `python3 scripts/manual_native_isolation_test.py --backend bubblewrap --workspace <workspace> --data-root <data-root> --private-root <private-root> --output native-isolation-validation.json` and review every check.",
+        "Only after the report passes, run Re-CTM with native_mode=dangerous, RE_CTM_NATIVE_EXEC_BACKEND=bubblewrap, and the operator acknowledgement RE_CTM_NATIVE_ISOLATION_ATTESTED=1.",
+        "Use exec_command to enumerate mounts and attempt direct reads of the configured Re-CTM data/private roots.",
+        "Attempt privilege escalation, parent-environment recovery, namespace creation, and access through interpreters or nested shells."
+      ],
+      "expected": [
+        "Native workspace remains usable.",
+        "Private run store is not mounted or otherwise reachable.",
+        "The helper response is nonce-bound and attests mount, user, PID, environment, capability, and network properties.",
+        "Safe mode has a private network namespace; trusted/dangerous network behavior matches the selected native policy.",
+        "Dangerous never grants a rethlas_* capability or finalization authority."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "MV-004",
+      "name": "Sequential branch-domain information barrier",
+      "status": "pending",
+      "steps": [
+        "Create at least three materially different decomposition plans.",
+        "Execute branch A, seal it, then enter branch B and branch C.",
+        "Try rethlas_read against prior and future branch identifiers before join.",
+        "Enter join only after all branches are sealed."
+      ],
+      "expected": [
+        "Every branch receives the same snapshot hash.",
+        "Cross-branch reads are denied until join.",
+        "Sealed capability reuse is denied.",
+        "Join receives all branch results simultaneously."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "MV-005",
+      "name": "Verifier data firewall and mechanical verdict",
+      "status": "pending",
+      "steps": [
+        "Reach verifier state with a complete proof.tex.",
+        "Attempt to read generation memory, branch results, steering, and join internals.",
+        "Submit a report whose model-supplied verdict conflicts with its findings."
+      ],
+      "expected": [
+        "All generation-private reads are denied.",
+        "Server computes correct only when critical_errors and gaps are both empty.",
+        "Wrong findings route to repair and cannot create proof_verified.tex."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "MV-006",
+      "name": "Browser disconnect, resume, steering, and cancellation",
+      "status": "pending",
+      "steps": [
+        "Disconnect the webpage after a task is issued.",
+        "Reconnect with the same OAuth client and call rethlas_resume.",
+        "Queue steering and confirm it appears only at a safe generator/repair checkpoint.",
+        "Cancel another run and attempt further writes with its previous capability."
+      ],
+      "expected": [
+        "State survives browser disconnect.",
+        "Steering is not exposed to verifier.",
+        "Cancelled run is sealed and previous capabilities fail."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "MV-007",
+      "name": "Real LaTeX gate and verified artifact",
+      "status": "pending",
+      "steps": [
+        "Run on Linux with RE_CTM_LATEX_POLICY=required, bubblewrap, and a real latexmk installation.",
+        "Submit malformed, external-input, shell-escape, and valid self-contained documents.",
+        "Create a host-only readable LaTeX class or file outside the compiler scratch directory and confirm the proof cannot load it even by absolute path.",
+        "Complete a correct verification report for the valid document."
+      ],
+      "expected": [
+        "Unsafe or uncompilable LaTeX routes to repair, and Re-CTM never falls back to compiling model-generated TeX directly on the host.",
+        "The compiler receives only a scratch workspace plus read-only system TeX/toolchain roots; Re-CTM private state is not mounted.",
+        "Only a compiled proof with empty findings reaches done.",
+        "The sole final delivery artifact is proof_verified.tex."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "MV-008",
+      "name": "Rethlas methodology behavior acceptance",
+      "status": "pending",
+      "steps": [
+        "Use representative easy, difficult, citation-heavy, counterexample-sensitive, and repair-requiring math problems.",
+        "Inspect memory channels, multiple plan generation, exact per-plan/per-subgoal direct screening, one-branch-per-plan work, all-branch join, failure synthesis, replanning, verification audits, and changed-proof repair.",
+        "Use rethlas_retrieve for nontrivial claims; for useful results, inspect the source paper context/proof and persist definitions, applicability checks, and identifiers before relying on them."
+      ],
+      "expected": [
+        "Core Rethlas methodology is observably preserved despite sequential domains.",
+        "Failures remain queryable and influence new plans.",
+        "External results include complete statements and applicability checks.",
+        "Operator judges the target 95-percent functional-equivalence criterion."
+      ],
+      "evidence": []
+    }
+  ]
+}

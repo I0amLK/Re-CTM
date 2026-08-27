@@ -1,0 +1,203 @@
+{
+  "schema_version": "1.0",
+  "tasks": {
+    "assess": {
+      "role": "generator",
+      "title": "Assess the mathematical problem",
+      "objective": "Read the exact problem and references, initialize mathematical memory, extract assumptions, identify terminology, and decide the first balanced retrieval/reasoning actions.",
+      "required_records": [
+        "memory:generation:immediate_conclusions",
+        "memory:generation:events"
+      ],
+      "commit_action": "assessment_complete",
+      "rules": [
+        "Use the complete original statement as authoritative input.",
+        "Do not claim the problem is impossible merely because it may be open.",
+        "Record cheap deductions and a concrete initial search/reasoning plan.",
+        "Separate verified facts, hypotheses, conjectures, and unknowns."
+      ]
+    },
+    "explore": {
+      "role": "generator",
+      "title": "Explore results, examples, counterexamples, and proof directions",
+      "objective": "Combine deep independent reasoning with mathematical retrieval, toy examples, counterexample testing, and memory reuse before selecting decomposition plans.",
+      "required_records": [
+        "memory:generation:events"
+      ],
+      "commit_action": "exploration_complete",
+      "rules": [
+        "Search nontrivial claims, but stop leaning on retrieval when it no longer helps.",
+        "When using an external result, record its complete statement and identifiers and check local definitions and assumptions.",
+        "Analyze partial results by explaining their extra hypotheses and where their methods fail for the full problem.",
+        "Construct toy examples and actively test fragile claims with counterexamples.",
+        "Persist every important conclusion, obstruction, and failed path."
+      ]
+    },
+    "propose_plans": {
+      "role": "generator",
+      "title": "Propose materially different decomposition plans",
+      "objective": "Create at least two distinct proof strategies, each with ordered subgoals, motivation, dependencies, and known risks.",
+      "required_records": [
+        "memory:generation:subgoals"
+      ],
+      "commit_action": "plans_proposed",
+      "rules": [
+        "Plans must be materially different rather than cosmetic rewrites.",
+        "Each plan must state how it avoids known counterexamples and failed paths.",
+        "Each plan must be directly screenable subgoal by subgoal."
+      ]
+    },
+    "direct_proving": {
+      "role": "generator",
+      "title": "Directly screen every active decomposition plan",
+      "objective": "Attempt all subgoals of each active plan, reuse relevant examples and references, and identify exact stuck points before requesting isolated branch work.",
+      "required_records": [
+        "memory:generation:proof_steps"
+      ],
+      "commit_action": "direct_proving_complete",
+      "commit_payload_contract": {
+        "outcome": "solved|needs_branches",
+        "screening": "Exactly one report for every active plan. Every report names every subgoal once with solved|partial|stuck status, a non-empty summary, and key_stuck_points for partial/stuck plans.",
+        "solved_fields": [
+          "selected_plan_id",
+          "proof_route"
+        ],
+        "branch_fields": [
+          "branch_plans containing every active plan exactly once"
+        ]
+      },
+      "rules": [
+        "Try to carry each whole plan through before abandoning it.",
+        "When stuck on a subgoal, test the subgoal with counterexamples immediately.",
+        "Record solved, partial, and stuck status for every subgoal.",
+        "A solved outcome must select a plan whose complete screening is solved and must contain a full-proof route.",
+        "A recursive round is allowed only after every active plan and every one of its subgoals has been screened; one branch is then created for every active plan."
+      ]
+    },
+    "branch_run": {
+      "role": "branch",
+      "title": "Work independently on one assigned proof plan",
+      "objective": "Use the frozen snapshot and assigned plan only, deepen or locally refine that plan, and return either a complete proof route or precise failure evidence.",
+      "required_records": [
+        "memory:branch:proof_steps"
+      ],
+      "commit_action": "branch_complete",
+      "commit_payload_contract": {
+        "status": "solved|partial|failed",
+        "summary": "non-empty",
+        "solved_requires": "proof_route",
+        "partial_or_failed_requires": "unproved_subgoals or failure_evidence"
+      },
+      "rules": [
+        "Do not request or infer another branch's result before the join barrier.",
+        "Preserve continuity with the assigned plan rather than restarting from zero.",
+        "Record all progress and failures in branch-local memory.",
+        "Return a structured result with status solved, partial, or failed."
+      ]
+    },
+    "branch_join": {
+      "role": "join",
+      "title": "Join the sealed branch results",
+      "objective": "Compare every branch from the same frozen snapshot, select a complete route if one exists, or synthesize common failure information for replanning.",
+      "required_records": [],
+      "commit_action": "join_complete",
+      "commit_payload_contract": {
+        "outcome": "solved|failed",
+        "considered_branch_ids": "Exactly every sealed branch id once.",
+        "solved_requires": "A selected solved branch id or synthesis_proof_route.",
+        "failed_requires": "A non-empty common_failures array."
+      },
+      "rules": [
+        "Read all sealed results before selecting a route.",
+        "Do not merge incompatible claims without rechecking them.",
+        "If no branch succeeds, identify recurring obstructions and evidence rather than merely saying the problem is hard."
+      ]
+    },
+    "identify_failures": {
+      "role": "generator",
+      "title": "Synthesize the key failures",
+      "objective": "Turn failed direct and branch attempts into reusable constraints for the next planning generation.",
+      "required_records": [
+        "memory:generation:failed_paths"
+      ],
+      "commit_action": "failures_identified",
+      "rules": [
+        "List plan-specific stuck points and common obstructions.",
+        "Distinguish false subgoals, missing hypotheses, missing background, and merely incomplete arguments.",
+        "State concrete implications for the next plan set."
+      ]
+    },
+    "replan": {
+      "role": "generator",
+      "title": "Prepare a new planning generation",
+      "objective": "Use accumulated failure knowledge, counterexamples, and successful partial steps to define a materially improved search space.",
+      "required_records": [
+        "memory:generation:big_decisions"
+      ],
+      "commit_action": "replan_complete",
+      "rules": [
+        "Do not repeat a failed plan unchanged.",
+        "Explain what new information justifies each new direction.",
+        "Preserve useful partial lemmas even when their original plans failed."
+      ]
+    },
+    "assemble": {
+      "role": "assembler",
+      "title": "Assemble a complete self-contained LaTeX proof",
+      "objective": "Write draft/proof.tex as a single compilable document containing the complete target statement and full proof in dependency order.",
+      "required_records": [
+        "proof"
+      ],
+      "commit_action": "proof_submitted",
+      "rules": [
+        "The document must be self-contained and must not use input/include or shell escape.",
+        "Supporting definitions, lemmas, and propositions precede statements that use them.",
+        "The final target theorem appears last and repeats the complete original statement.",
+        "External results include complete statements, paper identifiers, theorem identifiers, and arXiv identifiers when available."
+      ]
+    },
+    "verify": {
+      "role": "verifier",
+      "title": "Verify the complete proof independently",
+      "objective": "Audit the proof sequentially, check every small inference and external reference, and report every critical error and gap under a strict accept rule.",
+      "required_records": [
+        "memory:verifier:statement_checks",
+        "memory:verifier:events",
+        "verification_report"
+      ],
+      "commit_action": "verification_submitted",
+      "commit_payload_contract": {
+        "memory_preconditions": "At least one statement_checks record and one audit event. If the proof cites external results, reference_checks must also be non-empty.",
+        "verification_report": "summary plus complete critical_errors and gaps arrays; wrong findings require repair_hints."
+      },
+      "rules": [
+        "Do not access generation memory, branches, steering, or generator confidence.",
+        "Check exact definitions, formulas, quantifiers, assumptions, and object existence.",
+        "Check external statements and the transition from each statement to its use.",
+        "Persist sequential statement checks and an audit-complete event before submitting the report.",
+        "When the proof declares citations or theorem identifiers, persist reference checks before submitting the report.",
+        "A proof is correct only when both critical_errors and gaps are empty.",
+        "The server, not the verifier model, computes the final verdict."
+      ]
+    },
+    "repair": {
+      "role": "repair",
+      "title": "Repair the proof using the verifier report",
+      "objective": "Resolve every critical error and gap, changing strategy or backtracking when a local edit cannot repair the proof.",
+      "required_records": [
+        "proof"
+      ],
+      "commit_action": "repair_submitted",
+      "commit_payload_contract": {
+        "proof": "The full replacement proof must differ from the last proof that received a wrong verdict."
+      },
+      "rules": [
+        "Resolve critical errors first and then all remaining gaps.",
+        "Do not assume every repair is local.",
+        "Record invalidated paths and new decisions.",
+        "Do not resubmit the exact proof bytes that just failed verification.",
+        "Resubmit the entire proof through LaTeX and verification gates."
+      ]
+    }
+  }
+}

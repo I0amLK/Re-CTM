@@ -1,0 +1,16 @@
+Re-CTM
+Copyright 2026 Re-CTM Contributors
+
+Re-CTM includes modified software, architecture concepts, documentation,
+and methodological material derived from the following Apache-2.0 projects:
+
+Coding Tools MCP
+Copyright 2026 Coding Tools MCP Contributors
+Source: https://github.com/xyTom/coding-tools-mcp
+
+Rethlas
+Copyright Rethlas contributors
+Source: https://github.com/frenzymath/Rethlas
+
+Re-CTM is a new integrated work. The upstream projects are not responsible
+for Re-CTM's modifications, security claims, workflow behavior, or releases.
