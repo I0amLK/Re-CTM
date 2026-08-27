@@ -1,7 +1,7 @@
 {
   "project": {
     "name": "Re-CTM",
-    "status": "engineering_checkpoint_ready_for_remote",
+    "status": "local_checkpoint_committed_push_blocked",
     "target": "A single installable OAuth MCP runtime combining streamlined CMT computer tools with a Rethlas-derived mathematical reasoning workflow.",
     "updated_at": "2026-08-26T21:45:00-07:00",
     "source_references": {
@@ -413,9 +413,10 @@
       "P5"
     ],
     "current_phase_id": "P3/P4/P6/P7/P8",
-    "current_focus": "A remote-ready engineering checkpoint exists; Git commit/push and the eight real webpage/target-PC/methodology acceptance checks remain.",
+    "current_focus": "A committed local checkpoint exists. Push is blocked only because this runtime has no GitHub HTTPS credentials or usable SSH transport; all eight real webpage/target-PC/methodology acceptance checks remain post-push.",
     "next_actions": [
-      "Push to https://github.com/I0amLK/Re-CTM.git and observe GitHub Actions",
+      "Authenticate this machine for GitHub HTTPS or perform `git push -u origin main` from an authenticated shell",
+      "Observe the first GitHub Actions run after the push",
       "Run all checks in manual-validation.json and attach redacted evidence",
       "Run the packaged bubblewrap isolation harness on the target PC before enabling native exec",
       "Run representative mathematical problems through the real webpage client",
@@ -477,11 +478,19 @@
       "basis": "Identity confirmed from public commits owned by GitHub account I0amLK; configured only in this repository."
     },
     "remote": "https://github.com/I0amLK/Re-CTM.git",
-    "push_status": "pending_attempt",
+    "push_status": "blocked_missing_runtime_credentials",
+    "latest_local_commit_hash": "106959b7a0407ee3a69156d1d111f93c2d8a61dc",
+    "push_attempt": {
+      "transport": "https",
+      "non_interactive": true,
+      "result": "failed_before_authentication",
+      "reason": "Git could not read a GitHub username because terminal prompts were disabled and no credential helper/token was available.",
+      "ssh_fallback": "unavailable; outbound SSH connection was closed before authentication"
+    },
     "initial_files": [
       "All current source, tests, graph, debug, validation, and planning files are intended for the initial commit."
     ],
-    "working_tree_note": "Initial implementation commit exists; this ledger update will be committed before the first push attempt."
+    "working_tree_note": "Two engineering commits exist and the tree was clean before this push-status ledger update."
   },
   "engineering_debug_notes": [
     {
@@ -511,6 +520,13 @@
       "scope": "local repository metadata only",
       "resolution": "Confirmed Peter Liu and the numeric GitHub noreply address from public I0amLK commits, then configured them only in Re-CTM/.git/config.",
       "preventive_action": "Never infer or expose a private email; prefer an identity already present in public commits and record its provenance."
+    },
+    {
+      "id": "DBG-005",
+      "symptom": "The non-interactive HTTPS push failed before authentication because the runtime has no GitHub credential helper, token, or interactive username prompt; SSH port 22 was also unavailable.",
+      "scope": "remote transport only",
+      "resolution": "Preserved both local commits, kept origin configured, and recorded the exact blocker without embedding credentials in the repository.",
+      "preventive_action": "Push from an authenticated shell or install a credential helper; never place a personal access token in a remote URL, environment example, debug bundle, or project ledger."
     }
   ],
   "known_risks": [
@@ -611,6 +627,10 @@
     {
       "timestamp": "2026-08-26T21:48:00-07:00",
       "event": "Created root commit f003d43973a02df45ba011b3c6041645cd379b03 using the public GitHub commit identity Peter Liu <51688491+I0amLK@users.noreply.github.com>."
+    },
+    {
+      "timestamp": "2026-08-26T21:49:00-07:00",
+      "event": "Created checkpoint commit 106959b7a0407ee3a69156d1d111f93c2d8a61dc, configured origin to https://github.com/I0amLK/Re-CTM.git, and attempted non-interactive HTTPS/SSH push. Push is blocked by missing runtime credentials/SSH transport, not by repository state."
     }
   ]
 }
