@@ -146,9 +146,9 @@ def _validate_security_shape(data: dict[str, Any]) -> None:
     if frozenset((native, vault)) in direct_pairs:
         raise ValueError("native_workspace must not have a direct edge to private_vault")
     invariant_ids = {item["id"] for item in data["security_invariants"]}
-    required = {f"INV-{number:03d}" for number in range(1, 9)}
+    required = {f"INV-{number:03d}" for number in range(1, 10)}
     if not required.issubset(invariant_ids):
-        raise ValueError("required security invariants INV-001 through INV-008 are missing")
+        raise ValueError("required security invariants INV-001 through INV-009 are missing")
 
 
 def _validate_jsonld_shape(data: dict[str, Any]) -> None:

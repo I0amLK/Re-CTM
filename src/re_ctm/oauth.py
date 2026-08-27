@@ -205,12 +205,8 @@ class OAuthService:
         debug: DebugEventBus,
         token_ttl: int = ACCESS_TOKEN_TTL_SECONDS,
     ) -> None:
-        if not server_url.startswith(("https://", "http://127.0.0.1", "http://localhost")):
-            raise ReCTMError(
-                "OAUTH_SERVER_URL_INVALID",
-                "OAuth server URL must be HTTPS or a loopback HTTP URL.",
-                category="validation",
-            )
+        if server_url:
+            _validate_server_url(server_url)
         if not password:
             raise ReCTMError(
                 "OAUTH_PASSWORD_REQUIRED",
@@ -230,8 +226,8 @@ class OAuthService:
         self.debug = debug
         self.token_ttl = token_ttl
 
-    def authorization_server_metadata(self) -> dict[str, Any]:
-        base = self.server_url
+    def authorization_server_metadata(self, *, base_url: str | None = None) -> dict[str, Any]:
+        base = self._base_url(base_url)
         return {
             "issuer": base,
             "authorization_endpoint": f"{base}/oauth/authorize",
@@ -243,10 +239,11 @@ class OAuthService:
             "token_endpoint_auth_methods_supported": sorted(SUPPORTED_AUTH_METHODS),
         }
 
-    def protected_resource_metadata(self) -> dict[str, Any]:
+    def protected_resource_metadata(self, *, base_url: str | None = None) -> dict[str, Any]:
+        base = self._base_url(base_url)
         return {
-            "resource": self.server_url,
-            "authorization_servers": [self.server_url],
+            "resource": base,
+            "authorization_servers": [base],
             "bearer_methods_supported": ["header"],
         }
 
@@ -281,7 +278,13 @@ class OAuthService:
         )
         return result
 
-    def validate_authorization_request(self, params: Mapping[str, str]) -> dict[str, str]:
+    def validate_authorization_request(
+        self,
+        params: Mapping[str, str],
+        *,
+        base_url: str | None = None,
+    ) -> dict[str, str]:
+        base = self._base_url(base_url)
         client_id = str(params.get("client_id") or "")
         redirect_uri = str(params.get("redirect_uri") or "")
         response_type = str(params.get("response_type") or "")
@@ -298,7 +301,7 @@ class OAuthService:
             raise invalid_argument("response_type must be code")
         if method != "S256" or not valid_pkce_challenge(code_challenge):
             raise invalid_argument("code_challenge_method must be S256 with a valid challenge")
-        if resource != self.server_url:
+        if resource != base:
             raise ReCTMError("OAUTH_INVALID_TARGET", "resource must identify this server.", category="permission")
         return {
             "client_id": client_id,
@@ -314,8 +317,9 @@ class OAuthService:
         *,
         password: str,
         trace_id: str,
+        base_url: str | None = None,
     ) -> str:
-        validated = self.validate_authorization_request(params)
+        validated = self.validate_authorization_request(params, base_url=base_url)
         if not secrets.compare_digest(password, self.password):
             self.debug.emit(
                 "oauth.authorization_denied",
@@ -364,7 +368,9 @@ class OAuthService:
         basic_client_id: str = "",
         basic_client_secret: str = "",
         trace_id: str,
+        base_url: str | None = None,
     ) -> dict[str, Any]:
+        base = self._base_url(base_url)
         if params.get("grant_type") != "authorization_code":
             raise invalid_argument("Only authorization_code is supported.")
         code = str(params.get("code") or "")
@@ -394,6 +400,7 @@ class OAuthService:
             secrets.compare_digest(record["client_id"], client_id),
             secrets.compare_digest(record["redirect_uri"], redirect_uri),
             secrets.compare_digest(record["resource"], resource),
+            secrets.compare_digest(resource, base),
             verify_pkce(verifier, record["code_challenge"]),
         )
         if not all(facts):
@@ -402,7 +409,7 @@ class OAuthService:
                 "Authorization code binding or PKCE verification failed.",
                 category="permission",
             )
-        token = self._create_access_token(client_id)
+        token = self._create_access_token(client_id, base_url=base)
         self.debug.emit(
             "oauth.access_token_issued",
             "oauth_authority",
@@ -421,14 +428,16 @@ class OAuthService:
         header: str,
         *,
         trace_id: str,
+        base_url: str | None = None,
     ) -> OAuthPrincipal:
+        base = self._base_url(base_url)
         if not header.startswith("Bearer "):
             raise ReCTMError("OAUTH_UNAUTHORIZED", "OAuth Bearer token is required.", category="permission")
         token = header[len("Bearer ") :].strip()
         try:
             payload = _decode_signed_token(token, self.token_secret)
             now = int(time.time())
-            if payload.get("iss") != self.server_url or payload.get("aud") != self.server_url:
+            if payload.get("iss") != base or payload.get("aud") != base:
                 raise ValueError("issuer or audience")
             if int(payload.get("exp", 0)) < now:
                 raise ValueError("expired")
@@ -464,13 +473,14 @@ class OAuthService:
         )
         return principal
 
-    def _create_access_token(self, client_id: str) -> str:
+    def _create_access_token(self, client_id: str, *, base_url: str | None = None) -> str:
+        base = self._base_url(base_url)
         now = int(time.time())
         return _encode_signed_token(
             {
                 "v": 1,
-                "iss": self.server_url,
-                "aud": self.server_url,
+                "iss": base,
+                "aud": base,
                 "sub": client_id,
                 "client_id": client_id,
                 "iat": now,
@@ -478,6 +488,50 @@ class OAuthService:
                 "scope": "mcp",
             },
             self.token_secret,
+        )
+
+    def _base_url(self, override: str | None) -> str:
+        base = (self.server_url or override or "").rstrip("/")
+        if not base:
+            raise ReCTMError(
+                "OAUTH_SERVER_URL_REQUIRED",
+                "OAuth request base URL is unavailable.",
+                category="validation",
+            )
+        _validate_server_url(base)
+        return base
+
+
+def _validate_server_url(value: str) -> None:
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        _ = parsed.port
+    except ValueError as exc:
+        raise ReCTMError(
+            "OAUTH_SERVER_URL_INVALID",
+            "OAuth server URL is malformed.",
+            category="validation",
+        ) from exc
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in {"", "/"}
+    ):
+        raise ReCTMError(
+            "OAUTH_SERVER_URL_INVALID",
+            "OAuth server URL must be an origin URL without user info, path, query, or fragment.",
+            category="validation",
+        )
+    hostname = parsed.hostname.lower()
+    if parsed.scheme == "http" and hostname not in {"localhost", "127.0.0.1", "::1"}:
+        raise ReCTMError(
+            "OAUTH_SERVER_URL_INVALID",
+            "OAuth server URL must be HTTPS or a loopback HTTP URL.",
+            category="validation",
         )
 
 

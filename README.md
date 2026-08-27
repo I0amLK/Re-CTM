@@ -75,7 +75,6 @@ mkdir -p ~/.re-ctm
 ## 4. 最小配置
 
 ```bash
-export RE_CTM_SERVER_URL=http://127.0.0.1:8765
 export RE_CTM_OAUTH_PASSWORD='请换成你自己的登录密码'
 
 export RE_CTM_WORKSPACE="$HOME/re-ctm-workspace"
@@ -87,6 +86,16 @@ export RE_CTM_NATIVE_MODE=safe
 export RE_CTM_NATIVE_EXEC_BACKEND=disabled
 export RE_CTM_LATEX_POLICY=required
 ```
+
+`RE_CTM_SERVER_URL` 不是必填项。未设置时，只要 Re-CTM 绑定在 loopback（例如 `127.0.0.1`），它会根据实际请求的 Host 和可信的本机反向代理头自动确定 OAuth issuer/resource。这适合 Cloudflare Quick Tunnel。
+
+如果你有固定公网域名，可以显式固定 OAuth origin：
+
+```bash
+export RE_CTM_SERVER_URL=https://re-ctm.example.com
+```
+
+显式值始终优先，不会被 `X-Forwarded-Host` 覆盖。
 
 检查配置：
 
@@ -136,16 +145,43 @@ http://127.0.0.1:8765/mcp
 
 授权完成后，网页客户端即可使用 Re-CTM。
 
-如果网页客户端运行在另一台机器，不能使用 `127.0.0.1`。需要先把 Re-CTM 通过 HTTPS 暴露给该客户端，例如：
+如果网页客户端运行在另一台机器，不能把 `127.0.0.1` 作为客户端地址。可以直接使用 Cloudflare Quick Tunnel，并且**不需要先知道公网 URL，也不需要设置 `RE_CTM_SERVER_URL`**：
+
+```bash
+PORT=54567
+
+fuser -k -9 ${PORT}/tcp 2>/dev/null || true
+
+unset RE_CTM_SERVER_URL
+export RE_CTM_OAUTH_PASSWORD='请换成你自己的登录密码'
+export RE_CTM_NATIVE_MODE=dangerous
+
+re-ctm serve --host 127.0.0.1 --port ${PORT} &
+MCP_PID=$!
+
+sleep 2
+
+cloudflared tunnel --url http://127.0.0.1:${PORT}
+```
+
+`cloudflared` 打印出类似下面的地址后：
+
+```text
+https://abc-def.trycloudflare.com
+```
+
+网页 MCP 地址就是：
+
+```text
+https://abc-def.trycloudflare.com/mcp
+```
+
+Re-CTM 会在这个经 loopback tunnel 进入的请求上自动发布同一个 HTTPS OAuth issuer/resource，并把签发的 access token 绑定到该公网 origin。
+
+如果使用 Cloudflare Named Tunnel 或其他固定域名，仍建议显式设置：
 
 ```bash
 export RE_CTM_SERVER_URL=https://re-ctm.example.com
-```
-
-网页 MCP 地址改为：
-
-```text
-https://re-ctm.example.com/mcp
 ```
 
 ## 7. 普通电脑操作
@@ -483,11 +519,13 @@ python3 scripts/collect_debug_bundle.py <run-id> \
 curl http://127.0.0.1:8765/health
 ```
 
-然后确认网页客户端确实能够访问 `RE_CTM_SERVER_URL`。
+然后确认网页客户端确实能够访问你提供给它的公网 MCP 地址。
+
+如果没有设置 `RE_CTM_SERVER_URL`，确认 Re-CTM 是以 `--host 127.0.0.1` 或其他 loopback 地址启动，并确认 tunnel/reverse proxy 把公网 Host（以及通常的 `X-Forwarded-Proto: https`）转发到本机服务。
 
 ### 网页客户端不在本机
 
-不要使用 `127.0.0.1`。配置一个该网页客户端可以访问的 HTTPS 地址，并让 `RE_CTM_SERVER_URL` 与外部地址完全一致。
+客户端不能连接 `127.0.0.1`，但 Re-CTM 服务本身仍建议绑定 `127.0.0.1`。使用 Cloudflare Quick Tunnel 时不必设置 `RE_CTM_SERVER_URL`；使用固定公网域名时再把 `RE_CTM_SERVER_URL` 设置为该 HTTPS origin。
 
 ### LaTeX 一直返回 repair
 

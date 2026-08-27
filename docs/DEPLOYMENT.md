@@ -51,13 +51,20 @@ Start from `config.example.env`. At minimum configure:
 RE_CTM_WORKSPACE=/srv/re-ctm/workspace
 RE_CTM_DATA_ROOT=/var/lib/re-ctm
 RE_CTM_PRIVATE_ROOT=/var/lib/re-ctm/private
-RE_CTM_SERVER_URL=https://re-ctm.example.com
 RE_CTM_OAUTH_PASSWORD=<long-random-operator-password>
 RE_CTM_ALLOWED_ORIGINS=https://the-real-web-client.example
 RE_CTM_LATEX_POLICY=required
 RE_CTM_NATIVE_MODE=safe
 RE_CTM_NATIVE_EXEC_BACKEND=disabled
 ```
+
+`RE_CTM_SERVER_URL` is optional. For a stable public hostname or named tunnel, set it explicitly:
+
+```bash
+RE_CTM_SERVER_URL=https://re-ctm.example.com
+```
+
+For a Cloudflare Quick Tunnel, leave it unset and bind Re-CTM to loopback. The request's validated public Host and loopback-trusted forwarding headers become the effective OAuth issuer/resource. Dynamic issuer mode is rejected on non-loopback binds.
 
 Do not commit the real environment file. Re-CTM materializes server signing secrets under the data root with mode `0600` when they are not explicitly supplied.
 
@@ -101,6 +108,24 @@ set -a
 set +a
 /opt/re-ctm/venv/bin/re-ctm serve
 ```
+
+For a disposable Cloudflare Quick Tunnel, the convenient startup order is intentionally server first, tunnel second:
+
+```bash
+PORT=54567
+fuser -k -9 ${PORT}/tcp 2>/dev/null || true
+
+unset RE_CTM_SERVER_URL
+export RE_CTM_OAUTH_PASSWORD='<operator-password>'
+
+/opt/re-ctm/venv/bin/re-ctm serve --host 127.0.0.1 --port ${PORT} &
+MCP_PID=$!
+sleep 2
+
+cloudflared tunnel --url http://127.0.0.1:${PORT}
+```
+
+Use the printed `https://<random>.trycloudflare.com/mcp` URL in the MCP client. No Re-CTM restart is required after Cloudflare assigns the random hostname.
 
 Expose the service only through HTTPS. Confirm:
 

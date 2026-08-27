@@ -96,10 +96,14 @@
     {
       "id": "PC-009",
       "constraint": "Re-CTM is a strict tool-surface superset of Coding Tools MCP: all 18 CTM native tool names and public input schemas remain available, including the exec_command command_id lifecycle, while Rethlas tools are additive."
+    },
+    {
+      "id": "PC-010",
+      "constraint": "RE_CTM_SERVER_URL is an optional fixed OAuth-origin override. When it is absent, Re-CTM may derive the OAuth issuer/resource from request Host and trusted reverse-proxy headers only while the HTTP server is loopback-bound; this preserves one-command Cloudflare Quick Tunnel startup without trusting public proxy headers."
     }
   ],
   "implementation_snapshot": {
-    "as_of": "2026-08-26T23:25:00-07:00",
+    "as_of": "2026-08-27T00:30:00-07:00",
     "authority": "This snapshot supersedes the original per-vertex planning labels without erasing the design-time history stored on each vertex.",
     "implemented_local": [
       "V02",
@@ -144,6 +148,7 @@
       "src/re_ctm/native_helper_bwrap.py implements a separate-process bubblewrap boundary with namespace, environment, capability, timeout, and forbidden-path probes.",
       "src/re_ctm/tools.py freezes the first 18 entries to the CTM native catalog and appends 13 Rethlas tools, for a fixed 31-tool catalog.",
       "src/re_ctm/processes.py and tests/test_ctm_native_compat.py restore command_id lifecycle operations including polling, retained-output reads, TTY stdin interaction, timeout, and termination under bubblewrap.",
+      "src/re_ctm/server.py and tests/test_http.py implement loopback-only dynamic OAuth-origin resolution for Cloudflare-style X-Forwarded-Host/X-Forwarded-Proto while preserving explicit RE_CTM_SERVER_URL precedence and token issuer/audience binding.",
       "rethlas_export_final and NativeRuntime.export_verified_latex implement the only mechanically-finalized private-to-native artifact bridge with workspace confinement and overwrite baselines.",
       "scripts/manual_native_isolation_test.py provides target-PC adversarial evidence before RE_CTM_NATIVE_ISOLATION_ATTESTED=1 is permitted operationally.",
       "tests/ exercises OAuth, legacy and modern MCP, fixed catalogs, native path confinement, capability ownership, branch barriers, verifier firewall, mechanical verdict/finalization, diagnostics, LaTeX safety, and the reference bubblewrap helper.",
@@ -174,7 +179,8 @@
         "Protected-resource metadata",
         "Authorization-server metadata",
         "Dynamic client registration",
-        "Access-token validation"
+        "Access-token validation",
+        "Bind authorization codes and access-token issuer/audience to the effective per-request OAuth origin"
       ],
       "implementation_status": "planned"
     },
@@ -188,6 +194,7 @@
         "initialize, ping, tools/list, and tools/call",
         "Stable tool catalog",
         "OAuth enforcement",
+        "Resolve a fixed OAuth origin from RE_CTM_SERVER_URL or a dynamic origin only behind a loopback-bound trusted reverse proxy",
         "Trace-id creation"
       ],
       "implementation_status": "planned"
@@ -1131,6 +1138,12 @@
       "statement": "Every authorization and state transition has a traceable, redacted debug event.",
       "formal": "decision or transition => exists event(trace_id, before, after, reason)",
       "test": "Run deterministic unit transitions and assert event completeness without raw secrets."
+    },
+    {
+      "id": "INV-009",
+      "statement": "Dynamic OAuth issuer discovery cannot turn untrusted public forwarding headers into authority.",
+      "formal": "fixed_server_url wins; otherwise dynamic_issuer => loopback_bind AND trusted_loopback_peer AND validated_origin_host",
+      "test": "Run the Cloudflare-style forwarded OAuth flow on loopback, assert fixed origin ignores forwarded host, assert tokens fail under a different effective origin, and reject dynamic mode on a non-loopback bind."
     }
   ],
   "workflow_transition_graph": {

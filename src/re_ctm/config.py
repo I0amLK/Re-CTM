@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import os
 import secrets
 from dataclasses import dataclass, replace
@@ -20,6 +21,25 @@ def _is_relative_to(path: Path, root: Path) -> bool:
     except ValueError:
         return False
     return True
+
+
+def is_loopback_host(value: str) -> bool:
+    """Return whether a bind/peer host is loopback-only.
+
+    Dynamic OAuth issuer discovery is allowed only when the HTTP server itself
+    is loopback-bound. Keep this helper in configuration code so CLI, server,
+    and tests share one definition of that security boundary.
+    """
+
+    host = (value or "").strip().lower()
+    if host.startswith("[") and host.endswith("]"):
+        host = host[1:-1]
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 @dataclass(frozen=True)

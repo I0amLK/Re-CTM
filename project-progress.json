@@ -1,9 +1,9 @@
 {
   "project": {
     "name": "Re-CTM",
-    "status": "local_checkpoint_committed_push_blocked",
+    "status": "cloudflare_oauth_compatibility_checkpoint_pending_authenticated_push",
     "target": "A single installable OAuth MCP runtime combining streamlined CMT computer tools with a Rethlas-derived mathematical reasoning workflow.",
-    "updated_at": "2026-08-26T22:38:00-07:00",
+    "updated_at": "2026-08-27T00:30:00-07:00",
     "source_references": {
       "cmt_local_repo": "../coding-tools-mcp",
       "rethlas_local_repo": "../Rethlas",
@@ -95,6 +95,11 @@
     {
       "id": "AD-014",
       "decision": "Re-CTM must be a strict tool-surface superset of Coding Tools MCP: preserve all 18 CTM native tools and command lifecycle semantics, then add Rethlas tools without removing or hiding CTM tools.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-015",
+      "decision": "Preserve CTM-class reverse-proxy OAuth convenience: RE_CTM_SERVER_URL is an optional fixed override, while an unset value enables per-request OAuth-origin derivation only on loopback-bound servers using validated Host and loopback-trusted forwarded headers. Fixed origins always win and dynamic mode is rejected on non-loopback binds.",
       "status": "accepted"
     }
   ],
@@ -225,7 +230,7 @@
         "Define verifier data firewall"
       ],
       "completed_evidence": [
-        "engineering-graph.json contains 31 vertices, 60 collapsed undirected edges, cycle rank 30, articulation/bridge analysis, eight security invariants, and a validation boundary",
+        "engineering-graph.json contains 31 vertices, 60 collapsed undirected edges, cycle rank 30, articulation/bridge analysis, nine security invariants, and a validation boundary",
         "scripts/validate_engineering_graph.py recomputes and checks the graph metrics",
         "AGENTS.md freezes the native/workflow non-inheritance and validation axioms"
       ]
@@ -262,6 +267,7 @@
       ],
       "completed_evidence": [
         "OAuth DCR, Authorization Code with PKCE, persisted single-use codes, and access-token validation are implemented",
+        "Loopback-bound dynamic OAuth origin discovery supports Cloudflare-style X-Forwarded-Host/X-Forwarded-Proto without requiring RE_CTM_SERVER_URL or a post-tunnel Re-CTM restart; fixed RE_CTM_SERVER_URL remains authoritative",
         "HTTP MCP supports handshake-era and per-request 2026-07-28 dispatch with mirror headers",
         "Fixed 31-tool catalog is a strict superset: all 18 Coding Tools MCP native tools plus thirteen rethlas_* tools",
         "CTM-compatible read/list/search, patch-envelope, Git, image, environment, permission, and command-lifecycle surfaces are implemented",
@@ -372,14 +378,14 @@
         "95-percent Rethlas behavior acceptance suite"
       ],
       "completed_evidence": [
-        "38 deterministic and local integration tests pass",
+        "42 deterministic and local integration tests pass",
         "Loopback DCR to OAuth authorization to PKCE token to MCP tools/list passes",
         "Modern mirror-header and result-shaping tests pass",
         "Dangerous path confinement, native fail-closed execution, packaged bubblewrap attestation/private-canary denial, branch barrier, complete screening/join contracts, verifier denial/audit prerequisites, owner-bound capability, wrong-verdict, finalization, isolated LaTeX, external retrieval normalization, and debug redaction tests pass",
         "scripts/run_local_checks.py writes local-validation.json"
       ],
       "remaining": [
-        "All eight checks in manual-validation.json remain pending after push",
+        "All nine checks in manual-validation.json remain pending after push",
         "No local result is accepted as complete browser/target-PC/95-percent validation"
       ]
     },
@@ -402,7 +408,8 @@
         "Apache-2.0 LICENSE and NOTICE retain Coding Tools MCP and Rethlas attribution",
         "GitHub Actions CI covers Python 3.11/3.13, bubblewrap, latexmk, deterministic checks, wheel/sdist build, and installed command surfaces",
         "docs/DEPLOYMENT.md and scripts/smoke_oauth_mcp.py provide target setup, redacted OAuth/MCP verification, isolation evidence, and claims boundaries",
-        "uv built re_ctm-0.1.0.dev0 sdist and wheel, installed the wheel into a clean virtual environment, and the installed re-ctm service, helper version/attestation, OAuth DCR/PKCE, legacy/modern MCP, 31-tool catalog, and non-inheritance smokes passed"
+        "uv built the current re_ctm-0.1.0.dev1 sdist and wheel on top of the earlier dev0 packaging checks, installed the wheel into a clean virtual environment, and the installed re-ctm service, helper version/attestation, OAuth DCR/PKCE, legacy/modern MCP, 31-tool catalog, and non-inheritance smokes passed",
+        "A fresh 0.1.0.dev1 wheel installed-service smoke started without RE_CTM_SERVER_URL on loopback and resolved Cloudflare-style forwarded metadata to https://installed-dev1.trycloudflare.com with the matching public origin"
       ],
       "remaining": [
         "Push the repository and observe first remote CI on GitHub",
@@ -411,9 +418,9 @@
     }
   ],
   "progress": {
-    "overall_percent": 82,
-    "implementation_percent": 91,
-    "deterministic_local_validation_percent": 80,
+    "overall_percent": 83,
+    "implementation_percent": 92,
+    "deterministic_local_validation_percent": 82,
     "post_push_manual_acceptance_percent": 0,
     "target_95_percent_equivalence_verified": false,
     "completed_phase_ids": [
@@ -423,9 +430,9 @@
       "P5"
     ],
     "current_phase_id": "P3/P4/P6/P7/P8",
-    "current_focus": "CTM native compatibility is now additive rather than reduced: all 18 CTM tool surfaces plus 13 Rethlas tools are implemented locally, including command_id lifecycle. Nine real webpage/target-PC/compatibility/methodology acceptance checks remain post-push.",
+    "current_focus": "CTM native compatibility remains additive at 18 native tools plus 13 Rethlas tools, and Cloudflare/reverse-proxy OAuth convenience is restored locally: a loopback-bound server can start before a Quick Tunnel without RE_CTM_SERVER_URL, while fixed OAuth origins remain authoritative. Nine real webpage/target-PC/compatibility/methodology acceptance checks remain post-push.",
     "next_actions": [
-      "Push the CTM-compatibility checkpoint to origin/main using the authenticated GitHub credential and force-with-lease against the known placeholder README commit",
+      "Push the latest compatibility checkpoint to origin/main using the authenticated GitHub credential",
       "Observe the first GitHub Actions run after the push",
       "Run all checks in manual-validation.json and attach redacted evidence",
       "Run the packaged bubblewrap isolation harness on the target PC before enabling native exec",
@@ -436,7 +443,7 @@
   "local_validation": {
     "report": "local-validation.json",
     "last_result": "passed",
-    "test_count": 38,
+    "test_count": 42,
     "graph_metrics": {
       "vertices": 31,
       "edges": 60,
@@ -451,6 +458,7 @@
       "Python compilation",
       "Engineering graph consistency",
       "Loopback OAuth mechanics",
+      "Loopback-only dynamic OAuth-origin derivation from Cloudflare-style forwarded host/proto, fixed-origin precedence, cross-origin token rejection, and non-loopback dynamic-bind denial",
       "Handshake-era and modern MCP mechanics",
       "Fixed tool catalog",
       "All 18 Coding Tools MCP native tool definitions are exact against the reference contract (name/order/title/description/inputSchema/outputSchema/annotations; SHA-256 17896146c5c024a2f81174b5869e9861b452419066500ac4e0a0c1b32d442ab4) before the 13 Rethlas tools",
@@ -498,19 +506,19 @@
       "basis": "Identity confirmed from public commits owned by GitHub account I0amLK; configured only in this repository."
     },
     "remote": "https://github.com/I0amLK/Re-CTM.git",
-    "push_status": "ctm_compatibility_checkpoint_committed_pending_authenticated_push",
+    "push_status": "cloudflare_oauth_compatibility_checkpoint_pending_authenticated_push",
     "latest_local_commit": "Resolve with `git rev-parse HEAD`; the ledger intentionally avoids a self-referential commit hash.",
     "push_attempt": {
       "transport": "https",
-      "remote_observed_head": "9a94df3f9370017b31e7bfefc1df661faac90c08",
-      "result": "new_checkpoint_ready_for_fast_forward_push",
-      "reason": "A fresh fetch confirmed origin/main is the direct parent of the CTM compatibility checkpoint. The automated runtime cannot access the interactive shell's GitHub HTTPS credential, so the remaining push is authentication-only.",
+      "remote_observed_head": "45a90691ccde2f0f88a2e4c3b21fbf419d1764eb",
+      "result": "fast_forward_ready_push_blocked_by_noninteractive_https_credentials",
+      "reason": "A fresh ls-remote confirmed GitHub main already contains the CTM compatibility checkpoint 45a9069. The Cloudflare OAuth compatibility fix is committed directly on top and can be pushed as a normal fast-forward, but this automated runtime's HTTPS push cannot read the interactive shell's GitHub username/PAT.",
       "ssh_fallback": "not_needed_for_current_remote_state"
     },
     "initial_files": [
       "All current source, tests, graph, debug, validation, and planning files are intended for the initial commit."
     ],
-    "working_tree_note": "The CTM 18-tool compatibility checkpoint is committed locally on top of origin/main; the working tree is intended to be clean after this ledger correction."
+    "working_tree_note": "The Cloudflare/reverse-proxy OAuth compatibility change is committed as one checkpoint on top of remote 45a9069; after amending this push-status note the working tree is intended to be clean."
   },
   "engineering_debug_notes": [
     {
@@ -550,9 +558,9 @@
     },
     {
       "id": "DBG-006",
-      "symptom": "The first standalone OAuth/MCP smoke used RE_CTM_OAUTH_SERVER_URL and RE_CTM_PORT, but the service requires RE_CTM_SERVER_URL and the CLI initially ignored RE_CTM_PORT. A busy default port then exposed a bind-failure cleanup AttributeError.",
+      "symptom": "At the original deployment checkpoint, the standalone OAuth/MCP smoke used RE_CTM_OAUTH_SERVER_URL and RE_CTM_PORT, while that version still required RE_CTM_SERVER_URL and the CLI initially ignored RE_CTM_PORT. A busy default port then exposed a bind-failure cleanup AttributeError.",
       "scope": "deployment configuration and HTTP server construction",
-      "resolution": "Corrected deployment documentation, made serve defaults honor RE_CTM_HOST/RE_CTM_PORT, assigned the application before ThreadingHTTPServer binds, added a bind-failure regression, and reran the full redacted smoke successfully.",
+      "resolution": "Corrected deployment documentation, made serve defaults honor RE_CTM_HOST/RE_CTM_PORT, assigned the application before ThreadingHTTPServer binds, added a bind-failure regression, and reran the full redacted smoke successfully. AD-015 later removed the loopback/Quick-Tunnel requirement for RE_CTM_SERVER_URL while retaining it as the fixed-origin override.",
       "preventive_action": "Keep config.example.env, deployment docs, CLI defaults, and standalone smoke under the same regression suite; preserve original OS errors on partial construction failure."
     }
   ],
@@ -585,7 +593,7 @@
     {
       "id": "R-006",
       "risk": "Loopback OAuth and MCP tests may not match the final webpage host's protocol and redirect behavior.",
-      "mitigation": "Retain dual-era MCP handling, mirror-header validation, fixed catalog, and execute MV-001/MV-002 on the real host after push."
+      "mitigation": "Retain dual-era MCP handling, mirror-header validation, fixed catalog, locally test Cloudflare-style dynamic issuer/resource binding, and execute MV-001/MV-002 on the real host after push."
     },
     {
       "id": "R-007",
@@ -601,6 +609,11 @@
       "id": "R-009",
       "risk": "The built-in bubblewrap backend supports the full CTM command_id lifecycle, while arbitrary third-party external helper protocols may only implement synchronous execution unless extended with an equivalent lifecycle transport.",
       "mitigation": "Treat bubblewrap as the reference Linux compatibility backend, expose lifecycle support in check_exec_environment, fail clearly for unsupported helper behavior, and complete MV-009 on every supported deployment backend."
+    },
+    {
+      "id": "R-010",
+      "risk": "Reflecting untrusted forwarding headers into OAuth issuer/resource values could let a public request influence authorization authority.",
+      "mitigation": "Explicit RE_CTM_SERVER_URL always wins; otherwise dynamic origin mode is accepted only on a loopback-bound server, forwarded headers are trusted only from a loopback peer, Host is strictly validated, tokens remain issuer/audience-bound to the effective origin, and non-loopback dynamic bind is rejected."
     }
   ],
   "change_log": [
@@ -687,6 +700,10 @@
     {
       "timestamp": "2026-08-26T22:38:00-07:00",
       "event": "Promoted CTM compatibility to a hard non-regression contract: restored all 18 CTM native tool definitions exactly (including input/output schemas and annotations), patch envelopes, Git/image/environment/permission tools, server-side argument validation, and bubblewrap command_id lifecycle with TTY stdin, retained-output paging, polling, timeout, and termination. The fixed catalog is now 31 tools and 38 local tests pass; MV-009 tracks target CTM parity."
+    },
+    {
+      "timestamp": "2026-08-27T00:30:00-07:00",
+      "event": "Restored reverse-proxy OAuth convenience for Cloudflare Quick Tunnel: RE_CTM_SERVER_URL is optional on loopback binds, the effective OAuth origin is derived per request from validated Host and loopback-trusted forwarding headers, fixed origins remain authoritative, authorization-code/token issuer and audience binding follows the effective origin, non-loopback dynamic bind is denied, the package version advances to 0.1.0.dev1 for unambiguous upgrades, and the deterministic suite now contains 42 passing tests."
     }
   ]
 }

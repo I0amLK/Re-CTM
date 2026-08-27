@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import io
 import os
+import tempfile
 import unittest
+from contextlib import redirect_stdout
+from pathlib import Path
 from unittest import mock
 
-from re_ctm.cli import build_parser
+from re_ctm.cli import build_parser, main
 
 
 class CLITestCase(unittest.TestCase):
@@ -29,6 +33,27 @@ class CLITestCase(unittest.TestCase):
             )
         self.assertEqual(args.host, "127.0.0.3")
         self.assertEqual(args.port, 43434)
+
+    def test_check_config_allows_dynamic_loopback_oauth_without_server_url(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            workspace = root / "workspace"
+            data = root / "data"
+            workspace.mkdir()
+            env = {
+                "RE_CTM_WORKSPACE": str(workspace),
+                "RE_CTM_DATA_ROOT": str(data),
+                "RE_CTM_PRIVATE_ROOT": str(data / "private"),
+                "RE_CTM_DEBUG_ROOT": str(data / "debug"),
+                "RE_CTM_OAUTH_PASSWORD": "operator-password",
+                "RE_CTM_SERVER_URL": "",
+                "RE_CTM_LATEX_POLICY": "static_only",
+            }
+            output = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=False), redirect_stdout(output):
+                code = main(["check-config"])
+            self.assertEqual(code, 0)
+            self.assertIn('"oauth_server_url_mode": "dynamic_loopback_reverse_proxy"', output.getvalue())
 
 
 if __name__ == "__main__":

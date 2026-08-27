@@ -112,12 +112,6 @@ def main(argv: list[str] | None = None) -> int:
             settings = replace(settings, latex_policy=LatexPolicy(args.latex_policy))
         settings.validate()
         settings = materialize_secrets(settings)
-        if not settings.oauth_server_url:
-            raise ReCTMError(
-                "OAUTH_SERVER_URL_REQUIRED",
-                "RE_CTM_SERVER_URL is required for the OAuth-only service.",
-                category="validation",
-            )
         if not settings.oauth_password:
             raise ReCTMError(
                 "OAUTH_PASSWORD_REQUIRED",
@@ -137,6 +131,9 @@ def main(argv: list[str] | None = None) -> int:
                         "native_isolation_attested": settings.native_isolation_attested,
                         "latex_policy": settings.latex_policy.value,
                         "oauth_server_url": settings.oauth_server_url,
+                        "oauth_server_url_mode": (
+                            "fixed" if settings.oauth_server_url else "dynamic_loopback_reverse_proxy"
+                        ),
                         "oauth_only": True,
                         "theorem_search_url": settings.theorem_search_url,
                         "theorem_search_timeout_seconds": settings.theorem_search_timeout_seconds,

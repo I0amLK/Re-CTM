@@ -17,13 +17,18 @@
       "name": "OAuth discovery and dynamic registration",
       "status": "pending",
       "steps": [
+        "Run Re-CTM on 127.0.0.1 without RE_CTM_SERVER_URL, then start a Cloudflare Quick Tunnel after the server is already listening; confirm no Re-CTM restart is needed when the random trycloudflare.com hostname appears.",
+        "Fetch OAuth authorization-server and protected-resource metadata through the Quick Tunnel and confirm issuer/resource/endpoint URLs use the public HTTPS trycloudflare.com origin.",
         "Run scripts/smoke_oauth_mcp.py against the public base URL and save its redacted report.",
         "Connect the webpage client to /.well-known/oauth-protected-resource and the MCP URL.",
         "Confirm DCR creates a client and the browser is redirected to /oauth/authorize.",
-        "Complete PKCE authorization and token exchange."
+        "Complete PKCE authorization and token exchange.",
+        "Repeat with an explicit RE_CTM_SERVER_URL and confirm forwarded Host headers cannot replace that fixed OAuth origin."
       ],
       "expected": [
         "No static bearer or no-auth path is offered.",
+        "Dynamic OAuth origin works only with a loopback-bound server and the tunnel's trusted local proxy request; non-loopback dynamic bind is rejected.",
+        "An access token issued for the public tunnel origin is rejected when replayed against a different effective origin.",
         "The client reaches tools/list only with a valid OAuth access token.",
         "Debug events contain fingerprints, not raw codes, secrets, passwords, or tokens."
       ],

@@ -9,6 +9,7 @@ import urllib.parse
 from typing import Any, Mapping, cast
 
 from .app import ReCTMApplication
+from .config import is_loopback_host
 from .debug import new_trace_id
 from .errors import ReCTMError
 from .mcp import (
@@ -28,6 +29,48 @@ MAX_REQUEST_BYTES = 1_048_576
 MCP_PATH = "/mcp"
 
 
+def _first_header_value(value: str | None) -> str:
+    return (value or "").split(",", 1)[0].strip()
+
+
+def _forwarded_header_param(value: str | None, name: str) -> str:
+    first = _first_header_value(value)
+    for part in first.split(";"):
+        key, sep, raw = part.strip().partition("=")
+        if sep and key.lower() == name:
+            return raw.strip().strip('"')
+    return ""
+
+
+def _safe_external_host(host: str) -> str:
+    host = host.strip()
+    if not host or any(ch.isspace() or ch in "/\\@?#" for ch in host):
+        return ""
+    try:
+        parsed = urllib.parse.urlsplit(f"//{host}")
+        _ = parsed.port
+    except ValueError:
+        return ""
+    if not parsed.hostname or parsed.username is not None or parsed.password is not None:
+        return ""
+    return host
+
+
+def _host_name(host: str) -> str:
+    try:
+        parsed = urllib.parse.urlsplit(f"//{host}")
+    except ValueError:
+        return ""
+    return (parsed.hostname or "").lower()
+
+
+def _host_with_port(host: str, port: int) -> str:
+    display = host
+    if ":" in display and not display.startswith("["):
+        display = f"[{display}]"
+    return f"{display}:{port}"
+
+
 class ReCTMHTTPServer(http.server.ThreadingHTTPServer):
     daemon_threads = True
 
@@ -36,6 +79,13 @@ class ReCTMHTTPServer(http.server.ThreadingHTTPServer):
         address: tuple[str, int],
         application: ReCTMApplication,
     ) -> None:
+        if not application.settings.oauth_server_url and not is_loopback_host(address[0]):
+            raise ReCTMError(
+                "OAUTH_DYNAMIC_ISSUER_REQUIRES_LOOPBACK",
+                "Without RE_CTM_SERVER_URL, Re-CTM must bind to a loopback host so reverse-proxy OAuth discovery cannot trust public request headers directly.",
+                category="security",
+                details={"host": address[0]},
+            )
         self.application = application
         super().__init__(address, ReCTMHandler)
 
@@ -89,18 +139,21 @@ class ReCTMHandler(http.server.BaseHTTPRequestHandler):
                 )
                 return
             if path == "/.well-known/oauth-authorization-server":
-                self._send_json(self.app.oauth.authorization_server_metadata())
+                base = self._oauth_base_url(trace_id=trace)
+                self._send_json(self.app.oauth.authorization_server_metadata(base_url=base))
                 return
             if path == "/.well-known/oauth-protected-resource":
-                self._send_json(self.app.oauth.protected_resource_metadata())
+                base = self._oauth_base_url(trace_id=trace)
+                self._send_json(self.app.oauth.protected_resource_metadata(base_url=base))
                 return
             if path == "/.well-known/mcp.json":
+                base = self._oauth_base_url(trace_id=trace)
                 self._send_json(
                     {
                         "name": "re-ctm",
                         "title": "Re-CTM",
-                        "endpoint": self.app.settings.oauth_server_url + MCP_PATH,
-                        "oauth": self.app.oauth.protected_resource_metadata(),
+                        "endpoint": base + MCP_PATH,
+                        "oauth": self.app.oauth.protected_resource_metadata(base_url=base),
                         "tool_count": len(self.app.tools.list_tools()),
                         "tool_catalog_stable": True,
                         "manual_validation_required": True,
@@ -109,7 +162,10 @@ class ReCTMHandler(http.server.BaseHTTPRequestHandler):
                 return
             if path == "/oauth/authorize":
                 params = _single_query_values(parsed.query)
-                validated = self.app.oauth.validate_authorization_request(params)
+                validated = self.app.oauth.validate_authorization_request(
+                    params,
+                    base_url=self._oauth_base_url(trace_id=trace),
+                )
                 self._send_authorization_page(validated, params, trace)
                 return
             self._json_error(404, "NOT_FOUND", "Unknown endpoint.", trace)
@@ -145,6 +201,7 @@ class ReCTMHandler(http.server.BaseHTTPRequestHandler):
                     params,
                     password=password,
                     trace_id=trace,
+                    base_url=self._oauth_base_url(trace_id=trace),
                 )
                 self.send_response(302)
                 self.send_header("Location", redirect)
@@ -162,6 +219,7 @@ class ReCTMHandler(http.server.BaseHTTPRequestHandler):
                     basic_client_id=basic_id,
                     basic_client_secret=basic_secret,
                     trace_id=trace,
+                    base_url=self._oauth_base_url(trace_id=trace),
                 )
                 self._send_json(result)
                 return
@@ -169,6 +227,7 @@ class ReCTMHandler(http.server.BaseHTTPRequestHandler):
                 principal = self.app.oauth.validate_authorization_header(
                     self.headers.get("Authorization", ""),
                     trace_id=trace,
+                    base_url=self._oauth_base_url(trace_id=trace),
                 )
                 request = self._read_json_body()
                 era = request_era_from_envelope(request)
@@ -340,14 +399,81 @@ class ReCTMHandler(http.server.BaseHTTPRequestHandler):
                 return name
         return None
 
+    def _oauth_base_url(self, *, trace_id: str | None = None) -> str:
+        configured = self.app.settings.oauth_server_url.rstrip("/")
+        if configured:
+            self.app.debug.emit(
+                "oauth.external_origin_resolved",
+                "mcp_gateway",
+                trace_id=trace_id or new_trace_id(),
+                decision="allow",
+                reason="fixed_server_url",
+                details={"base_url": configured, "proxy_headers_trusted": False},
+            )
+            return configured
+
+        server_address = cast(tuple[Any, ...], self.server.server_address)
+        bind_host = str(server_address[0])
+        bind_port = int(server_address[1])
+        if not is_loopback_host(bind_host):
+            raise ReCTMError(
+                "OAUTH_DYNAMIC_ISSUER_REQUIRES_LOOPBACK",
+                "Dynamic OAuth issuer discovery is allowed only on a loopback-bound Re-CTM server.",
+                category="security",
+                details={"host": bind_host},
+            )
+
+        peer_host = str(self.client_address[0]) if self.client_address else ""
+        trust_proxy_headers = is_loopback_host(peer_host)
+        proto = ""
+        host = ""
+        if trust_proxy_headers:
+            proto = _first_header_value(self.headers.get("X-Forwarded-Proto"))
+            if not proto:
+                proto = _forwarded_header_param(self.headers.get("Forwarded"), "proto")
+            host = _safe_external_host(_first_header_value(self.headers.get("X-Forwarded-Host")))
+            if not host:
+                host = _safe_external_host(_forwarded_header_param(self.headers.get("Forwarded"), "host"))
+
+        raw_host = self.headers.get("Host", "")
+        if not host:
+            host = _safe_external_host(raw_host)
+            if raw_host and not host:
+                raise ReCTMError(
+                    "OAUTH_EXTERNAL_URL_INVALID",
+                    "Request Host header is not a valid OAuth origin host.",
+                    category="validation",
+                )
+        if not host:
+            host = _host_with_port(bind_host, bind_port)
+
+        if proto not in {"http", "https"}:
+            hostname = _host_name(host)
+            proto = "http" if is_loopback_host(hostname) else "https"
+        base = f"{proto}://{host}".rstrip("/")
+        self.app.debug.emit(
+            "oauth.external_origin_resolved",
+            "mcp_gateway",
+            trace_id=trace_id or new_trace_id(),
+            decision="allow",
+            reason="loopback_dynamic_origin",
+            details={
+                "base_url": base,
+                "proxy_headers_trusted": trust_proxy_headers,
+                "peer_loopback": is_loopback_host(peer_host),
+            },
+        )
+        return base
+
     def _handle_error(self, error: ReCTMError, trace_id: str) -> None:
         if error.code == "OAUTH_UNAUTHORIZED":
+            base = self._oauth_base_url(trace_id=trace_id)
             self._send_json(
                 {"error": error.to_payload(), "trace_id": trace_id},
                 status=401,
                 extra_headers={
                     "WWW-Authenticate": (
-                        f'Bearer realm="re-ctm", resource_metadata="{self.app.settings.oauth_server_url}/.well-known/oauth-protected-resource"'
+                        f'Bearer realm="re-ctm", resource_metadata="{base}/.well-known/oauth-protected-resource"'
                     )
                 },
             )
@@ -430,9 +556,14 @@ def run_server(
     port: int = 8765,
 ) -> int:
     server = ReCTMHTTPServer((host, port), application)
+    oauth_mode = (
+        f"fixed OAuth origin {application.settings.oauth_server_url}"
+        if application.settings.oauth_server_url
+        else "dynamic OAuth origin from loopback tunnel/request headers"
+    )
     print(
         f"Re-CTM OAuth MCP listening on http://{host}:{port}{MCP_PATH}; "
-        "complete browser workflow requires post-push manual validation.",
+        f"{oauth_mode}; complete browser workflow requires post-push manual validation.",
         file=sys.stderr,
     )
     try:
