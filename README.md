@@ -240,7 +240,18 @@ request_permissions
 view_image
 ```
 
-同时额外提供 13 个 `rethlas_*` 数学工作流工具，所以网页客户端固定可以看到 **31 个工具**。
+数学侧对网页客户端只暴露 6 个高层 `rethlas_*` 工具，因此正常 `tools/list` 一共是 **24 个工具**：18 个 CTM Native + 6 个 Rethlas façade。
+
+```text
+rethlas_start
+rethlas_step
+rethlas_inspect
+rethlas_retrieve
+rethlas_control
+rethlas_artifact
+```
+
+旧版 Re-CTM 的 `rethlas_next/read/write/search/commit/status/steer/resume/cancel/get_artifact/export_final` 调用仍由服务器接受，作为隐藏兼容入口，但不再出现在 `tools/list` 中，避免模型在大量内部协议工具之间反复选择。
 
 原来 CTM 的长命令生命周期也继续使用。例如网页模型启动一个耗时测试后，可以得到 `command_id`，随后继续等待输出、读取保留输出、向 TTY 程序输入内容，或者终止进程。实际使用时仍然直接用自然语言即可，例如：
 
@@ -428,7 +439,7 @@ export RE_CTM_THEOREM_SEARCH_TIMEOUT_SECONDS=30
 
 ## 16. 获取最终 proof_verified.tex
 
-当最后一次 `rethlas_next` 把任务推进到 `done` 时，Re-CTM 会通过受控 final-artifact bridge 自动把验证后的 LaTeX 写进 workspace，并在返回结果中提供 `workspace_export_path`。默认路径是：
+当最后一次 `rethlas_step` 把任务推进到 `done` 时，Re-CTM 会通过受控 final-artifact bridge 自动把验证后的 LaTeX 写进 workspace，并在返回结果中提供 `workspace_export_path`。默认路径是：
 
 ```text
 rethlas-output/<run_id>/proof_verified.tex
@@ -450,7 +461,7 @@ rethlas-output/<run_id>/proof_verified.tex
 
 自动默认导出是幂等的：重复取得 `done` 状态时，如果文件内容完全相同，不会重复改写。若自动目标路径已有不同内容，Re-CTM 不会覆盖它；显式导出到已有目标时仍要求当前文件的 SHA-256 baseline。
 
-对已经完成但尚未落盘的旧 run，可以直接要求“把这个 run 的最终文件写到默认位置”；`rethlas_export_final` 省略路径时会使用该 run 的 `workspace_export_path`。
+对已经完成但尚未落盘的旧 run，可以直接要求“把这个 run 的最终文件写到默认位置”；当前公开入口是 `rethlas_artifact` 的 `export` 动作，省略路径时会使用该 run 的 `workspace_export_path`。旧 `rethlas_export_final` 名称仍作为隐藏兼容入口接受。
 
 ## 17. LaTeX 模式
 

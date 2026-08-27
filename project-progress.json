@@ -1,9 +1,9 @@
 {
   "project": {
     "name": "Re-CTM",
-    "status": "math_routing_and_auto_export_checkpoint_in_progress",
+    "status": "rethlas_facade_and_incremental_screening_committed_pending_authenticated_push",
     "target": "A single installable OAuth MCP runtime combining streamlined CMT computer tools with a Rethlas-derived mathematical reasoning workflow.",
-    "updated_at": "2026-08-27T02:11:00-07:00",
+    "updated_at": "2026-08-27T06:22:00-07:00",
     "source_references": {
       "cmt_local_repo": "../coding-tools-mcp",
       "rethlas_local_repo": "../Rethlas",
@@ -116,6 +116,16 @@
       "id": "AD-018",
       "decision": "When an MCP-driven Rethlas run reaches done, automatically export the mechanically finalized final_tex through the controlled artifact bridge to a workspace-relative path, defaulting to rethlas-output/<run_id>/proof_verified.tex. Repeated identical exports are idempotent; different existing content is never overwritten automatically.",
       "status": "accepted"
+    },
+    {
+      "id": "AD-019",
+      "decision": "Reduce the LLM-facing Rethlas protocol to six façade tools: rethlas_start, rethlas_step, rethlas_inspect, rethlas_retrieve, rethlas_control, and rethlas_artifact. Preserve the exact 18-tool CTM public prefix and continue accepting superseded Rethlas protocol names as hidden compatibility aliases rather than advertising them in tools/list.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-020",
+      "decision": "Make workflow submissions LLM-oriented rather than JSON-echo-oriented: server-issued plan/subgoal ids are authoritative, direct screening may be submitted incrementally, incomplete coverage returns exact missing ids without transition, plan/outcome/branch-set fields are server-derived, and validation/conflict failures from rethlas_step keep accepted logical writes while returning a recoverable current task.",
+      "status": "accepted"
     }
   ],
   "authorization_model": {
@@ -154,11 +164,17 @@
   },
   "planned_super_tools": [
     "rethlas_start",
+    "rethlas_step",
+    "rethlas_inspect",
+    "rethlas_retrieve",
+    "rethlas_control",
+    "rethlas_artifact"
+  ],
+  "legacy_rethlas_aliases": [
     "rethlas_next",
     "rethlas_read",
     "rethlas_write",
     "rethlas_search",
-    "rethlas_retrieve",
     "rethlas_commit",
     "rethlas_status",
     "rethlas_steer",
@@ -286,7 +302,7 @@
         "Coding Tools MCP Origin-policy routing is restored: Origin-bearing OAuth authorization/registration/metadata requests are not rejected by the MCP Origin gate, while unapproved external Origin requests to /mcp and OPTIONS remain denied",
         "Interactive serve auto-generates a high-entropy OAuth authorization key when RE_CTM_OAUTH_PASSWORD is absent and marks it for local-terminal reveal only; check-config reports generated_on_serve without materializing or printing a secret",
         "HTTP MCP supports handshake-era and per-request 2026-07-28 dispatch with mirror headers",
-        "Fixed 31-tool catalog is a strict superset: all 18 Coding Tools MCP native tools plus thirteen rethlas_* tools",
+        "The public tool catalog is a strict CTM superset: the exact 18 Coding Tools MCP native tools are followed by six LLM-facing Rethlas façade tools, while superseded Rethlas protocol names remain accepted as hidden compatibility aliases",
         "CTM-compatible read/list/search, patch-envelope, Git, image, environment, permission, and command-lifecycle surfaces are implemented",
         "Native paths stay workspace-confined in dangerous mode",
         "Arbitrary command execution fails closed unless an operator enables an attested isolation backend",
@@ -372,9 +388,9 @@
         "Required-policy compilation executes in a network-isolated bubblewrap scratch workspace; the original private run directory is absent from the compiler namespace",
         "A regression proves that an absolute host-only document class cannot be loaded by model-generated TeX",
         "Only the mechanical finalizer can create proof_verified.tex",
-        "Final LaTeX can be returned through owner-authorized rethlas_get_artifact",
-        "The controlled private-to-native artifact bridge automatically writes final_tex when MCP rethlas_next reaches done, defaulting to rethlas-output/<run_id>/proof_verified.tex; identical retries are idempotent and different content is never overwritten automatically",
-        "rethlas_export_final remains available for alternate workspace-relative .tex destinations; overwrites require an expected SHA-256 baseline"
+        "Final LaTeX can be returned through owner-authorized rethlas_artifact(action=get), with the old rethlas_get_artifact name retained as a hidden compatibility alias",
+        "The controlled private-to-native artifact bridge automatically writes final_tex when MCP rethlas_step reaches done, defaulting to rethlas-output/<run_id>/proof_verified.tex; identical retries are idempotent and different content is never overwritten automatically",
+        "rethlas_artifact(action=export) handles alternate workspace-relative .tex destinations; overwrites require an expected SHA-256 baseline, and the old rethlas_export_final name remains a hidden compatibility alias"
       ],
       "remaining": [
         "Validate required latexmk policy with every intended target LaTeX distribution",
@@ -397,7 +413,7 @@
         "95-percent Rethlas behavior acceptance suite"
       ],
       "completed_evidence": [
-        "46 deterministic and local integration tests pass",
+        "48 deterministic and local integration tests pass",
         "Loopback DCR to OAuth authorization to PKCE token to MCP tools/list passes",
         "Modern mirror-header and result-shaping tests pass",
         "Dangerous path confinement, native fail-closed execution, packaged bubblewrap attestation/private-canary denial, branch barrier, complete screening/join contracts, verifier denial/audit prerequisites, owner-bound capability, wrong-verdict, finalization, automatic run-specific workspace export, idempotent terminal retry, isolated LaTeX, external retrieval normalization, and debug redaction tests pass",
@@ -427,7 +443,7 @@
         "Apache-2.0 LICENSE and NOTICE retain Coding Tools MCP and Rethlas attribution",
         "GitHub Actions CI covers Python 3.11/3.13, bubblewrap, latexmk, deterministic checks, wheel/sdist build, and installed command surfaces",
         "docs/DEPLOYMENT.md and scripts/smoke_oauth_mcp.py provide target setup, redacted OAuth/MCP verification, isolation evidence, and claims boundaries",
-        "uv built the current re_ctm-0.1.0.dev2 sdist and wheel, installed the wheel into a clean virtual environment, and confirmed the 31-tool catalog, concrete-mathematics routing instructions, terminal workspace-export reporting, and optional rethlas_start export_path contract",
+        "re_ctm-0.1.0.dev3 built as sdist and wheel, installed into a clean virtual environment, and an installed-service OAuth/MCP smoke confirmed exactly 24 public tools (18 exact CTM + 6 Rethlas façade), hidden legacy rethlas_status call compatibility, concrete-mathematics routing instructions, and modern non-inheritance behavior",
         "The earlier installed-service smoke started without RE_CTM_SERVER_URL or RE_CTM_OAUTH_PASSWORD on loopback, generated a 43-character local-terminal OAuth authorization key with no structured-state leak, and resolved Cloudflare-style forwarded metadata to the matching public trycloudflare.com origin"
       ],
       "remaining": [
@@ -449,20 +465,20 @@
       "P5"
     ],
     "current_phase_id": "P3/P4/P6/P7/P8",
-    "current_focus": "CTM native compatibility remains additive at 18 native tools plus 13 Rethlas tools. Concrete mathematical proof/derivation/repair/verification requests are now explicitly routed into Rethlas by the MCP contract, and a completed MCP run automatically writes proof_verified.tex to a run-specific workspace path while retaining the explicit alternate export tool. Nine real webpage/target-PC/compatibility/methodology acceptance checks remain post-push.",
+    "current_focus": "CTM native compatibility remains exact at 18 native tools, while the LLM-facing Rethlas surface is reduced to 6 façade tools (24 public tools total) with hidden legacy Rethlas aliases retained for compatibility. Concrete mathematical proof/derivation/repair/verification requests route into Rethlas, direct screening now uses server-issued plan/subgoal ids with incremental completion, and a completed MCP run automatically writes proof_verified.tex to a run-specific workspace path. Nine real webpage/target-PC/compatibility/methodology acceptance checks remain post-push.",
     "next_actions": [
       "Push the latest compatibility checkpoint to origin/main using the authenticated GitHub credential",
       "Observe the first GitHub Actions run after the push",
       "Run all checks in manual-validation.json and attach redacted evidence",
       "Run the packaged bubblewrap isolation harness on the target PC before enabling native exec",
       "Run ordinary natural-language mathematical problems through the real webpage client and confirm it selects rethlas_start without tool-name prompting",
-      "Validate automatic workspace export plus rethlas_export_final alternate-path behavior from the real webpage host"
+      "Validate automatic workspace export plus rethlas_artifact alternate-path behavior from the real webpage host"
     ]
   },
   "local_validation": {
     "report": "local-validation.json",
     "last_result": "passed",
-    "test_count": 46,
+    "test_count": 48,
     "graph_metrics": {
       "vertices": 31,
       "edges": 60,
@@ -480,7 +496,7 @@
       "Loopback-only dynamic OAuth-origin derivation from Cloudflare-style forwarded host/proto, fixed-origin precedence, cross-origin token rejection, and non-loopback dynamic-bind denial",
       "Handshake-era and modern MCP mechanics",
       "Fixed tool catalog",
-      "All 18 Coding Tools MCP native tool definitions are exact against the reference contract (name/order/title/description/inputSchema/outputSchema/annotations; SHA-256 17896146c5c024a2f81174b5869e9861b452419066500ac4e0a0c1b32d442ab4) before the 13 Rethlas tools",
+      "All 18 Coding Tools MCP native tool definitions are exact against the reference contract (name/order/title/description/inputSchema/outputSchema/annotations; SHA-256 17896146c5c024a2f81174b5869e9861b452419066500ac4e0a0c1b32d442ab4) as the public catalog prefix before the 6 Rethlas façade tools",
       "Bubblewrap command lifecycle: exec_command command_id, write_stdin polling and TTY input, read_output paging, timeout, and kill_command termination",
       "CTM-compatible patch envelope, directory listing, regex search, Git status, and MCP image content",
       "OAuth owner-bound capabilities",
@@ -489,19 +505,21 @@
       "Verifier data firewall",
       "Mechanical verdict and finalization",
       "MCP instructions and rethlas_start metadata contain the default concrete-mathematics routing contract",
+      "24-tool public catalog exposes the exact 18 CTM native prefix plus six Rethlas façade tools, while hidden legacy Rethlas aliases remain callable through MCP tools/call",
+      "Direct screening uses server-issued plan/subgoal ids, retains partial progress, reports exact missing ids, derives plan/outcome/branch-set fields server-side, and treats validation/conflict corrections as recoverable rethlas_step submissions",
       "Native workspace boundary and fail-closed execution",
       "Reference Linux bubblewrap helper attestation and private-vault canary denial",
       "Debug redaction and content-minimized bundle",
       "Static and bubblewrap-isolated required LaTeX policy",
       "Capability-gated theorem-search normalization and domain-local persistence",
-      "Mechanical final-artifact export into the native workspace, automatic run-specific creation on terminal rethlas_next, idempotent identical retry, and explicit overwrite baseline enforcement",
+      "Mechanical final-artifact export into the native workspace, automatic run-specific creation on terminal rethlas_step, idempotent identical retry, and explicit overwrite baseline enforcement",
       "Steering delivery, engine rebuild resume, cancellation sealing, and stale-capability denial",
       "Redacted standalone OAuth DCR/PKCE plus legacy and modern MCP smoke",
       "HTTP bind-failure cleanup preserves the original operating-system error",
       "CLI serve host/port defaults follow RE_CTM_HOST and RE_CTM_PORT while explicit flags override them",
       "Live theorem-search endpoint smoke",
       "Wheel build, clean installation, installed helper version, and installed helper attestation",
-      "Installed-wheel service smoke covering redacted OAuth DCR/PKCE, legacy MCP, modern mirror headers, fixed 31-tool catalog, and dangerous non-inheritance"
+      "Installed dev3 service smoke covering redacted OAuth DCR/PKCE, legacy MCP, modern mirror headers, exactly 24 public tools, hidden legacy Rethlas alias call compatibility, and dangerous non-inheritance"
     ],
     "explicitly_not_validated": [
       "Final webpage MCP host compatibility",
@@ -526,19 +544,19 @@
       "basis": "Identity confirmed from public commits owned by GitHub account I0amLK; configured only in this repository."
     },
     "remote": "https://github.com/I0amLK/Re-CTM.git",
-    "push_status": "math_routing_auto_export_checkpoint_committed_push_blocked_by_noninteractive_https_credentials",
+    "push_status": "rethlas_facade_incremental_screening_committed_fast_forward_ready",
     "latest_local_commit": "Resolve with `git rev-parse HEAD`; the ledger intentionally avoids a self-referential commit hash.",
     "push_attempt": {
       "transport": "https",
-      "remote_observed_head": "dcb77299254bdebbdaa37cd1dd741a449c5643f2",
-      "result": "fast_forward_push_failed_before_interactive_https_authentication",
-      "reason": "GitHub main contains dcb7729 and the mathematical-routing/automatic-export checkpoint is directly on top, so no pull, merge, or force is required. The automated runtime attempted a noninteractive HTTPS push but cannot read the user's GitHub username/PAT.",
+      "remote_observed_head": "786c6d21f20a7cc65bc07e09e9b6746ca403dc79",
+      "result": "rethlas_facade_checkpoint_committed_fast_forward_ready",
+      "reason": "A fresh ls-remote confirms GitHub main is 786c6d2 and the Rethlas façade/incremental-screening checkpoint is directly on top. No pull, merge, rebase, or force is required; the remaining action is an authenticated normal push from the user's terminal.",
       "ssh_fallback": "not_needed_for_current_remote_state"
     },
     "initial_files": [
       "All current source, tests, graph, debug, validation, and planning files are intended for the initial commit."
     ],
-    "working_tree_note": "The mathematical-routing and automatic workspace-export checkpoint is committed directly on top of remote dcb7729; after this push-status amendment the working tree is intended to be clean."
+    "working_tree_note": "All tracked façade/incremental-screening changes are committed directly on top of remote 786c6d2. The only remaining worktree entry is the intentionally untouched untracked user artifact pushout_abelianization_exact_sequence.tex, which is not part of the Re-CTM source commit."
   },
   "engineering_debug_notes": [
     {
@@ -644,6 +662,11 @@
       "id": "R-012",
       "risk": "MCP server instructions and tool descriptions strongly influence mathematical task routing but a particular webpage host may ignore or truncate them and answer directly instead of starting Rethlas.",
       "mitigation": "Make the routing rule explicit in both initialize instructions and rethlas_start metadata, keep an ordinary-language real-client test in MV-008, report this host limitation honestly, and retain explicit user wording as a fallback rather than pretending server-side prompt interception exists."
+    },
+    {
+      "id": "R-013",
+      "risk": "rethlas_step may successfully append logical memory records before a later commit-format validation fails, so a naive client retry could duplicate non-screening memory records.",
+      "mitigation": "Treat validation/conflict failures as recoverable submissions rather than tool errors, explicitly return writes_retained and a fresh current task/capability, revoke the capability used for the superseded step, keep direct-screening progress id-keyed and overwrite-idempotent, and require real-client MV-008 evidence that the host follows the returned correction instead of replaying retained writes."
     }
   ],
   "change_log": [
@@ -750,6 +773,10 @@
     {
       "timestamp": "2026-08-27T02:11:00-07:00",
       "event": "Strengthened the MCP mathematical-routing contract so concrete proof/derivation/repair/verification requests default to rethlas_start, added an optional workspace export_path to run creation, and made terminal rethlas_next automatically create the mechanically verified proof_verified.tex under rethlas-output/<run_id>/ by default. Automatic export is idempotent for identical bytes and refuses to overwrite different content; the explicit alternate export tool remains available."
+    },
+    {
+      "timestamp": "2026-08-27T06:22:00-07:00",
+      "event": "Refactored the LLM-facing Rethlas protocol from 13 advertised low-level tools to six façade tools while retaining eleven superseded names as hidden call-compatible aliases. rethlas_step now combines logical writes, commit, and advancement; validation/conflict corrections are recoverable with retained-write disclosure. Direct screening now uses server-issued plan/subgoal ids, accepts incremental coverage, derives plan status/outcome/branch sets server-side, and branch join derives sealed-branch coverage/outcome. The deterministic suite contains 48 passing tests and a clean installed dev3 OAuth/MCP smoke confirms 24 public tools plus hidden-alias compatibility."
     }
   ]
 }

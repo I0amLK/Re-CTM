@@ -18,7 +18,7 @@ from re_ctm.mcp import (
 from re_ctm.native import NativeRuntime, NativeWorkspace
 from re_ctm.oauth import OAuthPrincipal
 from re_ctm.storage import StateStore
-from re_ctm.tools import TOOL_SPECS, ToolRuntime
+from re_ctm.tools import PUBLIC_TOOL_NAMES, ToolRuntime
 from re_ctm.vault import PrivateVault
 from re_ctm.workflow import WorkflowEngine
 
@@ -68,14 +68,17 @@ class MCPDispatcherTestCase(unittest.TestCase):
         )
         self.assertEqual(initialized["result"]["serverInfo"]["name"], "re-ctm")
         self.assertIn("every concrete mathematical", initialized["result"]["instructions"])
+        self.assertIn("rethlas_step", initialized["result"]["instructions"])
         self.assertIn("workspace_export_path", initialized["result"]["instructions"])
         listed = self.dispatcher.dispatch(
             {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
             self.principal,
         )
         names = [item["name"] for item in listed["result"]["tools"]]
-        self.assertEqual(names, list(TOOL_SPECS))
-        self.assertEqual(len(names), 31)
+        self.assertEqual(names, list(PUBLIC_TOOL_NAMES))
+        self.assertEqual(len(names), 24)
+        self.assertNotIn("rethlas_next", names)
+        self.assertIn("rethlas_step", names)
         self.assertEqual(listed["result"]["tools"][0]["outputSchema"]["required"], ["ok"])
         rethlas_start = next(
             item for item in listed["result"]["tools"] if item["name"] == "rethlas_start"
@@ -162,6 +165,185 @@ class MCPDispatcherTestCase(unittest.TestCase):
         self.assertTrue(denied["isError"])
         self.assertEqual(denied["structuredContent"]["error"]["code"], "ABSOLUTE_PATH_DENIED")
 
+    def test_rethlas_step_facade_and_hidden_legacy_alias(self) -> None:
+        started = self.tools.call(
+            "rethlas_start",
+            {"problem_tex": r"\textbf{Problem.} Prove $1=1$.", "problem_id": "facade"},
+            self.principal,
+        )["structuredContent"]
+        run_id = started["run_id"]
+        task = self.tools.call(
+            "rethlas_step",
+            {"run_id": run_id},
+            self.principal,
+        )["structuredContent"]
+        self.assertEqual(task["state"], "assess")
+        advanced = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": task["capability"],
+                "writes": [
+                    {
+                        "resource": "memory:generation:immediate_conclusions",
+                        "content": {"conclusion": "Reflexivity."},
+                    },
+                    {
+                        "resource": "memory:generation:events",
+                        "content": {"event_type": "assessment"},
+                    },
+                ],
+                "action": "assessment_complete",
+            },
+            self.principal,
+        )["structuredContent"]
+        self.assertEqual(advanced["state"], "explore")
+        self.assertEqual(advanced["writes_applied"], 2)
+
+        recoverable = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": advanced["capability"],
+                "writes": [
+                    {"resource": "memory:generation:events", "content": {"event_type": "explore"}}
+                ],
+                "action": "wrong_action",
+            },
+            self.principal,
+        )
+        self.assertFalse(recoverable["isError"])
+        recoverable_payload = recoverable["structuredContent"]
+        self.assertEqual(recoverable_payload["state"], "explore")
+        self.assertEqual(
+            recoverable_payload["submission"]["error"]["code"],
+            "INVALID_COMMIT_ACTION",
+        )
+        self.assertTrue(recoverable_payload["submission"]["writes_retained"])
+        stale = self.tools.call(
+            "rethlas_read",
+            {"capability": advanced["capability"], "resource": "problem"},
+            self.principal,
+        )
+        self.assertTrue(stale["isError"])
+        self.assertEqual(stale["structuredContent"]["error"]["code"], "CAPABILITY_REVOKED")
+        recovered = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": recoverable_payload["capability"],
+                "action": "exploration_complete",
+            },
+            self.principal,
+        )["structuredContent"]
+        self.assertEqual(recovered["state"], "propose_plans")
+
+        listed_names = [item["name"] for item in self.tools.list_tools()]
+        self.assertNotIn("rethlas_status", listed_names)
+        legacy = self.tools.call(
+            "rethlas_status",
+            {"run_id": run_id},
+            self.principal,
+        )["structuredContent"]
+        self.assertTrue(legacy["ok"])
+        self.assertEqual(legacy["state"], "propose_plans")
+
+        legacy_over_mcp = self.dispatcher.dispatch(
+            {
+                "jsonrpc": "2.0",
+                "id": 99,
+                "method": "tools/call",
+                "params": {"name": "rethlas_status", "arguments": {"run_id": run_id}},
+            },
+            self.principal,
+        )
+        self.assertTrue(legacy_over_mcp["result"]["structuredContent"]["ok"])
+        self.assertEqual(
+            legacy_over_mcp["result"]["structuredContent"]["state"],
+            "propose_plans",
+        )
+
+    def test_rethlas_step_exposes_stable_screening_ids_and_accepts_partial_progress(self) -> None:
+        started = self.tools.call(
+            "rethlas_start",
+            {"problem_tex": r"\textbf{Problem.} Prove a test statement.", "problem_id": "screening"},
+            self.principal,
+        )["structuredContent"]
+        run_id = started["run_id"]
+        assess = self.tools.call("rethlas_step", {"run_id": run_id}, self.principal)["structuredContent"]
+        explore = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": assess["capability"],
+                "writes": [
+                    {"resource": "memory:generation:immediate_conclusions", "content": {"x": 1}},
+                    {"resource": "memory:generation:events", "content": {"event_type": "assessment"}},
+                ],
+                "action": "assessment_complete",
+            },
+            self.principal,
+        )["structuredContent"]
+        planning = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": explore["capability"],
+                "writes": [
+                    {"resource": "memory:generation:events", "content": {"event_type": "explore"}}
+                ],
+                "action": "exploration_complete",
+            },
+            self.principal,
+        )["structuredContent"]
+        direct = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": planning["capability"],
+                "action": "plans_proposed",
+                "payload": {
+                    "plans": [
+                        {"plan_id": "free text A", "summary": "First route", "subgoals": ["A1"]},
+                        {"plan_id": "free text B", "summary": "Second route", "subgoals": ["B1"]},
+                    ]
+                },
+            },
+            self.principal,
+        )["structuredContent"]
+        active = direct["context"]["active_plans"]
+        self.assertEqual([plan["plan_id"] for plan in active], ["plan-r1-1", "plan-r1-2"])
+        self.assertEqual(active[0]["subgoals"][0]["subgoal_id"], "sg-1")
+
+        partial_result = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": direct["capability"],
+                "writes": [
+                    {"resource": "memory:generation:proof_steps", "content": {"attempt": "plan-r1-1"}}
+                ],
+                "action": "direct_proving_complete",
+                "payload": {
+                    "screening": {
+                        "plan-r1-1": {
+                            "sg-1": {"status": "stuck", "summary": "Need one more lemma."}
+                        }
+                    }
+                },
+            },
+            self.principal,
+        )
+        self.assertFalse(partial_result["isError"])
+        partial = partial_result["structuredContent"]
+        self.assertEqual(partial["state"], "direct_proving")
+        self.assertFalse(partial["submission"]["complete"])
+        self.assertEqual(
+            partial["submission"]["missing_screening"],
+            [{"plan_id": "plan-r1-2", "subgoal_id": "sg-1", "text": "B1"}],
+        )
+        self.assertIn("plan-r1-2.sg-1", partial_result["content"][0]["text"])
+
     def test_modern_request_is_shaped_per_request(self) -> None:
         modern_meta = {
             META_PROTOCOL_VERSION: "2026-07-28",
@@ -200,7 +382,9 @@ class MCPDispatcherTestCase(unittest.TestCase):
         self.assertTrue(structured["dangerously_skip_all_permissions"])
         self.assertEqual(structured["endpoint_path"], "/mcp")
         self.assertEqual(structured["output_retention"]["buffer_bytes_per_stream"], 524288)
-        self.assertEqual(structured["tools"][:18], list(TOOL_SPECS)[:18])
+        self.assertEqual(structured["tool_count"], 24)
+        self.assertEqual(structured["tools"], list(PUBLIC_TOOL_NAMES))
+        self.assertEqual(len(structured["hidden_legacy_rethlas_aliases"]), 11)
 
     def test_view_image_returns_image_content_block(self) -> None:
         png = base64.b64decode(

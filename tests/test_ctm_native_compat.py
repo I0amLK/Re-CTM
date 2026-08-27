@@ -13,7 +13,13 @@ from pathlib import Path
 from re_ctm.debug import DebugEventBus
 from re_ctm.enums import NativeMode
 from re_ctm.native import BubblewrapExecBackend, NativeRuntime, NativeWorkspace
-from re_ctm.tools import CTM_NATIVE_TOOL_NAMES, RETHLAS_TOOL_NAMES, TOOL_SPECS
+from re_ctm.tools import (
+    CTM_NATIVE_TOOL_NAMES,
+    LEGACY_RETHLAS_TOOL_NAMES,
+    PUBLIC_TOOL_NAMES,
+    RETHLAS_TOOL_NAMES,
+    TOOL_SPECS,
+)
 
 
 class CTMNativeCompatibilityTestCase(unittest.TestCase):
@@ -46,9 +52,11 @@ class CTMNativeCompatibilityTestCase(unittest.TestCase):
 
     def test_fixed_catalog_is_ctm_superset(self) -> None:
         self.assertEqual(len(CTM_NATIVE_TOOL_NAMES), 18)
-        self.assertEqual(len(RETHLAS_TOOL_NAMES), 13)
-        self.assertEqual(tuple(TOOL_SPECS), CTM_NATIVE_TOOL_NAMES + RETHLAS_TOOL_NAMES)
-        self.assertEqual(len(TOOL_SPECS), 31)
+        self.assertEqual(len(RETHLAS_TOOL_NAMES), 6)
+        self.assertEqual(len(PUBLIC_TOOL_NAMES), 24)
+        self.assertEqual(PUBLIC_TOOL_NAMES[:18], CTM_NATIVE_TOOL_NAMES)
+        self.assertEqual(len(LEGACY_RETHLAS_TOOL_NAMES), 13)
+        self.assertTrue(all(name in TOOL_SPECS for name in LEGACY_RETHLAS_TOOL_NAMES))
         contract = [TOOL_SPECS[name].definition(name) for name in CTM_NATIVE_TOOL_NAMES]
         contract_digest = hashlib.sha256(
             json.dumps(

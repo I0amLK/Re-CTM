@@ -272,11 +272,6 @@ class WorkflowTestCase(unittest.TestCase):
             join,
             "join_complete",
             {
-                "outcome": "solved",
-                "considered_branch_ids": [
-                    branch_a["context"]["branch_id"],
-                    branch_b["context"]["branch_id"],
-                ],
                 "selected_branch_id": branch_a["context"]["branch_id"],
                 "selected_plan": "order-split",
                 "summary": "Use the shorter route.",
@@ -452,26 +447,37 @@ class WorkflowTestCase(unittest.TestCase):
             "memory:generation:proof_steps",
             {"plan_id": "a", "status": "stuck"},
         )
-        with self.assertRaises(ReCTMError) as denied:
-            self._commit(
-                direct,
-                "direct_proving_complete",
-                {
-                    "outcome": "needs_branches",
-                    "screening": [
-                        {
-                            "plan_id": "a",
-                            "status": "stuck",
-                            "subgoal_results": [
-                                {"subgoal": "A1", "status": "stuck", "summary": "Blocked."}
-                            ],
-                            "key_stuck_points": ["Missing lemma."],
-                        }
-                    ],
-                    "branch_plans": [{"plan_id": "a"}, {"plan_id": "b"}],
-                },
-            )
-        self.assertEqual(denied.exception.code, "INVALID_ARGUMENT")
+        partial = self._commit(
+            direct,
+            "direct_proving_complete",
+            {
+                "screening": [
+                    {
+                        "plan_id": "a",
+                        "subgoal_results": [
+                            {"subgoal": "A1", "status": "stuck", "summary": "Blocked."}
+                        ],
+                    }
+                ]
+            },
+        )
+        self.assertFalse(partial["complete"])
+        self.assertEqual(
+            [(item["plan_id"], item["subgoal_id"]) for item in partial["missing_screening"]],
+            [("plan-r1-2", "sg-1")],
+        )
+        completed = self._commit(
+            direct,
+            "direct_proving_complete",
+            {
+                "screening": {
+                    "plan-r1-2": {
+                        "sg-1": {"status": "partial", "summary": "Needs isolated work."}
+                    }
+                }
+            },
+        )
+        self.assertEqual(completed["state"], WorkflowState.BRANCH_PREPARE.value)
 
     def test_external_retrieval_is_capability_gated_and_persisted(self) -> None:
         self.engine.research = FakeResearchProvider()

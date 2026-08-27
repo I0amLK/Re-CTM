@@ -16,8 +16,10 @@ Re-CTM combines a native CMT plane and a Rethlas workflow plane in one OAuth MCP
 
 ## Workflow invariants
 
-- Keep one fixed, truthful MCP tool catalog. Authorization is server-side, not `tools/list` filtering.
-- Keep the concrete-mathematics routing rule in both MCP initialize instructions and `rethlas_start` metadata: proof, derivation, proof-repair, and rigorous verification tasks use Rethlas by default unless the user explicitly requests an informal bypass.
+- Keep one fixed, truthful public MCP tool catalog: the exact 18 CTM native tools followed by six Rethlas façade tools. Authorization is server-side, not `tools/list` filtering. Superseded Rethlas protocol names may remain callable only as hidden compatibility aliases.
+- Keep the concrete-mathematics routing rule in both MCP initialize instructions and `rethlas_start` metadata: proof, derivation, proof-repair, and rigorous verification tasks use Rethlas by default unless the user explicitly requests an informal bypass, and continue through `rethlas_step` until done.
+- Direct-plan screening must use server-issued plan/subgoal identifiers. Coverage remains mandatory, but partial screening submissions are retained and report missing ids; plan status, overall branch-vs-solved outcome, and the all-active-plan branch set are server-derived rather than echoed by the model.
+- When `rethlas_step` returns a fresh task capability after a submission (including a recoverable validation correction), revoke the capability used for that submission so the client has one current handle to continue with.
 - Branch domains read one frozen snapshot and their own branch only until every branch is sealed and the join barrier opens.
 - Sealing a domain revokes its capabilities.
 - Verifier domains cannot read generation memory, branch internals, steering history, join internals, or generator confidence.

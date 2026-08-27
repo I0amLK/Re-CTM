@@ -662,6 +662,38 @@ class WorkflowEngine:
             "available_logical_resources": _resources_for_role(role),
             "manual_validation_required": True,
         }
+        if state == WorkflowState.DIRECT_PROVING:
+            active_plans = run.get("metadata", {}).get("active_plans", [])
+            progress = run.get("metadata", {}).get("direct_screening_progress", {})
+            public_plans = _public_active_plans(active_plans)
+            preferred_shape: dict[str, Any] = {}
+            if public_plans and public_plans[0].get("subgoals"):
+                first_plan = public_plans[0]
+                first_subgoal = first_plan["subgoals"][0]
+                preferred_shape = {
+                    str(first_plan["plan_id"]): {
+                        str(first_subgoal["subgoal_id"]): {
+                            "status": "solved|partial|stuck",
+                            "summary": "...",
+                        }
+                    }
+                }
+            context.update(
+                {
+                    "active_plans": public_plans,
+                    "screening_progress": progress if isinstance(progress, Mapping) else {},
+                    "screening_contract": {
+                        "preferred_shape": preferred_shape,
+                        "server_derives": [
+                            "plan status",
+                            "overall solved-vs-branch outcome",
+                            "branch set when no plan is solved",
+                            "stuck-point summary",
+                        ],
+                        "incomplete_submission": "Accepted without transition; response lists missing plan/subgoal ids.",
+                    },
+                }
+            )
         if role == WorkflowRole.BRANCH:
             branch_id = str(domain.get("metadata", {}).get("branch_id") or "")
             branch = self.store.get_branch(branch_id)
@@ -823,22 +855,43 @@ class WorkflowEngine:
             self._require_records(claims.run_id, "events")
             after = WorkflowState.PROPOSE_PLANS
         elif action == "plans_proposed":
-            plans = _validate_plans(payload.get("plans"))
+            plans = _validate_plans(
+                payload.get("plans"),
+                plan_round=int(run.get("round_index") or 0) + 1,
+            )
             for plan in plans:
                 self.vault.append_generation_memory(
                     claims.run_id,
                     "subgoals",
                     {**plan, "record_type": "decomposition_plan", "status": "proposed"},
                 )
-            self.store.update_run_metadata(claims.run_id, {"active_plans": plans})
+            self.store.update_run_metadata(
+                claims.run_id,
+                {"active_plans": plans, "direct_screening_progress": {}},
+            )
             after = WorkflowState.DIRECT_PROVING
         elif action == "direct_proving_complete":
             self._require_records(claims.run_id, "proof_steps")
             active_plans = run.get("metadata", {}).get("active_plans", [])
-            screening = _validate_direct_screening(
+            screening, progress, missing = _merge_direct_screening(
                 payload.get("screening"),
                 active_plans,
+                run.get("metadata", {}).get("direct_screening_progress"),
             )
+            self.store.update_run_metadata(
+                claims.run_id,
+                {"direct_screening_progress": progress},
+            )
+            if missing:
+                return {
+                    "run_id": claims.run_id,
+                    "state": WorkflowState.DIRECT_PROVING.value,
+                    "complete": False,
+                    "screening_complete": False,
+                    "missing_screening": missing,
+                    "accepted_progress": screening,
+                    "verdict": run.get("verdict"),
+                }
             self.vault.append_generation_memory(
                 claims.run_id,
                 "proof_steps",
@@ -848,17 +901,26 @@ class WorkflowEngine:
                     "created_at": utc_now(),
                 },
             )
-            outcome = str(payload.get("outcome") or "")
+            solved_plan_ids = [
+                item["plan_id"] for item in screening if item["status"] == "solved"
+            ]
+            outcome = "solved" if solved_plan_ids else "needs_branches"
             if outcome == "solved":
                 if not str(payload.get("proof_route") or "").strip():
                     raise invalid_argument("solved outcome requires proof_route")
-                solved_plan_ids = {
-                    item["plan_id"] for item in screening if item["status"] == "solved"
-                }
                 selected_plan_id = str(payload.get("selected_plan_id") or "")
-                if not solved_plan_ids or selected_plan_id not in solved_plan_ids:
+                source_to_plan = {
+                    str(plan.get("source_plan_id")): str(plan.get("plan_id"))
+                    for plan in active_plans
+                    if isinstance(plan, Mapping) and str(plan.get("source_plan_id") or "")
+                }
+                selected_plan_id = source_to_plan.get(selected_plan_id, selected_plan_id)
+                if not selected_plan_id and len(solved_plan_ids) == 1:
+                    selected_plan_id = solved_plan_ids[0]
+                if selected_plan_id not in solved_plan_ids:
                     raise invalid_argument(
-                        "solved outcome requires selected_plan_id for a plan whose screening status is solved"
+                        "selected_plan_id must identify a completely solved plan",
+                        solved_plan_ids=solved_plan_ids,
                     )
                 self.vault.write_join_result(
                     claims.run_id,
@@ -871,57 +933,60 @@ class WorkflowEngine:
                     },
                 )
                 after = WorkflowState.ASSEMBLE
-            elif outcome == "needs_branches":
-                if any(item["status"] == "solved" for item in screening):
-                    raise invalid_argument(
-                        "needs_branches is invalid when direct screening already solved a plan"
-                    )
-                branch_plans = _validate_branch_requests(
-                    payload.get("branch_plans"),
-                    active_plans,
-                )
+            else:
+                branch_plans = [dict(plan) for plan in active_plans if isinstance(plan, Mapping)]
                 self.store.update_run_metadata(
                     claims.run_id,
                     {"branch_requests": branch_plans, "last_direct_screening": screening},
                 )
                 after = WorkflowState.BRANCH_PREPARE
-            else:
-                raise invalid_argument("outcome must be solved or needs_branches")
         elif action == "branch_complete":
             return self._commit_branch(run, claims, payload, trace_id)
         elif action == "join_complete":
-            outcome = str(payload.get("outcome") or "")
-            if outcome not in {"solved", "failed"}:
-                raise invalid_argument("join outcome must be solved or failed")
             branches = self.store.list_branches(claims.run_id)
             sealed_ids = {str(item["branch_id"]) for item in branches if item["status"] == "sealed"}
             considered = payload.get("considered_branch_ids")
-            if not isinstance(considered, list) or {str(item) for item in considered} != sealed_ids:
+            if considered is not None and (
+                not isinstance(considered, list)
+                or any(str(item) not in sealed_ids for item in considered)
+            ):
                 raise invalid_argument(
-                    "join must explicitly consider every sealed branch exactly once",
+                    "considered_branch_ids may contain only sealed branch ids; complete coverage is server-derived",
                     sealed_branch_ids=sorted(sealed_ids),
                 )
             branch_results = {
                 branch_id: self.vault.read_branch_result(claims.run_id, branch_id)
                 for branch_id in sealed_ids
             }
-            if outcome == "solved":
-                selected = str(payload.get("selected_branch_id") or "")
-                synthesis_route = str(payload.get("synthesis_proof_route") or "").strip()
-                selected_result = branch_results.get(selected)
-                if not synthesis_route and (
-                    not isinstance(selected_result, Mapping)
-                    or selected_result.get("status") != "solved"
-                ):
-                    raise invalid_argument(
-                        "solved join requires a solved selected_branch_id or synthesis_proof_route"
-                    )
-            else:
+            solved_branch_ids = sorted(
+                branch_id
+                for branch_id, result in branch_results.items()
+                if isinstance(result, Mapping) and result.get("status") == "solved"
+            )
+            selected = str(payload.get("selected_branch_id") or "")
+            synthesis_route = str(payload.get("synthesis_proof_route") or "").strip()
+            if not selected and not synthesis_route and len(solved_branch_ids) == 1:
+                selected = solved_branch_ids[0]
+            if selected and selected not in solved_branch_ids:
+                raise invalid_argument(
+                    "selected_branch_id must identify a solved sealed branch",
+                    selected_branch_id=selected,
+                    solved_branch_ids=solved_branch_ids,
+                )
+            if not selected and not synthesis_route and len(solved_branch_ids) > 1:
+                raise invalid_argument(
+                    "multiple solved branches require selected_branch_id or synthesis_proof_route",
+                    solved_branch_ids=solved_branch_ids,
+                )
+            outcome = "solved" if synthesis_route or selected else "failed"
+            if outcome == "failed":
                 common_failures = payload.get("common_failures")
                 if not isinstance(common_failures, list) or not common_failures:
                     raise invalid_argument("failed join requires non-empty common_failures")
             normalized_join = {
                 **payload,
+                "outcome": outcome,
+                "selected_branch_id": selected or None,
                 "considered_branch_ids": sorted(sealed_ids),
                 "joined_at": utc_now(),
             }
@@ -1427,27 +1492,29 @@ def _resources_for_role(role: WorkflowRole) -> list[str]:
     }[role]
 
 
-def _validate_plans(value: Any) -> list[dict[str, Any]]:
+def _validate_plans(value: Any, *, plan_round: int = 1) -> list[dict[str, Any]]:
     if not isinstance(value, list) or len(value) < 2:
         raise invalid_argument("plans must contain at least two materially different plans")
     plans: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for item in value:
+    for index, item in enumerate(value, start=1):
         if not isinstance(item, Mapping):
             raise invalid_argument("each plan must be a JSON object")
-        plan_id = _safe_component(str(item.get("plan_id") or ""))
+        source_plan_id = str(item.get("plan_id") or "").strip()
+        plan_id = f"plan-r{max(1, plan_round)}-{index}"
         summary = str(item.get("summary") or "").strip()
         subgoals = item.get("subgoals")
         if not summary or not isinstance(subgoals, list) or not subgoals:
             raise invalid_argument("each plan requires summary and non-empty subgoals")
-        if plan_id in seen:
-            raise invalid_argument("plan ids must be unique", plan_id=plan_id)
-        seen.add(plan_id)
+        normalized_subgoals = [str(goal).strip() for goal in subgoals]
+        if any(not goal for goal in normalized_subgoals):
+            raise invalid_argument("plan subgoals must be non-empty strings", plan_id=plan_id)
         plans.append(
             {
                 "plan_id": plan_id,
+                "source_plan_id": source_plan_id or None,
                 "summary": summary,
-                "subgoals": [str(goal) for goal in subgoals],
+                "subgoals": normalized_subgoals,
+                "subgoal_ids": [f"sg-{subgoal_index}" for subgoal_index in range(1, len(normalized_subgoals) + 1)],
                 "motivation": list(item.get("motivation") or []),
                 "risks": list(item.get("risks") or []),
             }
@@ -1457,7 +1524,38 @@ def _validate_plans(value: Any) -> list[dict[str, Any]]:
     return plans
 
 
-def _validate_direct_screening(value: Any, active_plans: Any) -> list[dict[str, Any]]:
+def _public_active_plans(active_plans: Any) -> list[dict[str, Any]]:
+    if not isinstance(active_plans, list):
+        return []
+    public: list[dict[str, Any]] = []
+    for plan in active_plans:
+        if not isinstance(plan, Mapping):
+            continue
+        texts = [str(goal) for goal in plan.get("subgoals") or []]
+        ids = [str(item) for item in plan.get("subgoal_ids") or []]
+        if len(ids) != len(texts):
+            ids = [f"sg-{index}" for index in range(1, len(texts) + 1)]
+        public.append(
+            {
+                "plan_id": str(plan.get("plan_id") or ""),
+                "source_plan_id": plan.get("source_plan_id"),
+                "summary": str(plan.get("summary") or ""),
+                "subgoals": [
+                    {"subgoal_id": subgoal_id, "text": text}
+                    for subgoal_id, text in zip(ids, texts)
+                ],
+                "motivation": list(plan.get("motivation") or []),
+                "risks": list(plan.get("risks") or []),
+            }
+        )
+    return public
+
+
+def _merge_direct_screening(
+    value: Any,
+    active_plans: Any,
+    previous: Any = None,
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, dict[str, str]]], list[dict[str, str]]]:
     if not isinstance(active_plans, list) or not active_plans:
         raise invalid_argument("direct screening requires active decomposition plans")
     known = {
@@ -1465,103 +1563,121 @@ def _validate_direct_screening(value: Any, active_plans: Any) -> list[dict[str, 
         for plan in active_plans
         if isinstance(plan, Mapping)
     }
-    if not isinstance(value, list) or len(value) != len(known):
-        raise invalid_argument(
-            "screening must contain exactly one report for every active plan",
-            active_plan_ids=sorted(known),
-        )
-    normalized: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for item in value:
-        if not isinstance(item, Mapping):
-            raise invalid_argument("each screening report must be an object")
-        plan_id = str(item.get("plan_id") or "")
-        if plan_id not in known or plan_id in seen:
+    source_to_plan = {
+        str(plan.get("source_plan_id")): str(plan.get("plan_id"))
+        for plan in active_plans
+        if isinstance(plan, Mapping) and str(plan.get("source_plan_id") or "")
+    }
+    progress: dict[str, dict[str, dict[str, str]]] = {}
+    if isinstance(previous, Mapping):
+        for plan_id, raw_results in previous.items():
+            if plan_id in known and isinstance(raw_results, Mapping):
+                progress[str(plan_id)] = {
+                    str(subgoal_id): dict(result)
+                    for subgoal_id, result in raw_results.items()
+                    if isinstance(result, Mapping)
+                }
+
+    submissions: list[tuple[str, Any]] = []
+    if value is None:
+        submissions = []
+    elif isinstance(value, Mapping):
+        submissions = [(str(plan_id), raw_results) for plan_id, raw_results in value.items()]
+    elif isinstance(value, list):
+        for item in value:
+            if not isinstance(item, Mapping):
+                raise invalid_argument("each screening report must be an object")
+            submissions.append((str(item.get("plan_id") or ""), item.get("subgoal_results")))
+    else:
+        raise invalid_argument("screening must be an object keyed by plan_id or a legacy report array")
+
+    for plan_id, raw_results in submissions:
+        plan_id = source_to_plan.get(plan_id, plan_id)
+        if plan_id not in known:
             raise invalid_argument(
-                "screening plan_id must identify one unused active plan",
+                "screening plan_id is not active",
                 plan_id=plan_id,
+                active_plan_ids=sorted(known),
             )
-        seen.add(plan_id)
-        status = str(item.get("status") or "")
-        if status not in {"solved", "partial", "stuck"}:
-            raise invalid_argument("screening status must be solved, partial, or stuck")
-        subgoal_results = item.get("subgoal_results")
-        expected_subgoals = [str(goal) for goal in known[plan_id].get("subgoals") or []]
-        if not isinstance(subgoal_results, list) or len(subgoal_results) != len(expected_subgoals):
-            raise invalid_argument(
-                "screening must report every subgoal exactly once",
-                plan_id=plan_id,
-                expected_subgoals=expected_subgoals,
-            )
-        result_by_subgoal: dict[str, dict[str, str]] = {}
-        for raw_result in subgoal_results:
-            if not isinstance(raw_result, Mapping):
-                raise invalid_argument("each subgoal result must be an object")
-            subgoal = str(raw_result.get("subgoal") or "")
-            subgoal_status = str(raw_result.get("status") or "")
-            summary = str(raw_result.get("summary") or "").strip()
-            if (
-                subgoal not in expected_subgoals
-                or subgoal in result_by_subgoal
-                or subgoal_status not in {"solved", "partial", "stuck"}
-                or not summary
-            ):
+        plan = known[plan_id]
+        texts = [str(goal) for goal in plan.get("subgoals") or []]
+        ids = [str(item) for item in plan.get("subgoal_ids") or []]
+        if len(ids) != len(texts):
+            ids = [f"sg-{index}" for index in range(1, len(texts) + 1)]
+        by_text = {text: subgoal_id for subgoal_id, text in zip(ids, texts)}
+        entries: list[tuple[str, Any]] = []
+        if isinstance(raw_results, Mapping):
+            entries = [(str(subgoal_id), raw_result) for subgoal_id, raw_result in raw_results.items()]
+        elif isinstance(raw_results, list):
+            for raw_result in raw_results:
+                if not isinstance(raw_result, Mapping):
+                    raise invalid_argument("each subgoal result must be an object", plan_id=plan_id)
+                subgoal_id = str(raw_result.get("subgoal_id") or "")
+                if not subgoal_id:
+                    subgoal_id = by_text.get(str(raw_result.get("subgoal") or ""), "")
+                entries.append((subgoal_id, raw_result))
+        else:
+            raise invalid_argument("plan screening must contain subgoal result objects", plan_id=plan_id)
+        bucket = progress.setdefault(plan_id, {})
+        for subgoal_id, raw_result in entries:
+            if subgoal_id not in ids or not isinstance(raw_result, Mapping):
                 raise invalid_argument(
-                    "subgoal result requires one known subgoal, valid status, and summary",
+                    "screening subgoal_id is not active for the plan",
                     plan_id=plan_id,
-                    subgoal=subgoal,
+                    subgoal_id=subgoal_id,
+                    active_subgoal_ids=ids,
                 )
-            result_by_subgoal[subgoal] = {
-                "subgoal": subgoal,
-                "status": subgoal_status,
-                "summary": summary,
-            }
-        key_stuck_points = [str(point) for point in item.get("key_stuck_points") or [] if str(point)]
-        if status in {"partial", "stuck"} and not key_stuck_points:
-            raise invalid_argument(
-                "partial or stuck plan screening requires key_stuck_points",
-                plan_id=plan_id,
+            status = str(raw_result.get("status") or "")
+            summary = str(raw_result.get("summary") or "").strip()
+            if status not in {"solved", "partial", "stuck"} or not summary:
+                raise invalid_argument(
+                    "subgoal screening requires status solved|partial|stuck and a non-empty summary",
+                    plan_id=plan_id,
+                    subgoal_id=subgoal_id,
+                )
+            bucket[subgoal_id] = {"status": status, "summary": summary}
+
+    normalized: list[dict[str, Any]] = []
+    missing: list[dict[str, str]] = []
+    for plan_id, plan in known.items():
+        texts = [str(goal) for goal in plan.get("subgoals") or []]
+        ids = [str(item) for item in plan.get("subgoal_ids") or []]
+        if len(ids) != len(texts):
+            ids = [f"sg-{index}" for index in range(1, len(texts) + 1)]
+        bucket = progress.get(plan_id, {})
+        results: list[dict[str, str]] = []
+        for subgoal_id, text in zip(ids, texts):
+            result = bucket.get(subgoal_id)
+            if not isinstance(result, Mapping):
+                missing.append({"plan_id": plan_id, "subgoal_id": subgoal_id, "text": text})
+                continue
+            results.append(
+                {
+                    "subgoal_id": subgoal_id,
+                    "subgoal": text,
+                    "status": str(result.get("status") or ""),
+                    "summary": str(result.get("summary") or ""),
+                }
             )
-        if status == "solved" and any(
-            result["status"] != "solved" for result in result_by_subgoal.values()
-        ):
-            raise invalid_argument(
-                "a solved plan requires every subgoal result to be solved",
-                plan_id=plan_id,
-            )
+        statuses = [result["status"] for result in results]
+        plan_status = (
+            "solved"
+            if len(results) == len(ids) and statuses and all(status == "solved" for status in statuses)
+            else "stuck"
+            if any(status == "stuck" for status in statuses)
+            else "partial"
+        )
         normalized.append(
             {
                 "plan_id": plan_id,
-                "status": status,
-                "subgoal_results": [result_by_subgoal[subgoal] for subgoal in expected_subgoals],
-                "key_stuck_points": key_stuck_points,
+                "status": plan_status,
+                "subgoal_results": results,
+                "key_stuck_points": [
+                    result["summary"] for result in results if result["status"] != "solved"
+                ],
             }
         )
-    return normalized
-
-
-def _validate_branch_requests(value: Any, active_plans: Any) -> list[dict[str, Any]]:
-    if not isinstance(value, list) or not value:
-        raise invalid_argument("branch_plans must be a non-empty array")
-    known = {
-        str(plan.get("plan_id")): plan
-        for plan in active_plans
-        if isinstance(plan, Mapping)
-    }
-    result: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for item in value:
-        plan_id = str(item.get("plan_id") if isinstance(item, Mapping) else item)
-        if plan_id not in known or plan_id in seen:
-            raise invalid_argument("branch plan is not an active decomposition plan", plan_id=plan_id)
-        seen.add(plan_id)
-        result.append(dict(known[plan_id]))
-    if seen != set(known):
-        raise invalid_argument(
-            "recursive branch round requires exactly one branch for every active plan",
-            missing_plan_ids=sorted(set(known) - seen),
-        )
-    return result
+    return normalized, progress, missing
 
 
 def _proof_declares_external_references(proof: str) -> bool:

@@ -95,7 +95,7 @@
     },
     {
       "id": "PC-009",
-      "constraint": "Re-CTM is a strict tool-surface superset of Coding Tools MCP: all 18 CTM native tool names and public input schemas remain available, including the exec_command command_id lifecycle, while Rethlas tools are additive."
+      "constraint": "Re-CTM is a strict tool-surface superset of Coding Tools MCP: all 18 CTM native tool names and public input schemas remain available, including the exec_command command_id lifecycle. The LLM-facing catalog adds six Rethlas façade tools (24 public tools total), while legacy Re-CTM Rethlas tool names remain accepted as hidden compatibility aliases rather than being advertised in tools/list."
     },
     {
       "id": "PC-010",
@@ -107,7 +107,7 @@
     },
     {
       "id": "PC-012",
-      "constraint": "The MCP contract routes concrete mathematical proof, derivation, proof-repair, and rigorous verification tasks into rethlas_start unless the user explicitly requests a direct informal answer; the client must continue the workflow through done rather than substitute an unverified chat response."
+      "constraint": "The MCP contract routes concrete mathematical proof, derivation, proof-repair, and rigorous verification tasks into rethlas_start unless the user explicitly requests a direct informal answer; the client must continue through rethlas_step until done rather than substitute an unverified chat response. The step contract must expose server-issued plan/subgoal identifiers and accept incremental screening without requiring the model to echo server-derived plan status, branch sets, or full-text subgoal keys."
     }
   ],
   "implementation_snapshot": {
@@ -154,13 +154,13 @@
     ],
     "evidence": [
       "src/re_ctm/native_helper_bwrap.py implements a separate-process bubblewrap boundary with namespace, environment, capability, timeout, and forbidden-path probes.",
-      "src/re_ctm/tools.py freezes the first 18 entries to the CTM native catalog and appends 13 Rethlas tools, for a fixed 31-tool catalog.",
+      "src/re_ctm/tools.py freezes the first 18 public entries to the CTM native catalog and advertises six Rethlas façade tools for a 24-tool LLM-facing catalog; eleven superseded Rethlas protocol names remain accepted as hidden compatibility aliases.",
       "src/re_ctm/processes.py and tests/test_ctm_native_compat.py restore command_id lifecycle operations including polling, retained-output reads, TTY stdin interaction, timeout, and termination under bubblewrap.",
       "src/re_ctm/server.py and tests/test_http.py implement loopback-only dynamic OAuth-origin resolution for Cloudflare-style X-Forwarded-Host/X-Forwarded-Proto while preserving explicit RE_CTM_SERVER_URL precedence and token issuer/audience binding.",
-      "rethlas_export_final and NativeRuntime.export_verified_latex implement the only mechanically-finalized private-to-native artifact bridge with workspace confinement and overwrite baselines.",
+      "rethlas_artifact, its hidden legacy export alias, and NativeRuntime.export_verified_latex implement the mechanically-finalized private-to-native artifact bridge with workspace confinement and overwrite baselines.",
       "scripts/manual_native_isolation_test.py provides target-PC adversarial evidence before RE_CTM_NATIVE_ISOLATION_ATTESTED=1 is permitted operationally.",
       "tests/ exercises OAuth, legacy and modern MCP, fixed catalogs, native path confinement, capability ownership, branch barriers, verifier firewall, mechanical verdict/finalization, diagnostics, LaTeX safety, and the reference bubblewrap helper.",
-      "MCP server instructions and the rethlas_start tool contract route concrete mathematical work into the capability-gated workflow, and terminal rethlas_next performs an idempotent workspace export through the controlled artifact bridge.",
+      "MCP server instructions and the rethlas_start tool contract route concrete mathematical work into the capability-gated workflow; rethlas_step combines task submission and advancement, exposes stable plan/subgoal ids, accepts incremental screening, and performs idempotent workspace export when terminal done is reached.",
       "manual-validation.json remains the authority for browser, target-PC, external-retrieval, real-LaTeX, and 95-percent methodology acceptance."
     ]
   },
@@ -214,7 +214,7 @@
       "kind": "contract",
       "trust_domain": "gateway",
       "responsibilities": [
-        "Keep the complete 18-tool CTM native catalog plus 13 rethlas_* tools stable across permission modes and workflow states",
+        "Keep the complete 18-tool CTM native catalog plus 6 public Rethlas façade tools stable across permission modes and workflow states, while hidden legacy Rethlas aliases remain callable for compatibility",
         "Preserve CTM public input schemas so existing CTM clients can switch to Re-CTM without losing tool availability",
         "Publish truthful schemas and annotations",
         "Prevent client-side tool-catalog caching from becoming an authorization mechanism"

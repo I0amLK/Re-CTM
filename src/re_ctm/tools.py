@@ -85,7 +85,7 @@ CTM_NATIVE_TOOL_NAMES = (
     "view_image",
 )
 
-RETHLAS_TOOL_NAMES = (
+LEGACY_RETHLAS_TOOL_NAMES = (
     "rethlas_start",
     "rethlas_next",
     "rethlas_read",
@@ -100,6 +100,17 @@ RETHLAS_TOOL_NAMES = (
     "rethlas_get_artifact",
     "rethlas_export_final",
 )
+
+RETHLAS_TOOL_NAMES = (
+    "rethlas_start",
+    "rethlas_step",
+    "rethlas_inspect",
+    "rethlas_retrieve",
+    "rethlas_control",
+    "rethlas_artifact",
+)
+
+PUBLIC_TOOL_NAMES = CTM_NATIVE_TOOL_NAMES + RETHLAS_TOOL_NAMES
 
 
 TOOL_SPECS: dict[str, ToolSpec] = {
@@ -318,7 +329,7 @@ TOOL_SPECS: dict[str, ToolSpec] = {
     ),
     "rethlas_start": ToolSpec(
         "Start verified mathematical workflow",
-        "Call this first for every concrete mathematical proof, derivation, or verification task unless the user explicitly asks for a direct informal answer. Create a private Rethlas reasoning run; after verification, rethlas_next automatically writes proof_verified.tex to the workspace export path.",
+        "Call this first for every concrete mathematical proof, derivation, or verification task unless the user explicitly asks for a direct informal answer. Create a private Rethlas reasoning run; continue with rethlas_step until verification and automatic proof_verified.tex workspace delivery complete.",
         {
             **OBJECT,
             "required": ["problem_tex"],
@@ -414,7 +425,8 @@ TOOL_SPECS: dict[str, ToolSpec] = {
                 "num_results": {"type": "integer", "minimum": 1, "maximum": 50}
             }
         },
-        read_only=True,
+        read_only=False,
+        destructive=False,
         open_world=True,
     ),
     "rethlas_commit": ToolSpec(
@@ -509,10 +521,90 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         },
         destructive=True,
     ),
+    "rethlas_step": ToolSpec(
+        "Advance Rethlas workflow",
+        "Issue the current Rethlas task, or submit its logical writes plus commit payload and immediately return the next task. Incomplete screening is accepted in place and returns exact missing plan/subgoal ids instead of failing the run.",
+        {
+            **OBJECT,
+            "required": ["run_id"],
+            "properties": {
+                "run_id": {"type": "string", "minLength": 1},
+                "capability": {"type": "string"},
+                "writes": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["resource", "content"],
+                        "properties": {
+                            "resource": {"type": "string", "minLength": 1},
+                            "content": {},
+                        },
+                        "additionalProperties": False,
+                    },
+                },
+                "action": {"type": "string"},
+                "payload": {"type": "object"},
+            },
+        },
+        destructive=True,
+    ),
+    "rethlas_inspect": ToolSpec(
+        "Inspect Rethlas run",
+        "Inspect public run status or capability-authorized logical resources/memory without changing workflow state.",
+        {
+            **OBJECT,
+            "required": ["operation"],
+            "properties": {
+                "operation": {"type": "string", "enum": ["status", "read", "search"]},
+                "run_id": {"type": "string"},
+                "capability": {"type": "string"},
+                "resource": {"type": "string"},
+                "query": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+            },
+        },
+        read_only=True,
+    ),
+    "rethlas_control": ToolSpec(
+        "Control Rethlas run",
+        "Queue owner steering or cancel a run. Resuming/continuing is done by calling rethlas_step with run_id.",
+        {
+            **OBJECT,
+            "required": ["run_id", "action"],
+            "properties": {
+                "run_id": {"type": "string", "minLength": 1},
+                "action": {"type": "string", "enum": ["steer", "cancel"]},
+                "message": {"type": "string"},
+                "reason": {"type": "string"},
+            },
+        },
+        destructive=True,
+    ),
+    "rethlas_artifact": ToolSpec(
+        "Read or export Rethlas artifact",
+        "Return a run artifact or ensure the mechanically finalized LaTeX is written to the workspace. Final export never bypasses the mechanical verification gate.",
+        {
+            **OBJECT,
+            "required": ["run_id", "action"],
+            "properties": {
+                "run_id": {"type": "string", "minLength": 1},
+                "action": {"type": "string", "enum": ["get", "export"]},
+                "artifact": {
+                    "type": "string",
+                    "enum": ["draft_tex", "final_tex", "verification_report", "transition_log", "debug_manifest"],
+                },
+                "path": {"type": "string", "minLength": 1},
+                "expected_sha256": {"type": "string"},
+            },
+        },
+        destructive=True,
+    ),
 }
 
-if tuple(TOOL_SPECS) != CTM_NATIVE_TOOL_NAMES + RETHLAS_TOOL_NAMES:
-    raise RuntimeError("Re-CTM fixed tool catalog must remain CTM 18-tool compatible plus Rethlas tools")
+if tuple(TOOL_SPECS)[: len(CTM_NATIVE_TOOL_NAMES)] != CTM_NATIVE_TOOL_NAMES:
+    raise RuntimeError("Re-CTM must preserve the exact 18-tool CTM prefix")
+if any(name not in TOOL_SPECS for name in PUBLIC_TOOL_NAMES):
+    raise RuntimeError("Every public Re-CTM tool must have a tool specification")
 
 
 def validate_tool_arguments(name: str, arguments: Mapping[str, Any]) -> None:
@@ -636,10 +728,14 @@ class ToolRuntime:
             "rethlas_cancel": self._rethlas_cancel,
             "rethlas_get_artifact": self._rethlas_get_artifact,
             "rethlas_export_final": self._rethlas_export_final,
+            "rethlas_step": self._rethlas_step,
+            "rethlas_inspect": self._rethlas_inspect,
+            "rethlas_control": self._rethlas_control,
+            "rethlas_artifact": self._rethlas_artifact,
         }
 
     def list_tools(self) -> list[dict[str, Any]]:
-        return [spec.definition(name) for name, spec in TOOL_SPECS.items()]
+        return [TOOL_SPECS[name].definition(name) for name in PUBLIC_TOOL_NAMES]
 
     def call(
         self,
@@ -788,11 +884,15 @@ class ToolRuntime:
             },
             "oauth_only": True,
             "oauth_client_id": principal.client_id,
-            "tool_count": len(TOOL_SPECS),
-            "tools": list(TOOL_SPECS),
+            "tool_count": len(PUBLIC_TOOL_NAMES),
+            "tools": list(PUBLIC_TOOL_NAMES),
             "ctm_native_tool_count": len(CTM_NATIVE_TOOL_NAMES),
             "rethlas_tool_count": len(RETHLAS_TOOL_NAMES),
             "ctm_native_tools": list(CTM_NATIVE_TOOL_NAMES),
+            "rethlas_tools": list(RETHLAS_TOOL_NAMES),
+            "hidden_legacy_rethlas_aliases": [
+                name for name in LEGACY_RETHLAS_TOOL_NAMES if name not in RETHLAS_TOOL_NAMES
+            ],
             "tool_catalog_stable": True,
             "mathematical_task_routing": (
                 "Concrete proof, derivation, proof-repair, and rigorous verification tasks should start with rethlas_start unless the user explicitly requests a direct informal answer."
@@ -800,7 +900,7 @@ class ToolRuntime:
             "verified_latex_delivery": {
                 "automatic_on_done": True,
                 "default_workspace_path": "rethlas-output/<run_id>/proof_verified.tex",
-                "explicit_alternate_export_tool": "rethlas_export_final",
+                "explicit_alternate_export_tool": "rethlas_artifact",
             },
             "native": native_info,
             "authorization_axioms": {
@@ -832,18 +932,15 @@ class ToolRuntime:
         )
 
     def _rethlas_next(self, principal: OAuthPrincipal, arguments: dict[str, Any], trace_id: str) -> dict[str, Any]:
-        result = self.workflow.next_task(
-            owner_id=principal.client_id,
-            run_id=str(arguments.get("run_id") or ""),
-            trace_id=trace_id,
-        )
-        if result.get("state") == "done" and result.get("terminal") is True:
-            result = self._attach_automatic_final_export(
-                principal=principal,
-                result=result,
+        return self._attach_done_export_if_needed(
+            principal,
+            self.workflow.next_task(
+                owner_id=principal.client_id,
+                run_id=str(arguments.get("run_id") or ""),
                 trace_id=trace_id,
-            )
-        return result
+            ),
+            trace_id,
+        )
 
     def _rethlas_read(self, principal: OAuthPrincipal, arguments: dict[str, Any], trace_id: str) -> dict[str, Any]:
         return self.workflow.read(
@@ -898,6 +995,171 @@ class ToolRuntime:
             payload=payload,
             trace_id=trace_id,
         )
+
+    def _rethlas_step(
+        self,
+        principal: OAuthPrincipal,
+        arguments: dict[str, Any],
+        trace_id: str,
+    ) -> dict[str, Any]:
+        run_id = str(arguments.get("run_id") or "")
+        capability = str(arguments.get("capability") or "")
+        writes = arguments.get("writes") or []
+        action = str(arguments.get("action") or "")
+        payload = arguments.get("payload") or {}
+        if not isinstance(writes, list):
+            raise invalid_argument("writes must be an array")
+        if not isinstance(payload, Mapping):
+            raise invalid_argument("payload must be an object")
+        if not action and not writes and not capability:
+            return self._attach_done_export_if_needed(
+                principal,
+                self.workflow.next_task(
+                    owner_id=principal.client_id,
+                    run_id=run_id,
+                    trace_id=trace_id,
+                ),
+                trace_id,
+            )
+        if not capability:
+            raise invalid_argument("capability is required when submitting a Rethlas step")
+        if writes and not action:
+            raise invalid_argument("action is required when writes are submitted")
+        write_results: list[dict[str, Any]] = []
+        for item in writes:
+            if not isinstance(item, Mapping):
+                raise invalid_argument("each write must be an object")
+            write_results.append(
+                self.workflow.write(
+                    owner_id=principal.client_id,
+                    capability=capability,
+                    resource=str(item.get("resource") or ""),
+                    content=item.get("content"),
+                    trace_id=trace_id,
+                )
+            )
+        if not action:
+            raise invalid_argument("action is required to complete a Rethlas step")
+        try:
+            submission = self.workflow.commit(
+                owner_id=principal.client_id,
+                capability=capability,
+                action=action,
+                payload=payload,
+                trace_id=trace_id,
+            )
+        except ReCTMError as exc:
+            if exc.category not in {"validation", "conflict"}:
+                raise
+            current = self.workflow.next_task(
+                owner_id=principal.client_id,
+                run_id=run_id,
+                trace_id=trace_id,
+            )
+            self.workflow.capabilities.revoke(
+                capability,
+                "superseded_by_recoverable_step",
+                trace_id=trace_id,
+            )
+            return {
+                **current,
+                "submission": {
+                    "ok": False,
+                    "complete": False,
+                    "error": exc.to_payload(),
+                    "writes_retained": bool(write_results),
+                },
+                "writes_applied": len(write_results),
+            }
+        next_task = self._attach_done_export_if_needed(
+            principal,
+            self.workflow.next_task(
+                owner_id=principal.client_id,
+                run_id=run_id,
+                trace_id=trace_id,
+            ),
+            trace_id,
+        )
+        self.workflow.capabilities.revoke(
+            capability,
+            "superseded_by_rethlas_step",
+            trace_id=trace_id,
+        )
+        return {**next_task, "submission": submission, "writes_applied": len(write_results)}
+
+    def _rethlas_inspect(
+        self,
+        principal: OAuthPrincipal,
+        arguments: dict[str, Any],
+        trace_id: str,
+    ) -> dict[str, Any]:
+        operation = str(arguments.get("operation") or "")
+        if operation == "status":
+            return self.workflow.status(
+                owner_id=principal.client_id,
+                run_id=str(arguments.get("run_id") or ""),
+            )
+        capability = str(arguments.get("capability") or "")
+        resource = str(arguments.get("resource") or "")
+        if operation == "read":
+            return self.workflow.read(
+                owner_id=principal.client_id,
+                capability=capability,
+                resource=resource,
+                trace_id=trace_id,
+            )
+        if operation == "search":
+            return self.workflow.search(
+                owner_id=principal.client_id,
+                capability=capability,
+                resource=resource,
+                query=str(arguments.get("query") or ""),
+                limit=int(arguments.get("limit", 20)),
+                trace_id=trace_id,
+            )
+        raise invalid_argument("operation must be status, read, or search")
+
+    def _rethlas_control(
+        self,
+        principal: OAuthPrincipal,
+        arguments: dict[str, Any],
+        trace_id: str,
+    ) -> dict[str, Any]:
+        action = str(arguments.get("action") or "")
+        run_id = str(arguments.get("run_id") or "")
+        if action == "steer":
+            return self.workflow.steer(
+                owner_id=principal.client_id,
+                run_id=run_id,
+                message=str(arguments.get("message") or ""),
+                trace_id=trace_id,
+            )
+        if action == "cancel":
+            return self.workflow.cancel(
+                owner_id=principal.client_id,
+                run_id=run_id,
+                reason=str(arguments.get("reason") or "user_cancelled"),
+                trace_id=trace_id,
+            )
+        raise invalid_argument("action must be steer or cancel")
+
+    def _rethlas_artifact(
+        self,
+        principal: OAuthPrincipal,
+        arguments: dict[str, Any],
+        trace_id: str,
+    ) -> dict[str, Any]:
+        action = str(arguments.get("action") or "")
+        run_id = str(arguments.get("run_id") or "")
+        if action == "get":
+            return self.workflow.get_artifact(
+                owner_id=principal.client_id,
+                run_id=run_id,
+                artifact=str(arguments.get("artifact") or "final_tex"),
+            )
+        if action == "export":
+            return self._rethlas_export_final(principal, arguments, trace_id)
+        raise invalid_argument("action must be get or export")
 
     def _rethlas_status(self, principal: OAuthPrincipal, arguments: dict[str, Any], trace_id: str) -> dict[str, Any]:
         _ = trace_id
@@ -981,6 +1243,20 @@ class ToolRuntime:
             "workflow_authority_inherited_by_native": False,
         }
 
+    def _attach_done_export_if_needed(
+        self,
+        principal: OAuthPrincipal,
+        result: dict[str, Any],
+        trace_id: str,
+    ) -> dict[str, Any]:
+        if result.get("state") == "done" and result.get("terminal") is True:
+            return self._attach_automatic_final_export(
+                principal=principal,
+                result=result,
+                trace_id=trace_id,
+            )
+        return result
+
     def _attach_automatic_final_export(
         self,
         *,
@@ -1051,7 +1327,26 @@ def _render_summary(name: str, payload: Mapping[str, Any]) -> str:
             f"Run {payload.get('run_id')} started; verified LaTeX will be written to "
             f"{payload.get('workspace_export_path')} when the workflow reaches done."
         )
-    if name == "rethlas_next":
+    if name in {"rethlas_step", "rethlas_next"}:
+        submission = payload.get("submission")
+        if name == "rethlas_step" and isinstance(submission, Mapping) and isinstance(submission.get("error"), Mapping):
+            error = submission["error"]
+            retained = " Previous logical writes were retained." if submission.get("writes_retained") else ""
+            return (
+                f"Run {payload.get('run_id')} remains in {payload.get('state')}; submission needs correction: "
+                f"{error.get('code')}: {error.get('message')}.{retained}"
+            )
+        if name == "rethlas_step" and isinstance(submission, Mapping) and submission.get("complete") is False:
+            missing = submission.get("missing_screening") or []
+            missing_ids = [
+                f"{item.get('plan_id')}.{item.get('subgoal_id')}"
+                for item in missing
+                if isinstance(item, Mapping)
+            ]
+            return (
+                f"Run {payload.get('run_id')} remains in direct_proving; accepted screening progress. "
+                f"Still missing: {', '.join(missing_ids) or 'see structuredContent'}."
+            )
         if payload.get("state") == "done":
             export = payload.get("workspace_export")
             if isinstance(export, Mapping) and export.get("ok"):
@@ -1064,7 +1359,7 @@ def _render_summary(name: str, payload: Mapping[str, Any]) -> str:
                 f"workspace export needs attention at {payload.get('workspace_export_path')}."
             )
         return f"Run {payload.get('run_id')} is in {payload.get('state')} for role {payload.get('role', 'none')}."
-    if name == "rethlas_status":
+    if name in {"rethlas_inspect", "rethlas_status"} and payload.get("state"):
         return f"Run {payload.get('run_id')}: {payload.get('state')} ({payload.get('status')})."
     if name == "rethlas_get_artifact" and payload.get("artifact") == "final_tex":
         return (

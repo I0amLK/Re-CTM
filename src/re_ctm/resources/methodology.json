@@ -56,22 +56,25 @@
       ],
       "commit_action": "direct_proving_complete",
       "commit_payload_contract": {
-        "outcome": "solved|needs_branches",
-        "screening": "Exactly one report for every active plan. Every report names every subgoal once with solved|partial|stuck status, a non-empty summary, and key_stuck_points for partial/stuck plans.",
-        "solved_fields": [
-          "selected_plan_id",
-          "proof_route"
+        "screening": "Submit any completed subset keyed by server-issued plan_id and subgoal_id. Each subgoal result needs solved|partial|stuck status and a non-empty summary. Partial submissions are retained and return exact missing ids without advancing state.",
+        "server_derives": [
+          "plan-level status from subgoal statuses",
+          "overall solved versus branch outcome",
+          "all-active-plan branch set when no plan is completely solved",
+          "stuck-point summaries from non-solved subgoal reports"
         ],
-        "branch_fields": [
-          "branch_plans containing every active plan exactly once"
+        "solved_fields": [
+          "selected_plan_id only when multiple plans are completely solved",
+          "proof_route"
         ]
       },
       "rules": [
         "Try to carry each whole plan through before abandoning it.",
         "When stuck on a subgoal, test the subgoal with counterexamples immediately.",
-        "Record solved, partial, and stuck status for every subgoal.",
-        "A solved outcome must select a plan whose complete screening is solved and must contain a full-proof route.",
-        "A recursive round is allowed only after every active plan and every one of its subgoals has been screened; one branch is then created for every active plan."
+        "Record solved, partial, and stuck status for every subgoal using the server-issued ids in the task context.",
+        "If screening is incomplete, submit the available reports and continue with the missing ids returned by the server instead of reconstructing the entire report.",
+        "A completely solved plan must provide a full-proof route; if exactly one plan is solved the server selects it automatically.",
+        "A recursive round begins only after every active plan and subgoal has been screened; the server creates one branch for every active plan without requiring branch_plans to be echoed."
       ]
     },
     "branch_run": {
@@ -102,9 +105,9 @@
       "required_records": [],
       "commit_action": "join_complete",
       "commit_payload_contract": {
-        "outcome": "solved|failed",
-        "considered_branch_ids": "Exactly every sealed branch id once.",
-        "solved_requires": "A selected solved branch id or synthesis_proof_route.",
+        "server_derives_outcome": "solved when a solved selected branch or synthesis_proof_route exists; otherwise failed",
+        "considered_branch_ids": "Optional audit hint only; complete sealed-branch coverage is derived by the server.",
+        "solved_requires": "If exactly one branch is solved the server selects it automatically; multiple solved branches require selected_branch_id or synthesis_proof_route.",
         "failed_requires": "A non-empty common_failures array."
       },
       "rules": [

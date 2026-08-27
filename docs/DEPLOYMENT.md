@@ -169,13 +169,13 @@ python3 scripts/collect_debug_bundle.py <run-id> \
 
 The MCP initialization instructions route concrete mathematical proof, derivation, proof-repair, and rigorous verification requests into `rethlas_start` by default. A particular webpage host may still ignore those instructions, so MV-008 must confirm ordinary-language routing on the real client.
 
-When terminal `rethlas_next` reports `done`, the controlled private-to-native bridge automatically writes the mechanically finalized bytes to the run's `workspace_export_path`. The default is:
+When terminal `rethlas_step` reports `done`, the controlled private-to-native bridge automatically writes the mechanically finalized bytes to the run's `workspace_export_path`. The default is:
 
 ```text
 rethlas-output/<run_id>/proof_verified.tex
 ```
 
-The automatic operation is idempotent when the existing file has the same hash and refuses to overwrite different content. `rethlas_get_artifact(final_tex)` still returns the finalized LaTeX through MCP. `rethlas_export_final` with no path re-materializes the run's default `workspace_export_path`; with an explicit alternate workspace-relative `.tex` destination, overwriting an existing path requires its current SHA-256 baseline.
+The automatic operation is idempotent when the existing file has the same hash and refuses to overwrite different content. `rethlas_artifact` is the public artifact façade: `action=get` returns finalized LaTeX through MCP and `action=export` re-materializes the run's default `workspace_export_path` or writes an explicit alternate workspace-relative `.tex` destination. Overwriting an existing alternate path requires its current SHA-256 baseline. The older `rethlas_get_artifact` and `rethlas_export_final` names remain hidden compatibility aliases.
 
 ## 10. Claims boundary
 

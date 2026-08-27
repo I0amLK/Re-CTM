@@ -158,7 +158,7 @@ class HTTPGatewayTestCase(unittest.TestCase):
             },
         )
         self.assertEqual(status, 200)
-        self.assertEqual(len(json.loads(body)["result"]["tools"]), 31)
+        self.assertEqual(len(json.loads(body)["result"]["tools"]), 24)
 
         modern_request = {
             "jsonrpc": "2.0",

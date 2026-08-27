@@ -196,7 +196,7 @@ def main(argv: list[str] | None = None) -> int:
         _record(
             report,
             "fixed_tool_catalog",
-            len(names) == 31
+            len(names) == 24
             and all(
                 tool in names
                 for tool in (
@@ -216,9 +216,38 @@ def main(argv: list[str] | None = None) -> int:
             )
             and "exec_command" in names
             and "rethlas_retrieve" in names
-            and "rethlas_export_final" in names,
+            and "rethlas_step" in names
+            and "rethlas_inspect" in names
+            and "rethlas_control" in names
+            and "rethlas_artifact" in names
+            and "rethlas_export_final" not in names,
             tool_count=len(names),
             tool_names=names,
+        )
+
+        legacy_alias = _mcp(
+            base,
+            access_token,
+            {
+                "jsonrpc": "2.0",
+                "id": 21,
+                "method": "tools/call",
+                "params": {
+                    "name": "rethlas_status",
+                    "arguments": {"run_id": "smoke-nonexistent-run"},
+                },
+            },
+            timeout=args.timeout,
+        )
+        legacy_structured = legacy_alias.get("result", {}).get("structuredContent", {})
+        _record(
+            report,
+            "hidden_legacy_rethlas_alias",
+            "rethlas_status" not in names
+            and isinstance(legacy_structured, dict)
+            and legacy_structured.get("error", {}).get("code") == "RUN_NOT_FOUND",
+            advertised=False,
+            accepted_as_tool=isinstance(legacy_alias.get("result"), dict),
         )
 
         meta = {

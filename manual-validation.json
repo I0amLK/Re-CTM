@@ -42,7 +42,8 @@
       "name": "Fixed tool catalog across native modes and workflow states",
       "status": "pending",
       "steps": [
-        "Confirm scripts/smoke_oauth_mcp.py reports exactly 31 tools (18 CTM Native + 13 Rethlas) and a modern non-inheritance result.",
+        "Confirm scripts/smoke_oauth_mcp.py reports exactly 24 public tools (18 CTM Native + 6 Rethlas façade tools) and a modern non-inheritance result.",
+        "Confirm superseded Rethlas protocol names such as rethlas_next/rethlas_status remain callable as hidden compatibility aliases but are absent from tools/list.",
         "Capture tools/list in safe, trusted, and dangerous native modes.",
         "Capture tools/list during generator, branch, join, verifier, and repair states."
       ],
@@ -133,8 +134,8 @@
         "Submit malformed, external-input, shell-escape, and valid self-contained documents.",
         "Create a host-only readable LaTeX class or file outside the compiler scratch directory and confirm the proof cannot load it even by absolute path.",
         "Complete a correct verification report for the valid document.",
-        "Advance the MCP workflow with rethlas_next until done and confirm the returned workspace_export_path exists under the native workspace without a separate export command; repeat the terminal call and confirm the identical file is reported unchanged.",
-        "Call rethlas_export_final to a new workspace-relative .tex path, then retry the same path without expected_sha256 and confirm the overwrite is denied."
+        "Advance the MCP workflow with rethlas_step until done and confirm the returned workspace_export_path exists under the native workspace without a separate export command; repeat the terminal call and confirm the identical file is reported unchanged.",
+        "Call rethlas_artifact with action=export to a new workspace-relative .tex path, then retry the same path without expected_sha256 and confirm the overwrite is denied."
       ],
       "expected": [
         "Unsafe or uncompilable LaTeX routes to repair, and Re-CTM never falls back to compiling model-generated TeX directly on the host.",
@@ -153,7 +154,9 @@
       "steps": [
         "Submit a concrete mathematical proof request in ordinary natural language without naming rethlas_start and confirm the MCP client follows the server instructions by starting and completing a Rethlas run; separately request a direct informal answer and confirm the explicit opt-out is respected.",
         "Use representative easy, difficult, citation-heavy, counterexample-sensitive, and repair-requiring math problems.",
-        "Inspect memory channels, multiple plan generation, exact per-plan/per-subgoal direct screening, one-branch-per-plan work, all-branch join, failure synthesis, replanning, verification audits, and changed-proof repair.",
+        "Inspect memory channels, multiple plan generation, server-issued plan/subgoal ids, incremental direct screening, one-branch-per-plan work, all-branch join, failure synthesis, replanning, verification audits, and changed-proof repair.",
+        "During direct screening intentionally submit only a subset of plan/subgoal results; confirm the server stays in direct_proving, returns exact missing ids, retains accepted progress, and advances only after coverage is complete without requiring plan status or branch_plans to be echoed.",
+        "Trigger one recoverable rethlas_step validation error after a logical write; confirm writes_retained=true, the returned fresh capability can continue, and the capability used for the failed submission is revoked.",
         "Use rethlas_retrieve for nontrivial claims; for useful results, inspect the source paper context/proof and persist definitions, applicability checks, and identifiers before relying on them."
       ],
       "expected": [
@@ -176,7 +179,7 @@
         "Repeat command lifecycle checks in safe, trusted, and dangerous native modes and confirm dangerous does not grant any rethlas_* workflow capability."
       ],
       "expected": [
-        "No CTM native tool is missing from Re-CTM; the fixed catalog is exactly 18 CTM native tools plus 13 Rethlas tools.",
+        "No CTM native tool is missing from Re-CTM; tools/list exposes exactly 18 CTM native tools plus 6 Rethlas façade tools, while superseded Rethlas protocol names remain callable as hidden aliases.",
         "Existing CTM-style calls using patch envelopes and cmd/workdir command arguments remain accepted.",
         "Long-running command IDs remain usable through write_stdin, read_output, and kill_command for the lifetime of the Re-CTM server process.",
         "Any documented Re-CTM differences are security-boundary adaptations rather than missing CTM lifecycle functionality."
