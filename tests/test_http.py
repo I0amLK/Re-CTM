@@ -290,7 +290,11 @@ class HTTPGatewayTestCase(unittest.TestCase):
                 "POST",
                 "/oauth/authorize",
                 body=form,
-                headers={"Content-Type": "application/x-www-form-urlencoded", **forwarded},
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Origin": public_base,
+                    **forwarded,
+                },
                 port=port,
             )
             self.assertEqual(status, 302)
@@ -359,6 +363,48 @@ class HTTPGatewayTestCase(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join(timeout=5)
+
+    def test_oauth_routes_do_not_inherit_mcp_origin_gate(self) -> None:
+        external_origin = "https://browser.example"
+        status, _headers, body = self.request(
+            "GET",
+            "/.well-known/oauth-authorization-server",
+            headers={"Origin": external_origin},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            json.loads(body)["issuer"],
+            f"http://127.0.0.1:{self.port}",
+        )
+
+        registration = {
+            "redirect_uris": ["http://127.0.0.1/callback"],
+            "token_endpoint_auth_method": "none",
+        }
+        status, _headers, _body = self.request(
+            "POST",
+            "/oauth/register",
+            body=json.dumps(registration).encode(),
+            headers={"Content-Type": "application/json", "Origin": external_origin},
+        )
+        self.assertEqual(status, 201)
+
+        status, _headers, body = self.request(
+            "OPTIONS",
+            "/oauth/authorize",
+            headers={"Origin": external_origin},
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(json.loads(body)["error"]["code"], "ORIGIN_DENIED")
+
+        status, _headers, body = self.request(
+            "POST",
+            "/mcp",
+            body=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"}).encode(),
+            headers={"Content-Type": "application/json", "Origin": external_origin},
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(json.loads(body)["error"]["code"], "ORIGIN_DENIED")
 
     def test_fixed_oauth_origin_ignores_forwarded_host(self) -> None:
         status, _headers, body = self.request(

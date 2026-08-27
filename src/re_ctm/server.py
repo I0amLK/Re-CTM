@@ -121,9 +121,6 @@ class ReCTMHandler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         trace = new_trace_id()
-        if not self._origin_allowed():
-            self._json_error(403, "ORIGIN_DENIED", "Browser Origin is not allowed.", trace)
-            return
         parsed = urllib.parse.urlsplit(self.path)
         path = posixpath.normpath(parsed.path)
         try:
@@ -184,9 +181,6 @@ class ReCTMHandler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         trace = new_trace_id()
-        if not self._origin_allowed():
-            self._json_error(403, "ORIGIN_DENIED", "Browser Origin is not allowed.", trace)
-            return
         path = posixpath.normpath(urllib.parse.urlsplit(self.path).path)
         try:
             if path == "/oauth/register":
@@ -224,6 +218,9 @@ class ReCTMHandler(http.server.BaseHTTPRequestHandler):
                 self._send_json(result)
                 return
             if path == MCP_PATH:
+                if not self._origin_allowed():
+                    self._json_error(403, "ORIGIN_DENIED", "Browser Origin is not allowed.", trace)
+                    return
                 principal = self.app.oauth.validate_authorization_header(
                     self.headers.get("Authorization", ""),
                     trace_id=trace,

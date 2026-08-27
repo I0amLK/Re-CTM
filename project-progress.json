@@ -1,9 +1,9 @@
 {
   "project": {
     "name": "Re-CTM",
-    "status": "oauth_autokey_checkpoint_committed_pending_authenticated_push",
+    "status": "ctm_origin_policy_fix_committed_pending_push",
     "target": "A single installable OAuth MCP runtime combining streamlined CMT computer tools with a Rethlas-derived mathematical reasoning workflow.",
-    "updated_at": "2026-08-27T00:45:00-07:00",
+    "updated_at": "2026-08-27T01:10:00-07:00",
     "source_references": {
       "cmt_local_repo": "../coding-tools-mcp",
       "rethlas_local_repo": "../Rethlas",
@@ -99,7 +99,7 @@
     },
     {
       "id": "AD-015",
-      "decision": "Preserve CTM-class reverse-proxy OAuth convenience: RE_CTM_SERVER_URL is an optional fixed override, while an unset value enables per-request OAuth-origin derivation only on loopback-bound servers using validated Host and loopback-trusted forwarded headers. Fixed origins always win and dynamic mode is rejected on non-loopback binds.",
+      "decision": "Preserve CTM-class reverse-proxy OAuth convenience: RE_CTM_SERVER_URL is an optional fixed override, while an unset value enables per-request OAuth-origin derivation only on loopback-bound servers using validated Host and loopback-trusted forwarded headers. Fixed origins always win and dynamic mode is rejected on non-loopback binds. Preserve the Coding Tools MCP Origin-policy route boundary: actual OAuth metadata/registration/authorization/token routes do not inherit the MCP Origin rejection gate, while MCP transport and OPTIONS remain origin-gated.",
       "status": "accepted"
     },
     {
@@ -273,6 +273,7 @@
       "completed_evidence": [
         "OAuth DCR, Authorization Code with PKCE, persisted single-use codes, and access-token validation are implemented",
         "Loopback-bound dynamic OAuth origin discovery supports Cloudflare-style X-Forwarded-Host/X-Forwarded-Proto without requiring RE_CTM_SERVER_URL or a post-tunnel Re-CTM restart; fixed RE_CTM_SERVER_URL remains authoritative",
+        "Coding Tools MCP Origin-policy routing is restored: Origin-bearing OAuth authorization/registration/metadata requests are not rejected by the MCP Origin gate, while unapproved external Origin requests to /mcp and OPTIONS remain denied",
         "Interactive serve auto-generates a high-entropy OAuth authorization key when RE_CTM_OAUTH_PASSWORD is absent and marks it for local-terminal reveal only; check-config reports generated_on_serve without materializing or printing a secret",
         "HTTP MCP supports handshake-era and per-request 2026-07-28 dispatch with mirror headers",
         "Fixed 31-tool catalog is a strict superset: all 18 Coding Tools MCP native tools plus thirteen rethlas_* tools",
@@ -384,7 +385,7 @@
         "95-percent Rethlas behavior acceptance suite"
       ],
       "completed_evidence": [
-        "43 deterministic and local integration tests pass",
+        "44 deterministic and local integration tests pass",
         "Loopback DCR to OAuth authorization to PKCE token to MCP tools/list passes",
         "Modern mirror-header and result-shaping tests pass",
         "Dangerous path confinement, native fail-closed execution, packaged bubblewrap attestation/private-canary denial, branch barrier, complete screening/join contracts, verifier denial/audit prerequisites, owner-bound capability, wrong-verdict, finalization, isolated LaTeX, external retrieval normalization, and debug redaction tests pass",
@@ -436,7 +437,7 @@
       "P5"
     ],
     "current_phase_id": "P3/P4/P6/P7/P8",
-    "current_focus": "CTM native compatibility remains additive at 18 native tools plus 13 Rethlas tools. Cloudflare Quick Tunnel convenience is restored end-to-end locally: the loopback server can start first without RE_CTM_SERVER_URL, and when RE_CTM_OAUTH_PASSWORD is also absent Re-CTM generates the first-page OAuth authorization key and reveals it only to the local operator terminal. Nine real webpage/target-PC/compatibility/methodology acceptance checks remain post-push.",
+    "current_focus": "CTM native compatibility remains additive at 18 native tools plus 13 Rethlas tools. Cloudflare Quick Tunnel convenience is restored end-to-end locally: the loopback server can start first without RE_CTM_SERVER_URL, an OAuth authorization key is generated when needed, and OAuth routes follow Coding Tools MCP's Origin-policy boundary instead of being globally rejected. Nine real webpage/target-PC/compatibility/methodology acceptance checks remain post-push.",
     "next_actions": [
       "Push the latest compatibility checkpoint to origin/main using the authenticated GitHub credential",
       "Observe the first GitHub Actions run after the push",
@@ -449,7 +450,7 @@
   "local_validation": {
     "report": "local-validation.json",
     "last_result": "passed",
-    "test_count": 43,
+    "test_count": 44,
     "graph_metrics": {
       "vertices": 31,
       "edges": 60,
@@ -512,19 +513,19 @@
       "basis": "Identity confirmed from public commits owned by GitHub account I0amLK; configured only in this repository."
     },
     "remote": "https://github.com/I0amLK/Re-CTM.git",
-    "push_status": "oauth_autokey_checkpoint_committed_push_blocked_by_noninteractive_https_credentials",
+    "push_status": "ctm_origin_policy_fix_committed_fast_forward_ready",
     "latest_local_commit": "Resolve with `git rev-parse HEAD`; the ledger intentionally avoids a self-referential commit hash.",
     "push_attempt": {
       "transport": "https",
-      "remote_observed_head": "c17a452e8d0e18dc551553c5c2eefc621f737f5d",
-      "result": "fast_forward_push_failed_before_interactive_https_authentication",
-      "reason": "GitHub main already contains c17a452 and the OAuth auto-key checkpoint is directly on top, so no merge or force is required. The automated runtime cannot read the user's interactive GitHub HTTPS username/PAT and failed before repository authorization.",
+      "remote_observed_head": "4f63814ee4e44d493ed611fa8cd6a9e4de7a29ec",
+      "result": "origin_policy_fix_committed_fast_forward_ready",
+      "reason": "A fresh ls-remote confirmed GitHub main already contains the OAuth auto-key and confirmed-redundancy checkpoints through 4f63814. The CTM Origin-policy routing fix is committed directly on top of that exact remote baseline and can be pushed as a normal fast-forward.",
       "ssh_fallback": "not_needed_for_current_remote_state"
     },
     "initial_files": [
       "All current source, tests, graph, debug, validation, and planning files are intended for the initial commit."
     ],
-    "working_tree_note": "The OAuth auto-generated operator-key checkpoint is committed directly on top of remote c17a452; after this ledger amendment the working tree is intended to be clean."
+    "working_tree_note": "The CTM Origin-policy routing fix is committed directly on top of remote 4f63814; after this ledger amendment the working tree is intended to be clean."
   },
   "engineering_debug_notes": [
     {
@@ -619,7 +620,7 @@
     {
       "id": "R-010",
       "risk": "Reflecting untrusted forwarding headers into OAuth issuer/resource values could let a public request influence authorization authority.",
-      "mitigation": "Explicit RE_CTM_SERVER_URL always wins; otherwise dynamic origin mode is accepted only on a loopback-bound server, forwarded headers are trusted only from a loopback peer, Host is strictly validated, tokens remain issuer/audience-bound to the effective origin, and non-loopback dynamic bind is rejected."
+      "mitigation": "Explicit RE_CTM_SERVER_URL always wins; otherwise dynamic origin mode is accepted only on a loopback-bound server, forwarded headers are trusted only from a loopback peer, Host is strictly validated, tokens remain issuer/audience-bound to the effective origin, and non-loopback dynamic bind is rejected. Origin validation remains a separate transport defense and follows the Coding Tools MCP boundary: MCP/OPTIONS are gated without applying that gate globally to OAuth endpoints."
     },
     {
       "id": "R-011",
@@ -719,6 +720,10 @@
     {
       "timestamp": "2026-08-27T00:45:00-07:00",
       "event": "Restored CTM-style OAuth operator-key convenience: interactive serve now auto-generates a 32-byte-url-safe authorization key when RE_CTM_OAUTH_PASSWORD is absent, reveals it only after a successful local bind, check-config reports generated_on_serve without materializing the key, a runtime probe confirmed a 43-character generated key with no structured-state leak, and the deterministic suite now contains 43 passing tests."
+    },
+    {
+      "timestamp": "2026-08-27T01:10:00-07:00",
+      "event": "Corrected Re-CTM's over-broad browser Origin gate after comparing the Coding Tools MCP reference implementation and compliance tests: actual OAuth metadata/registration/authorization/token routes no longer inherit MCP Origin rejection, while /mcp and OPTIONS remain origin-gated. Added regressions for an Origin-bearing Quick Tunnel authorization POST and preserved denial of unapproved MCP/OPTIONS origins; the deterministic suite now contains 44 passing tests."
     }
   ]
 }

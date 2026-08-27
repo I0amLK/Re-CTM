@@ -99,7 +99,7 @@
     },
     {
       "id": "PC-010",
-      "constraint": "RE_CTM_SERVER_URL is an optional fixed OAuth-origin override. When it is absent, Re-CTM may derive the OAuth issuer/resource from request Host and trusted reverse-proxy headers only while the HTTP server is loopback-bound; this preserves one-command Cloudflare Quick Tunnel startup without trusting public proxy headers."
+      "constraint": "RE_CTM_SERVER_URL is an optional fixed OAuth-origin override. When it is absent, Re-CTM may derive the OAuth issuer/resource from request Host and trusted reverse-proxy headers only while the HTTP server is loopback-bound; this preserves one-command Cloudflare Quick Tunnel startup without trusting public proxy headers. Browser Origin enforcement follows the Coding Tools MCP route boundary: MCP transport and OPTIONS remain origin-gated, while OAuth authorization, token, registration, and metadata routes are not rejected by the MCP Origin gate."
     },
     {
       "id": "PC-011",
@@ -1147,7 +1147,7 @@
       "id": "INV-009",
       "statement": "Dynamic OAuth issuer discovery cannot turn untrusted public forwarding headers into authority.",
       "formal": "fixed_server_url wins; otherwise dynamic_issuer => loopback_bind AND trusted_loopback_peer AND validated_origin_host",
-      "test": "Run the Cloudflare-style forwarded OAuth flow on loopback, assert fixed origin ignores forwarded host, assert tokens fail under a different effective origin, and reject dynamic mode on a non-loopback bind."
+      "test": "Run the Cloudflare-style forwarded OAuth flow on loopback including an Origin-bearing authorization form POST, assert OAuth routes are not rejected by the MCP Origin gate, assert MCP requests from an unapproved external Origin are rejected, assert fixed origin ignores forwarded host, assert tokens fail under a different effective origin, and reject dynamic mode on a non-loopback bind."
     },
     {
       "id": "INV-010",
