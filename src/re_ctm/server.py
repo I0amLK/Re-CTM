@@ -36,8 +36,8 @@ class ReCTMHTTPServer(http.server.ThreadingHTTPServer):
         address: tuple[str, int],
         application: ReCTMApplication,
     ) -> None:
-        super().__init__(address, ReCTMHandler)
         self.application = application
+        super().__init__(address, ReCTMHandler)
 
     def server_close(self) -> None:
         try:

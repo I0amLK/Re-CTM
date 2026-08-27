@@ -305,6 +305,20 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         },
         read_only=True,
     ),
+    "rethlas_export_final": ToolSpec(
+        "Export verified LaTeX",
+        "Copy the mechanically finalized proof_verified.tex into a workspace-relative .tex path through the controlled trust-domain bridge.",
+        {
+            **OBJECT,
+            "required": ["run_id", "path"],
+            "properties": {
+                "run_id": {"type": "string"},
+                "path": {"type": "string", "minLength": 1},
+                "expected_sha256": {"type": "string"},
+            },
+        },
+        destructive=True,
+    ),
 }
 
 
@@ -337,6 +351,7 @@ class ToolRuntime:
             "rethlas_resume": self._rethlas_resume,
             "rethlas_cancel": self._rethlas_cancel,
             "rethlas_get_artifact": self._rethlas_get_artifact,
+            "rethlas_export_final": self._rethlas_export_final,
         }
 
     def list_tools(self) -> list[dict[str, Any]]:
@@ -571,6 +586,36 @@ class ToolRuntime:
             run_id=str(arguments.get("run_id") or ""),
             artifact=str(arguments.get("artifact") or ""),
         )
+
+    def _rethlas_export_final(
+        self,
+        principal: OAuthPrincipal,
+        arguments: dict[str, Any],
+        trace_id: str,
+    ) -> dict[str, Any]:
+        run_id = str(arguments.get("run_id") or "")
+        artifact = self.workflow.get_artifact(
+            owner_id=principal.client_id,
+            run_id=run_id,
+            artifact="final_tex",
+        )
+        export = self.native.export_verified_latex(
+            path=str(arguments.get("path") or ""),
+            content=str(artifact["content"]),
+            expected_sha256=(
+                str(arguments["expected_sha256"])
+                if arguments.get("expected_sha256") is not None
+                else None
+            ),
+            trace_id=trace_id,
+        )
+        return {
+            "ok": True,
+            "run_id": run_id,
+            "artifact": "final_tex",
+            "export": export,
+            "workflow_authority_inherited_by_native": False,
+        }
 
 
 def _tool_result(name: str, payload: dict[str, Any], *, is_error: bool) -> dict[str, Any]:

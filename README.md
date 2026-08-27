@@ -7,7 +7,7 @@ Re-CTM is an engineering work in progress that combines two orthogonal planes in
 
 The two planes do not inherit authority from one another. In particular, native `dangerous` mode never grants access to private Rethlas state or permission to publish `proof_verified.tex`.
 
-The MCP catalog is fixed at 18 tools: six native tools and twelve `rethlas_*` workflow tools. The additional workflow retrieval tool, `rethlas_retrieve`, exposes bounded HTTPS theorem search to generator, branch, verifier, and repair domains. Its results are persisted as external, unverified evidence and may not be used as black boxes without reading source context and checking definitions and applicability.
+The MCP catalog is fixed at 19 tools: six native tools and thirteen `rethlas_*` workflow tools. `rethlas_retrieve` exposes bounded HTTPS theorem search to generator, branch, verifier, and repair domains. Its results are persisted as external, unverified evidence and may not be used as black boxes without reading source context and checking definitions and applicability. `rethlas_export_final` is the only direct private-to-native artifact bridge: it can copy a mechanically finalized `proof_verified.tex` into a workspace-relative `.tex` path, and existing destinations require a SHA-256 baseline.
 
 ## Current validation boundary
 
@@ -69,6 +69,8 @@ RE_CTM_NATIVE_ISOLATION_ATTESTED=1
 ```
 
 The acknowledgement does not grant workflow authority. `dangerous` still affects only native computer tools, while the private workflow vault is absent from the native mount namespace.
+
+Target-PC setup, the redacted OAuth/MCP smoke script, isolation attestation, debug evidence, and claim boundaries are documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ## LaTeX compiler boundary
 

@@ -120,6 +120,7 @@
       "V25",
       "V26",
       "V27",
+      "V28",
       "V29",
       "V30"
     ],
@@ -129,8 +130,7 @@
       "V23"
     ],
     "partial_or_external": [
-      "V18",
-      "V28"
+      "V18"
     ],
     "manual_only": [
       "V01",
@@ -138,6 +138,7 @@
     ],
     "evidence": [
       "src/re_ctm/native_helper_bwrap.py implements a separate-process bubblewrap boundary with namespace, environment, capability, timeout, and forbidden-path probes.",
+      "rethlas_export_final and NativeRuntime.export_verified_latex implement the only mechanically-finalized private-to-native artifact bridge with workspace confinement and overwrite baselines.",
       "scripts/manual_native_isolation_test.py provides target-PC adversarial evidence before RE_CTM_NATIVE_ISOLATION_ATTESTED=1 is permitted operationally.",
       "tests/ exercises OAuth, legacy and modern MCP, fixed catalogs, native path confinement, capability ownership, branch barriers, verifier firewall, mechanical verdict/finalization, diagnostics, LaTeX safety, and the reference bubblewrap helper.",
       "manual-validation.json remains the authority for browser, target-PC, external-retrieval, real-LaTeX, and 95-percent methodology acceptance."

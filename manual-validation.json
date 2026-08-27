@@ -17,6 +17,7 @@
       "name": "OAuth discovery and dynamic registration",
       "status": "pending",
       "steps": [
+        "Run scripts/smoke_oauth_mcp.py against the public base URL and save its redacted report.",
         "Connect the webpage client to /.well-known/oauth-protected-resource and the MCP URL.",
         "Confirm DCR creates a client and the browser is redirected to /oauth/authorize.",
         "Complete PKCE authorization and token exchange."
@@ -33,6 +34,7 @@
       "name": "Fixed tool catalog across native modes and workflow states",
       "status": "pending",
       "steps": [
+        "Confirm scripts/smoke_oauth_mcp.py reports exactly 19 tools and a modern non-inheritance result.",
         "Capture tools/list in safe, trusted, and dangerous native modes.",
         "Capture tools/list during generator, branch, join, verifier, and repair states."
       ],
@@ -122,13 +124,15 @@
         "Run on Linux with RE_CTM_LATEX_POLICY=required, bubblewrap, and a real latexmk installation.",
         "Submit malformed, external-input, shell-escape, and valid self-contained documents.",
         "Create a host-only readable LaTeX class or file outside the compiler scratch directory and confirm the proof cannot load it even by absolute path.",
-        "Complete a correct verification report for the valid document."
+        "Complete a correct verification report for the valid document.",
+        "Call rethlas_export_final to a new workspace-relative .tex path, then retry the same path without expected_sha256 and confirm the overwrite is denied."
       ],
       "expected": [
         "Unsafe or uncompilable LaTeX routes to repair, and Re-CTM never falls back to compiling model-generated TeX directly on the host.",
         "The compiler receives only a scratch workspace plus read-only system TeX/toolchain roots; Re-CTM private state is not mounted.",
         "Only a compiled proof with empty findings reaches done.",
-        "The sole final delivery artifact is proof_verified.tex."
+        "The sole final delivery artifact is proof_verified.tex.",
+        "The controlled export writes exactly the finalized bytes inside the native workspace and refuses baseline-free overwrite."
       ],
       "evidence": []
     },

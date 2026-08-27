@@ -24,8 +24,15 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     serve = subcommands.add_parser("serve", help="Run the OAuth-only HTTP MCP service.")
-    serve.add_argument("--host", default="127.0.0.1")
-    serve.add_argument("--port", type=int, default=8765)
+    serve.add_argument(
+        "--host",
+        default=os.environ.get("RE_CTM_HOST") or "127.0.0.1",
+    )
+    serve.add_argument(
+        "--port",
+        type=int,
+        default=os.environ.get("RE_CTM_PORT") or "8765",
+    )
     serve.add_argument("--workspace")
     serve.add_argument("--native-mode", choices=[item.value for item in NativeMode])
     serve.add_argument("--latex-policy", choices=[item.value for item in LatexPolicy])

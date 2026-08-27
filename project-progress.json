@@ -3,7 +3,7 @@
     "name": "Re-CTM",
     "status": "local_checkpoint_committed_push_blocked",
     "target": "A single installable OAuth MCP runtime combining streamlined CMT computer tools with a Rethlas-derived mathematical reasoning workflow.",
-    "updated_at": "2026-08-26T21:45:00-07:00",
+    "updated_at": "2026-08-26T22:12:00-07:00",
     "source_references": {
       "cmt_local_repo": "../coding-tools-mcp",
       "rethlas_local_repo": "../Rethlas",
@@ -139,7 +139,8 @@
     "rethlas_steer",
     "rethlas_resume",
     "rethlas_cancel",
-    "rethlas_get_artifact"
+    "rethlas_get_artifact",
+    "rethlas_export_final"
   ],
   "workflow": {
     "states": [
@@ -257,7 +258,7 @@
       "completed_evidence": [
         "OAuth DCR, Authorization Code with PKCE, persisted single-use codes, and access-token validation are implemented",
         "HTTP MCP supports handshake-era and per-request 2026-07-28 dispatch with mirror headers",
-        "Fixed 18-tool catalog includes six native and twelve rethlas_* tools",
+        "Fixed 19-tool catalog includes six native and thirteen rethlas_* tools",
         "Native read/list/search and baseline-checked atomic patching are implemented",
         "Native paths stay workspace-confined in dangerous mode",
         "Arbitrary command execution fails closed unless an operator enables an attested isolation backend",
@@ -327,7 +328,7 @@
       "id": "P6",
       "name": "LaTeX and artifact pipeline",
       "weight_percent": 5,
-      "status": "reference_implemented_target_validation_pending",
+      "status": "core_implemented_target_validation_pending",
       "tasks": [
         "proof.tex draft contract",
         "LaTeX syntax/compile validation",
@@ -340,11 +341,12 @@
         "Required-policy compilation executes in a network-isolated bubblewrap scratch workspace; the original private run directory is absent from the compiler namespace",
         "A regression proves that an absolute host-only document class cannot be loaded by model-generated TeX",
         "Only the mechanical finalizer can create proof_verified.tex",
-        "Final LaTeX can be returned through owner-authorized rethlas_get_artifact"
+        "Final LaTeX can be returned through owner-authorized rethlas_get_artifact",
+        "rethlas_export_final is the only private-to-native artifact bridge and exports only final_tex into a workspace-relative .tex path; overwrites require an expected SHA-256 baseline"
       ],
       "remaining": [
         "Validate required latexmk policy with every intended target LaTeX distribution",
-        "Decide whether a separate controlled native-workspace export is needed in addition to MCP artifact delivery"
+        "Exercise final export from the real webpage host and verify overwrite conflict behavior"
       ]
     },
     {
@@ -392,7 +394,8 @@
         "OAuth-only HTTP entry point and configuration template exist",
         "Apache-2.0 LICENSE and NOTICE retain Coding Tools MCP and Rethlas attribution",
         "GitHub Actions CI covers Python 3.11/3.13, bubblewrap, latexmk, deterministic checks, wheel/sdist build, and installed command surfaces",
-        "uv built re_ctm-0.1.0.dev0-py3-none-any.whl, installed it into a clean virtual environment, and the installed re-ctm, native helper version, and helper attestation smokes passed"
+        "docs/DEPLOYMENT.md and scripts/smoke_oauth_mcp.py provide target setup, redacted OAuth/MCP verification, isolation evidence, and claims boundaries",
+        "uv built re_ctm-0.1.0.dev0 sdist and wheel, installed the wheel into a clean virtual environment, and the installed re-ctm service, helper version/attestation, OAuth DCR/PKCE, legacy/modern MCP, 19-tool catalog, and non-inheritance smokes passed"
       ],
       "remaining": [
         "Push the repository and observe first remote CI on GitHub",
@@ -401,9 +404,9 @@
     }
   ],
   "progress": {
-    "overall_percent": 76,
-    "implementation_percent": 84,
-    "deterministic_local_validation_percent": 72,
+    "overall_percent": 78,
+    "implementation_percent": 87,
+    "deterministic_local_validation_percent": 74,
     "post_push_manual_acceptance_percent": 0,
     "target_95_percent_equivalence_verified": false,
     "completed_phase_ids": [
@@ -420,13 +423,13 @@
       "Run all checks in manual-validation.json and attach redacted evidence",
       "Run the packaged bubblewrap isolation harness on the target PC before enabling native exec",
       "Run representative mathematical problems through the real webpage client",
-      "Decide whether MCP final-artifact delivery is sufficient or a controlled native export tool is required"
+      "Validate rethlas_export_final from the real webpage host"
     ]
   },
   "local_validation": {
     "report": "local-validation.json",
     "last_result": "passed",
-    "test_count": 26,
+    "test_count": 30,
     "graph_metrics": {
       "vertices": 31,
       "edges": 60,
@@ -453,8 +456,14 @@
       "Debug redaction and content-minimized bundle",
       "Static and bubblewrap-isolated required LaTeX policy",
       "Capability-gated theorem-search normalization and domain-local persistence",
+      "Mechanical final-artifact export into the native workspace with overwrite baseline enforcement",
+      "Steering delivery, engine rebuild resume, cancellation sealing, and stale-capability denial",
+      "Redacted standalone OAuth DCR/PKCE plus legacy and modern MCP smoke",
+      "HTTP bind-failure cleanup preserves the original operating-system error",
+      "CLI serve host/port defaults follow RE_CTM_HOST and RE_CTM_PORT while explicit flags override them",
       "Live theorem-search endpoint smoke",
-      "Wheel build, clean installation, installed helper version, and installed helper attestation"
+      "Wheel build, clean installation, installed helper version, and installed helper attestation",
+      "Installed-wheel service smoke covering redacted OAuth DCR/PKCE, legacy MCP, modern mirror headers, fixed 19-tool catalog, and dangerous non-inheritance"
     ],
     "explicitly_not_validated": [
       "Final webpage MCP host compatibility",
@@ -479,7 +488,7 @@
     },
     "remote": "https://github.com/I0amLK/Re-CTM.git",
     "push_status": "blocked_missing_runtime_credentials",
-    "latest_local_commit_hash": "106959b7a0407ee3a69156d1d111f93c2d8a61dc",
+    "latest_local_commit": "Resolve with `git rev-parse HEAD`; the ledger intentionally avoids a self-referential commit hash.",
     "push_attempt": {
       "transport": "https",
       "non_interactive": true,
@@ -527,6 +536,13 @@
       "scope": "remote transport only",
       "resolution": "Preserved both local commits, kept origin configured, and recorded the exact blocker without embedding credentials in the repository.",
       "preventive_action": "Push from an authenticated shell or install a credential helper; never place a personal access token in a remote URL, environment example, debug bundle, or project ledger."
+    },
+    {
+      "id": "DBG-006",
+      "symptom": "The first standalone OAuth/MCP smoke used RE_CTM_OAUTH_SERVER_URL and RE_CTM_PORT, but the service requires RE_CTM_SERVER_URL and the CLI initially ignored RE_CTM_PORT. A busy default port then exposed a bind-failure cleanup AttributeError.",
+      "scope": "deployment configuration and HTTP server construction",
+      "resolution": "Corrected deployment documentation, made serve defaults honor RE_CTM_HOST/RE_CTM_PORT, assigned the application before ThreadingHTTPServer binds, added a bind-failure regression, and reran the full redacted smoke successfully.",
+      "preventive_action": "Keep config.example.env, deployment docs, CLI defaults, and standalone smoke under the same regression suite; preserve original OS errors on partial construction failure."
     }
   ],
   "known_risks": [
@@ -631,6 +647,22 @@
     {
       "timestamp": "2026-08-26T21:49:00-07:00",
       "event": "Created checkpoint commit 106959b7a0407ee3a69156d1d111f93c2d8a61dc, configured origin to https://github.com/I0amLK/Re-CTM.git, and attempted non-interactive HTTPS/SSH push. Push is blocked by missing runtime credentials/SSH transport, not by repository state."
+    },
+    {
+      "timestamp": "2026-08-26T21:56:00-07:00",
+      "event": "Implemented rethlas_export_final as the sole mechanically-finalized private-to-native artifact bridge, added workspace confinement and overwrite baselines, moved graph vertex V28 to implemented_local, and retained the fixed catalog at 19 tools."
+    },
+    {
+      "timestamp": "2026-08-26T22:05:00-07:00",
+      "event": "Added target deployment guidance and a credential-redacted OAuth/MCP smoke. Fixed environment-driven serve host/port defaults and bind-failure cleanup; the standalone smoke passed DCR, PKCE, token exchange, legacy MCP, 19-tool catalog, modern mirror headers, and dangerous non-inheritance."
+    },
+    {
+      "timestamp": "2026-08-26T22:10:00-07:00",
+      "event": "Added CLI environment-default regressions and reran the deterministic suite at 30 passing tests; local-validation.json remains green while manual-validation.json remains pending_post_push."
+    },
+    {
+      "timestamp": "2026-08-26T22:12:00-07:00",
+      "event": "Built both sdist and wheel, installed the wheel in a clean environment, passed installed helper attestation, started the installed service from RE_CTM_HOST/RE_CTM_PORT, and passed the redacted OAuth/MCP smoke against that installed service."
     }
   ]
 }

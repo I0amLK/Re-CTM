@@ -709,6 +709,56 @@ class NativeRuntime:
             raise invalid_argument("operations must be an array")
         return self.editor.apply(operations, dry_run=bool(arguments.get("dry_run", False)))
 
+    def export_verified_latex(
+        self,
+        *,
+        path: str,
+        content: str,
+        expected_sha256: str | None = None,
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        if not path.lower().endswith(".tex"):
+            raise invalid_argument("verified LaTeX export path must end in .tex", path=path)
+        resolved = self.workspace.resolve_for_write(path)
+        existing_sha256 = _sha256_file(resolved.path) if resolved.existed else None
+        if resolved.existed and not expected_sha256:
+            raise ReCTMError(
+                "EXPORT_BASELINE_REQUIRED",
+                "Overwriting an existing export requires expected_sha256.",
+                category="conflict",
+                retryable=True,
+                details={"path": resolved.display, "actual_sha256": existing_sha256},
+            )
+        operation: dict[str, Any] = {
+            "op": "update" if resolved.existed else "add",
+            "path": resolved.display,
+            "content": content,
+        }
+        if expected_sha256 is not None:
+            operation["expected_sha256"] = expected_sha256
+        result = self.editor.apply([operation])
+        content_sha256 = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        self.debug.emit(
+            "native.verified_latex_exported",
+            "native_runtime",
+            trace_id=trace_id or new_trace_id(),
+            decision="allow",
+            reason="mechanically_finalized_artifact_bridge",
+            details={
+                "path": resolved.display,
+                "content_sha256": content_sha256,
+                "content_bytes": len(content.encode("utf-8")),
+                "native_mode": self.mode.value,
+                "workflow_authority_inherited": False,
+            },
+        )
+        return {
+            **result,
+            "path": resolved.display,
+            "sha256": content_sha256,
+            "bytes": len(content.encode("utf-8")),
+        }
+
     def exec_command(self, **arguments: Any) -> dict[str, Any]:
         trace_id = str(arguments.get("trace_id") or new_trace_id())
         argv = arguments.get("argv")

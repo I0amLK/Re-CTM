@@ -155,7 +155,7 @@ class HTTPGatewayTestCase(unittest.TestCase):
             },
         )
         self.assertEqual(status, 200)
-        self.assertEqual(len(json.loads(body)["result"]["tools"]), 18)
+        self.assertEqual(len(json.loads(body)["result"]["tools"]), 19)
 
         modern_request = {
             "jsonrpc": "2.0",
@@ -196,6 +196,33 @@ class HTTPGatewayTestCase(unittest.TestCase):
         )
         self.assertEqual(status, 400)
         self.assertEqual(json.loads(body)["error"]["code"], -32020)
+
+    def test_bind_failure_preserves_original_os_error(self) -> None:
+        root = Path(self.temp.name) / "bind-failure"
+        workspace = root / "workspace"
+        data = root / "data"
+        private = data / "private"
+        workspace.mkdir(parents=True)
+        with socket.socket() as blocker:
+            blocker.bind(("127.0.0.1", 0))
+            blocker.listen(1)
+            occupied_port = int(blocker.getsockname()[1])
+            application = build_application(
+                Settings(
+                    workspace=workspace,
+                    data_root=data,
+                    private_root=private,
+                    debug_root=data / "debug",
+                    native_mode=NativeMode.SAFE,
+                    latex_policy=LatexPolicy.STATIC_ONLY,
+                    oauth_server_url=f"http://127.0.0.1:{occupied_port}",
+                    oauth_password="operator-password",
+                    token_secret=b"t" * 32,
+                    capability_secret=b"c" * 32,
+                )
+            )
+            with self.assertRaises(OSError):
+                ReCTMHTTPServer(("127.0.0.1", occupied_port), application)
 
 
 def _free_port() -> int:

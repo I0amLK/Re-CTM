@@ -10,7 +10,10 @@ from re_ctm.debug import DebugEventBus
 from re_ctm.enums import LatexPolicy, NativeMode, WorkflowState
 from re_ctm.errors import ReCTMError
 from re_ctm.latex import LatexGate
+from re_ctm.native import NativeRuntime, NativeWorkspace
+from re_ctm.oauth import OAuthPrincipal
 from re_ctm.storage import StateStore
+from re_ctm.tools import ToolRuntime
 from re_ctm.vault import PrivateVault
 from re_ctm.workflow import WorkflowEngine
 
@@ -55,6 +58,7 @@ class WorkflowTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         root = Path(self.temp.name)
+        self.root = root
         private = root / "private"
         debug = DebugEventBus(
             root / "debug" / "events.jsonl",
@@ -67,6 +71,7 @@ class WorkflowTestCase(unittest.TestCase):
         self.store = store
         self.vault = vault
         self.debug = debug
+        self.capabilities = capabilities
         self.engine = WorkflowEngine(
             store,
             vault,
@@ -331,6 +336,33 @@ class WorkflowTestCase(unittest.TestCase):
         final = self.engine.get_artifact(owner_id=self.owner, run_id=run_id, artifact="final_tex")
         self.assertEqual(final["content"], VALID_PROOF)
 
+        native_workspace = self.root / "native-workspace"
+        native_workspace.mkdir()
+        native = NativeRuntime(
+            NativeWorkspace(native_workspace, private_root=self.root / "private"),
+            NativeMode.DANGEROUS,
+            self.debug,
+        )
+        tools = ToolRuntime(native, self.engine, self.debug)
+        exported = tools.call(
+            "rethlas_export_final",
+            {"run_id": run_id, "path": "exports/proof_verified.tex"},
+            OAuthPrincipal(client_id=self.owner, subject=self.owner, scope="mcp"),
+        )
+        export_path = native_workspace / "exports" / "proof_verified.tex"
+        self.assertEqual(export_path.read_text(encoding="utf-8"), VALID_PROOF)
+        self.assertFalse(exported["structuredContent"]["workflow_authority_inherited_by_native"])
+        baseline_required = tools.call(
+            "rethlas_export_final",
+            {"run_id": run_id, "path": "exports/proof_verified.tex"},
+            OAuthPrincipal(client_id=self.owner, subject=self.owner, scope="mcp"),
+        )
+        self.assertTrue(baseline_required["isError"])
+        self.assertEqual(
+            baseline_required["structuredContent"]["error"]["code"],
+            "EXPORT_BASELINE_REQUIRED",
+        )
+
         events_path = Path(self.temp.name) / "debug" / "events.jsonl"
         events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
         self.assertTrue(any(event["event_type"] == "capability.denied" for event in events))
@@ -440,6 +472,49 @@ class WorkflowTestCase(unittest.TestCase):
                 query="same statement",
             )
         self.assertEqual(denied.exception.code, "CAPABILITY_OWNER_MISMATCH")
+
+    def test_steering_resume_and_cancel_survive_engine_rebuild(self) -> None:
+        run_id = self._start()
+        self.engine.steer(
+            owner_id=self.owner,
+            run_id=run_id,
+            message="Prefer an order-theoretic proof before using absolute values.",
+        )
+        rebuilt = WorkflowEngine(
+            self.store,
+            self.vault,
+            self.capabilities,
+            self.debug,
+            LatexGate(LatexPolicy.STATIC_ONLY),
+            FakeResearchProvider(),
+        )
+        resumed = rebuilt.resume(owner_id=self.owner, run_id=run_id)
+        self.assertEqual(resumed["state"], WorkflowState.ASSESS.value)
+        self.assertEqual(
+            resumed["context"]["user_steering"],
+            ["Prefer an order-theoretic proof before using absolute values."],
+        )
+        cancelled = rebuilt.cancel(
+            owner_id=self.owner,
+            run_id=run_id,
+            reason="manual_disconnect_test",
+        )
+        self.assertEqual(cancelled["state"], WorkflowState.CANCELLED.value)
+        status = rebuilt.status(owner_id=self.owner, run_id=run_id)
+        self.assertTrue(status["sealed"])
+        with self.assertRaises(ReCTMError) as terminal:
+            rebuilt.resume(owner_id=self.owner, run_id=run_id)
+        self.assertEqual(terminal.exception.code, "RUN_TERMINAL")
+        with self.assertRaises(ReCTMError) as old_capability:
+            rebuilt.read(
+                owner_id=self.owner,
+                capability=resumed["capability"],
+                resource="problem",
+            )
+        self.assertIn(
+            old_capability.exception.code,
+            {"CAPABILITY_REVOKED", "CAPABILITY_STALE", "CAPABILITY_STATE_MISMATCH"},
+        )
 
 
 if __name__ == "__main__":

@@ -71,7 +71,7 @@ class MCPDispatcherTestCase(unittest.TestCase):
         )
         names = [item["name"] for item in listed["result"]["tools"]]
         self.assertEqual(names, list(TOOL_SPECS))
-        self.assertEqual(len(names), 18)
+        self.assertEqual(len(names), 19)
 
         modern_requested_in_handshake = self.dispatcher.dispatch(
             {
