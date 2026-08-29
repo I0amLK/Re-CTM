@@ -124,6 +124,15 @@ def main(argv: list[str] | None = None) -> int:
                         "native_mode": settings.native_mode.value,
                         "native_exec_backend": settings.native_exec_backend,
                         "native_isolation_attested": settings.native_isolation_attested,
+                        "native_startup_attestation": (
+                            "automatic_fail_closed"
+                            if settings.native_exec_backend == "bubblewrap"
+                            else (
+                                "operator_acknowledged_external"
+                                if settings.native_exec_backend == "external"
+                                else "not_applicable"
+                            )
+                        ),
                         "latex_policy": settings.latex_policy.value,
                         "oauth_server_url": settings.oauth_server_url,
                         "oauth_server_url_mode": (

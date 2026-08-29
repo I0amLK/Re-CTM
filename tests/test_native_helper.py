@@ -9,7 +9,14 @@ from pathlib import Path
 
 from re_ctm.enums import NativeMode
 from re_ctm.errors import ReCTMError
-from re_ctm.native import BubblewrapExecBackend, ExternalHelperExecBackend
+from re_ctm.debug import DebugEventBus
+from re_ctm.native import (
+    BubblewrapExecBackend,
+    ExternalHelperExecBackend,
+    NativeRuntime,
+    NativeWorkspace,
+    discover_dangerous_toolchain_roots,
+)
 
 
 @unittest.skipUnless(sys.platform.startswith("linux") and shutil.which("bwrap"), "bubblewrap required")
@@ -89,6 +96,40 @@ class BubblewrapNativeHelperTestCase(unittest.TestCase):
         with self.assertRaises(ReCTMError) as denied:
             backend.attest(workspace=self.workspace, forbidden_paths=(self.private,))
         self.assertEqual(denied.exception.code, "NATIVE_HELPER_PROTOCOL_ERROR")
+
+    def test_dangerous_runtime_mounts_user_path_toolchain_read_only(self) -> None:
+        toolchain = self.root / "toolchain"
+        bin_dir = toolchain / "bin"
+        bin_dir.mkdir(parents=True)
+        executable = bin_dir / "fake-cas"
+        executable.write_text("#!/bin/sh\nprintf 'cas-ok\\n'\n", encoding="utf-8")
+        executable.chmod(0o755)
+        host_path = f"{bin_dir}:/usr/bin:/bin"
+        roots = discover_dangerous_toolchain_roots(
+            workspace=self.workspace,
+            forbidden_paths=(self.data, self.private),
+            host_path=host_path,
+        )
+        self.assertIn(bin_dir.resolve(), roots)
+
+        backend = BubblewrapExecBackend(host_path=host_path, extra_read_roots=roots)
+        backend.attest(
+            workspace=self.workspace,
+            forbidden_paths=(self.data, self.private),
+        )
+        debug = DebugEventBus(self.root / "events.jsonl", self.private, enabled=True)
+        runtime = NativeRuntime(
+            NativeWorkspace(self.workspace, private_root=self.private),
+            NativeMode.DANGEROUS,
+            debug,
+            exec_backend=backend,
+        )
+        try:
+            result = runtime.exec_command(cmd="fake-cas", yield_time_ms=10_000)
+        finally:
+            runtime.close()
+        self.assertEqual(result["exit_code"], 0)
+        self.assertEqual(result["stdout"], "cas-ok\n")
 
 
 if __name__ == "__main__":

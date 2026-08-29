@@ -522,11 +522,109 @@ class ExternalHelperExecBackend:
 class BubblewrapExecBackend(ExternalHelperExecBackend):
     """Built-in Linux helper transported through a separate Python process."""
 
-    def __init__(self, *, output_limit: int = 1_048_576) -> None:
+    def __init__(
+        self,
+        *,
+        output_limit: int = 1_048_576,
+        host_path: str | None = None,
+        extra_read_roots: Iterable[Path] = (),
+    ) -> None:
         super().__init__(
             Path(__file__).with_name("native_helper_bwrap.py"),
             output_limit=output_limit,
         )
+        self.host_path = host_path
+        self.extra_read_roots = tuple(extra_read_roots)
+
+
+def discover_dangerous_toolchain_roots(
+    *,
+    workspace: Path,
+    forbidden_paths: Iterable[Path],
+    host_path: str | None = None,
+) -> tuple[Path, ...]:
+    """Discover read-only host toolchain roots needed by dangerous mode.
+
+    The workspace is already mounted separately and server data/private roots
+    are always excluded. System prefixes are already provided by bubblewrap,
+    so this function focuses on user-installed environments such as Conda/Sage
+    and PATH symlinks such as ~/.local/bin/magma -> ~/magma/magma.
+    """
+
+    workspace_root = workspace.expanduser().resolve(strict=True)
+    forbidden = tuple(path.expanduser().resolve(strict=False) for path in forbidden_paths)
+    system_roots = tuple(
+        Path(path).resolve(strict=False)
+        for path in ("/usr", "/bin", "/sbin", "/lib", "/lib64")
+    )
+
+    def blocked(path: Path) -> bool:
+        if path == workspace_root or path.is_relative_to(workspace_root):
+            return True
+        if any(
+            path == root or path.is_relative_to(root) or root.is_relative_to(path)
+            for root in forbidden
+        ):
+            return True
+        return any(path == root or path.is_relative_to(root) for root in system_roots)
+
+    candidates: list[Path] = []
+
+    def add(path: Path) -> None:
+        try:
+            resolved = path.expanduser().resolve(strict=True)
+        except OSError:
+            return
+        if not resolved.is_dir() or blocked(resolved):
+            return
+        if any(resolved == existing or resolved.is_relative_to(existing) for existing in candidates):
+            return
+        candidates[:] = [
+            existing for existing in candidates if not existing.is_relative_to(resolved)
+        ]
+        candidates.append(resolved)
+
+    for raw_entry in (host_path or os.environ.get("PATH", "")).split(os.pathsep):
+        if not raw_entry:
+            continue
+        entry = Path(raw_entry).expanduser()
+        if not entry.is_absolute():
+            continue
+        try:
+            resolved_entry = entry.resolve(strict=True)
+        except OSError:
+            continue
+        if not resolved_entry.is_dir() or blocked(resolved_entry):
+            continue
+
+        prefix = resolved_entry.parent
+        if resolved_entry.name in {"bin", "sbin"} and (
+            (prefix / "conda-meta").is_dir() or (prefix / "pyvenv.cfg").is_file()
+        ):
+            add(prefix)
+        else:
+            add(resolved_entry)
+
+        try:
+            entries = list(resolved_entry.iterdir())[:4096]
+        except OSError:
+            entries = []
+        for executable in entries:
+            if not executable.is_symlink():
+                continue
+            try:
+                target = executable.resolve(strict=True)
+            except OSError:
+                continue
+            target_root = target.parent
+            if target_root.name in {"bin", "sbin"} and (
+                (target_root.parent / "conda-meta").is_dir()
+                or (target_root.parent / "pyvenv.cfg").is_file()
+            ):
+                target_root = target_root.parent
+            add(target_root)
+
+    return tuple(sorted(candidates, key=str))
 
 
 class AtomicNativeEditor:
@@ -999,6 +1097,16 @@ class NativeRuntime:
                 mode=self.mode.value,
                 argv=child_argv,
                 extra_env={str(key): str(value) for key, value in extra_env.items()},
+                host_path=(
+                    self.exec_backend.host_path
+                    if self.mode is NativeMode.DANGEROUS
+                    else None
+                ),
+                extra_read_roots=(
+                    self.exec_backend.extra_read_roots
+                    if self.mode is NativeMode.DANGEROUS
+                    else ()
+                ),
             )
             return self.command_manager.start(
                 command_argv,

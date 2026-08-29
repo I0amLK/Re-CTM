@@ -9,9 +9,30 @@ from pathlib import Path
 from unittest import mock
 
 from re_ctm.cli import build_parser, main
+from re_ctm.config import Settings
 
 
 class CLITestCase(unittest.TestCase):
+    def test_linux_bubblewrap_is_automatic_native_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            env = {
+                "RE_CTM_WORKSPACE": str(workspace),
+                "RE_CTM_DATA_ROOT": str(root / "data"),
+                "RE_CTM_PRIVATE_ROOT": str(root / "data" / "private"),
+                "RE_CTM_DEBUG_ROOT": str(root / "data" / "debug"),
+                "RE_CTM_NATIVE_MODE": "dangerous",
+            }
+            with mock.patch.dict(os.environ, env, clear=True), mock.patch(
+                "re_ctm.config.sys.platform", "linux"
+            ), mock.patch("re_ctm.config.shutil.which", return_value="/usr/bin/bwrap"):
+                settings = Settings.from_env()
+            self.assertEqual(settings.native_exec_backend, "bubblewrap")
+            self.assertFalse(settings.native_isolation_attested)
+            settings.validate()
+
     def test_serve_defaults_follow_environment(self) -> None:
         with mock.patch.dict(
             os.environ,

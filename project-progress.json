@@ -1,9 +1,9 @@
 {
   "project": {
     "name": "Re-CTM",
-    "status": "rethlas_facade_and_incremental_screening_committed_pending_authenticated_push",
+    "status": "dangerous_native_toolchain_compatibility_committed_pending_push",
     "target": "A single installable OAuth MCP runtime combining streamlined CMT computer tools with a Rethlas-derived mathematical reasoning workflow.",
-    "updated_at": "2026-08-27T06:22:00-07:00",
+    "updated_at": "2026-08-28T19:46:00-07:00",
     "source_references": {
       "cmt_local_repo": "../coding-tools-mcp",
       "rethlas_local_repo": "../Rethlas",
@@ -125,6 +125,11 @@
     {
       "id": "AD-020",
       "decision": "Make workflow submissions LLM-oriented rather than JSON-echo-oriented: server-issued plan/subgoal ids are authoritative, direct screening may be submitted incrementally, incomplete coverage returns exact missing ids without transition, plan/outcome/branch-set fields are server-derived, and validation/conflict failures from rethlas_step keep accepted logical writes while returning a recoverable current task.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-021",
+      "decision": "On Linux, automatically use the built-in Bubblewrap native backend when bwrap is installed and require its startup attestation to succeed. In dangerous mode, expose the host PATH plus narrowly discovered read-only user toolchain roots (including Conda/Sage prefixes and PATH symlink targets such as Magma) while continuing to exclude Re-CTM data/private roots. Manual isolation validation remains release evidence rather than a runtime enablement flag.",
       "status": "accepted"
     }
   ],
@@ -305,13 +310,13 @@
         "The public tool catalog is a strict CTM superset: the exact 18 Coding Tools MCP native tools are followed by six LLM-facing Rethlas façade tools, while superseded Rethlas protocol names remain accepted as hidden compatibility aliases",
         "CTM-compatible read/list/search, patch-envelope, Git, image, environment, permission, and command-lifecycle surfaces are implemented",
         "Native paths stay workspace-confined in dangerous mode",
-        "Arbitrary command execution fails closed unless an operator enables an attested isolation backend",
+        "On Linux with bwrap installed, Re-CTM automatically selects the built-in Bubblewrap backend and performs fail-closed startup attestation; systems without an approved backend keep arbitrary execution disabled",
         "A packaged Linux bubblewrap helper implements a separate process, mount/user/PID/IPC/UTS namespaces, cleared environment, dropped capabilities, bounded output, timeout cleanup, safe-mode network isolation, nonce-bound responses, and startup attestation",
         "The built-in bubblewrap path restores exec_command -> command_id -> write_stdin/read_output/kill_command lifecycle, including tty=true interaction and retained output paging",
         "The local adversarial harness proved that dangerous commands can write the native workspace but cannot observe the private-vault canary or inherited secret environment"
       ],
       "remaining": [
-        "Run scripts/manual_native_isolation_test.py on every intended target-PC class before setting RE_CTM_NATIVE_ISOLATION_ATTESTED=1",
+        "Run scripts/manual_native_isolation_test.py on every intended target-PC class as release evidence for the automatically attested built-in Bubblewrap backend",
         "Run MV-009 to compare all 18 CTM native schemas and representative behavior against the reference Coding Tools MCP on the target PC",
         "Validate trusted/dangerous network behavior and system-toolchain compatibility on the target PC",
         "Independently review or replace the reference helper for non-Linux deployment targets"
@@ -413,7 +418,7 @@
         "95-percent Rethlas behavior acceptance suite"
       ],
       "completed_evidence": [
-        "48 deterministic and local integration tests pass",
+        "50 deterministic and local integration tests pass",
         "Loopback DCR to OAuth authorization to PKCE token to MCP tools/list passes",
         "Modern mirror-header and result-shaping tests pass",
         "Dangerous path confinement, native fail-closed execution, packaged bubblewrap attestation/private-canary denial, branch barrier, complete screening/join contracts, verifier denial/audit prerequisites, owner-bound capability, wrong-verdict, finalization, automatic run-specific workspace export, idempotent terminal retry, isolated LaTeX, external retrieval normalization, and debug redaction tests pass",
@@ -444,6 +449,7 @@
         "GitHub Actions CI covers Python 3.11/3.13, bubblewrap, latexmk, deterministic checks, wheel/sdist build, and installed command surfaces",
         "docs/DEPLOYMENT.md and scripts/smoke_oauth_mcp.py provide target setup, redacted OAuth/MCP verification, isolation evidence, and claims boundaries",
         "re_ctm-0.1.0.dev3 built as sdist and wheel, installed into a clean virtual environment, and an installed-service OAuth/MCP smoke confirmed exactly 24 public tools (18 exact CTM + 6 Rethlas façade), hidden legacy rethlas_status call compatibility, concrete-mathematics routing instructions, and modern non-inheritance behavior",
+        "re_ctm-0.1.0.dev4 built as sdist and wheel and installed into a clean virtual environment; with only native_mode=dangerous and no backend/attestation environment flags, the installed runtime automatically selected Bubblewrap, passed startup hard-isolation attestation, and executed the host-installed SageMath, Magma, and ordinary shell commands successfully while retaining private-vault isolation",
         "The earlier installed-service smoke started without RE_CTM_SERVER_URL or RE_CTM_OAUTH_PASSWORD on loopback, generated a 43-character local-terminal OAuth authorization key with no structured-state leak, and resolved Cloudflare-style forwarded metadata to the matching public trycloudflare.com origin"
       ],
       "remaining": [
@@ -478,7 +484,7 @@
   "local_validation": {
     "report": "local-validation.json",
     "last_result": "passed",
-    "test_count": 48,
+    "test_count": 50,
     "graph_metrics": {
       "vertices": 31,
       "edges": 60,
@@ -626,7 +632,7 @@
     {
       "id": "R-005",
       "risk": "The packaged Linux bubblewrap helper is still an operational articulation point whose guarantees depend on the target kernel, bubblewrap packaging, mount layout, and operator configuration.",
-      "mitigation": "Keep exec_command fail-closed until re-ctm attest-native and scripts/manual_native_isolation_test.py pass on that target and the operator explicitly sets RE_CTM_NATIVE_ISOLATION_ATTESTED=1."
+      "mitigation": "The built-in Bubblewrap backend performs mandatory fail-closed attestation on every startup; manual_native_isolation_test.py remains release/target evidence rather than a runtime acknowledgement gate. External helpers still require explicit operator attestation."
     },
     {
       "id": "R-006",
@@ -777,6 +783,10 @@
     {
       "timestamp": "2026-08-27T06:22:00-07:00",
       "event": "Refactored the LLM-facing Rethlas protocol from 13 advertised low-level tools to six façade tools while retaining eleven superseded names as hidden call-compatible aliases. rethlas_step now combines logical writes, commit, and advancement; validation/conflict corrections are recoverable with retained-write disclosure. Direct screening now uses server-issued plan/subgoal ids, accepts incremental coverage, derives plan status/outcome/branch sets server-side, and branch join derives sealed-branch coverage/outcome. The deterministic suite contains 48 passing tests and a clean installed dev3 OAuth/MCP smoke confirms 24 public tools plus hidden-alias compatibility."
+    },
+    {
+      "timestamp": "2026-08-28T19:46:00-07:00",
+      "event": "Restored meaningful Native dangerous execution without weakening the Rethlas vault boundary. Linux installs now auto-select built-in Bubblewrap when available and perform mandatory startup attestation without requiring RE_CTM_NATIVE_ISOLATION_ATTESTED=1. Dangerous-mode execution inherits the host PATH plus narrowly discovered read-only user toolchain roots while excluding configured data/private roots. On the reference target, source and clean-wheel dev4 runtimes both executed SageMath, Magma, and ordinary shell commands successfully; the deterministic suite now contains 50 passing tests."
     }
   ]
 }

@@ -9,7 +9,7 @@ Re-CTM combines a native CMT plane and a Rethlas workflow plane in one OAuth MCP
 3. Signed run capabilities, role ACLs, and workflow state are L2 authority and govern only `rethlas_*` logical resources and transitions.
 4. L1 `dangerous` never implies an L2 capability. Do not add `native_mode` to capability claims or workflow authorization decisions.
 5. The native workspace and Re-CTM data/private roots must not overlap.
-6. Native arbitrary execution fails closed unless an external hard-isolation backend is configured and attested. The private vault must not be mounted in that worker.
+6. Native arbitrary execution fails closed unless a hard-isolation backend is available and attested. The built-in Linux Bubblewrap backend attests on every startup; external helpers require explicit operator attestation. The private vault must not be mounted in that worker.
 7. OAuth authenticates a client but does not replace run ownership or workflow capability validation.
 8. If `RE_CTM_OAUTH_PASSWORD` is unset for an interactive `serve`, generate a high-entropy authorization key at startup and reveal it only to the local operator terminal. Never write the raw generated key to structured debug events, project ledgers, validation reports, HTTP responses, or persistent state.
 9. `RE_CTM_SERVER_URL` is a fixed OAuth-origin override, not a mandatory startup dependency. Without it, dynamic OAuth-origin discovery is allowed only on a loopback-bound HTTP server; forwarded proxy headers are trusted only from a loopback peer, and the resulting authorization code/token issuer/audience remain bound to that effective origin.

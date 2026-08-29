@@ -12,7 +12,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Any, BinaryIO, Mapping
+from typing import Any, BinaryIO, Iterable, Mapping
 
 
 PROTOCOL = "re-ctm-native-helper-v1"
@@ -22,6 +22,7 @@ MAX_ARG_BYTES = 256 * 1024
 MAX_CAPTURE_BYTES = 1_048_576
 CAPTURE_HEAD_BYTES = 65_536
 SUPPORTED_MODES = {"safe", "trusted", "dangerous"}
+DEFAULT_SANDBOX_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 SYSTEM_READ_ROOTS = (
     "/usr",
     "/bin",
@@ -445,6 +446,8 @@ def _bubblewrap_command(
     mode: str,
     argv: list[str],
     extra_env: Mapping[str, str] | None = None,
+    host_path: str | None = None,
+    extra_read_roots: Iterable[Path | str] = (),
 ) -> list[str]:
     bwrap = shutil.which("bwrap")
     if bwrap is None:
@@ -472,7 +475,7 @@ def _bubblewrap_command(
         "--clearenv",
         "--setenv",
         "PATH",
-        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        host_path or DEFAULT_SANDBOX_PATH,
         "--setenv",
         "HOME",
         "/home/re-ctm",
@@ -498,6 +501,14 @@ def _bubblewrap_command(
     for root in SYSTEM_READ_ROOTS:
         if Path(root).exists():
             command.extend(["--ro-bind", root, root])
+    normalized_extra_roots: list[Path] = []
+    seen_extra_roots: set[Path] = set()
+    for raw_root in extra_read_roots:
+        root = Path(raw_root).expanduser().resolve(strict=True)
+        if not root.is_dir() or root in seen_extra_roots:
+            continue
+        seen_extra_roots.add(root)
+        normalized_extra_roots.append(root)
     command.extend(
         [
             "--proc",
@@ -510,6 +521,19 @@ def _bubblewrap_command(
             "/home",
             "--dir",
             "/home/re-ctm",
+        ]
+    )
+    created_dirs = {Path("/tmp"), Path("/home"), Path("/home/re-ctm")}
+    for root in normalized_extra_roots:
+        parents = list(root.parents)
+        for parent in reversed(parents[:-1]):
+            if parent == Path("/") or parent in created_dirs or parent.exists() and str(parent) in SYSTEM_READ_ROOTS:
+                continue
+            command.extend(["--dir", str(parent)])
+            created_dirs.add(parent)
+        command.extend(["--ro-bind", str(root), str(root)])
+    command.extend(
+        [
             "--bind",
             str(workspace),
             "/workspace",

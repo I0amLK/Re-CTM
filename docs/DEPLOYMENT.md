@@ -54,8 +54,9 @@ RE_CTM_PRIVATE_ROOT=/var/lib/re-ctm/private
 RE_CTM_ALLOWED_ORIGINS=https://the-real-web-client.example
 RE_CTM_LATEX_POLICY=required
 RE_CTM_NATIVE_MODE=safe
-RE_CTM_NATIVE_EXEC_BACKEND=disabled
 ```
+
+On Linux, if `bwrap` is installed and `RE_CTM_NATIVE_EXEC_BACKEND` is omitted, Re-CTM automatically selects the built-in Bubblewrap backend and performs mandatory startup attestation. Set `RE_CTM_NATIVE_EXEC_BACKEND=disabled` only when command execution should be intentionally unavailable.
 
 `RE_CTM_OAUTH_PASSWORD` is optional for an interactive operator launch. If omitted, `re-ctm serve` generates a high-entropy authorization key and prints it once to the local terminal. Set it explicitly only when a stable operator password is preferred or automation must know it in advance.
 
@@ -69,9 +70,9 @@ For a Cloudflare Quick Tunnel, leave it unset and bind Re-CTM to loopback. The r
 
 Do not commit the real environment file. Re-CTM materializes server signing secrets under the data root with mode `0600` when they are not explicitly supplied.
 
-## 5. Validate native isolation before enabling it
+## 5. Validate native isolation
 
-The acknowledgement variable is intentionally separate from runtime attestation. First probe the backend:
+The built-in Bubblewrap backend attests itself every time the service starts and fails closed if the required isolation properties are not proven. For release/target evidence, also probe it explicitly:
 
 ```bash
 re-ctm attest-native \
@@ -92,14 +93,7 @@ python3 scripts/manual_native_isolation_test.py \
   --output native-isolation-validation.json
 ```
 
-Review the JSON. Only after all checks pass on that target:
-
-```bash
-RE_CTM_NATIVE_EXEC_BACKEND=bubblewrap
-RE_CTM_NATIVE_ISOLATION_ATTESTED=1
-```
-
-`dangerous` still does not grant a workflow capability. It only changes native-tool policy inside a namespace that does not mount the private vault.
+Review the JSON before treating that target as accepted for production. `RE_CTM_NATIVE_ISOLATION_ATTESTED=1` remains required only for an operator-supplied external helper. `dangerous` still does not grant a workflow capability: it changes native-tool policy inside the attested namespace, and additionally exposes host PATH user toolchains as read-only roots while the configured Re-CTM data/private roots remain unmounted.
 
 ## 6. Start Re-CTM
 

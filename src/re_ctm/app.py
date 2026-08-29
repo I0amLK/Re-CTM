@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from .capabilities import CapabilityAuthority
@@ -13,6 +14,7 @@ from .native import (
     ExternalHelperExecBackend,
     NativeRuntime,
     NativeWorkspace,
+    discover_dangerous_toolchain_roots,
 )
 from .oauth import OAuthService, OAuthStore
 from .research import TheoremSearchClient
@@ -78,7 +80,20 @@ def build_application(settings: Settings) -> ReCTMApplication:
             forbidden_paths=(settings.data_root, settings.private_root),
         )
     elif settings.native_exec_backend == "bubblewrap":
-        exec_backend = BubblewrapExecBackend()
+        host_path = os.environ.get("PATH", "") if settings.native_mode.value == "dangerous" else None
+        toolchain_roots = (
+            discover_dangerous_toolchain_roots(
+                workspace=settings.workspace,
+                forbidden_paths=(settings.data_root, settings.private_root),
+                host_path=host_path,
+            )
+            if settings.native_mode.value == "dangerous"
+            else ()
+        )
+        exec_backend = BubblewrapExecBackend(
+            host_path=host_path,
+            extra_read_roots=toolchain_roots,
+        )
         exec_backend.attest(
             workspace=settings.workspace,
             forbidden_paths=(settings.data_root, settings.private_root),

@@ -61,7 +61,8 @@
         "Install bubblewrap on Linux or provide an independently reviewed external helper.",
         "Run `re-ctm attest-native --backend bubblewrap --workspace <workspace> --data-root <data-root> --private-root <private-root>` without enabling native execution.",
         "Run `python3 scripts/manual_native_isolation_test.py --backend bubblewrap --workspace <workspace> --data-root <data-root> --private-root <private-root> --output native-isolation-validation.json` and review every check.",
-        "Only after the report passes, run Re-CTM with native_mode=dangerous, RE_CTM_NATIVE_EXEC_BACKEND=bubblewrap, and the operator acknowledgement RE_CTM_NATIVE_ISOLATION_ATTESTED=1.",
+        "Run Re-CTM with native_mode=dangerous on Linux with bwrap installed and confirm the built-in Bubblewrap backend is selected automatically and startup attestation succeeds without an acknowledgement flag.",
+        "Confirm user-installed PATH tools such as SageMath and Magma execute inside the isolated backend while configured Re-CTM data/private roots remain invisible.",
         "Use exec_command to enumerate mounts and attempt direct reads of the configured Re-CTM data/private roots.",
         "Attempt privilege escalation, parent-environment recovery, namespace creation, and access through interpreters or nested shells."
       ],

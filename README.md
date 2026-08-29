@@ -61,14 +61,14 @@ re-ctm --help
 
 ## 3. 准备工作目录和数据目录
 
-这两个目录必须互相分开。
+Re-CTM 可以直接把你当前打开终端所在的项目目录作为 workspace。先 `cd` 到你希望网页模型操作的目录；不要在 `$HOME` 或 `/` 直接启动。
 
 ```bash
-mkdir -p ~/re-ctm-workspace
 mkdir -p ~/.re-ctm
+export RE_CTM_WORKSPACE="$PWD"
 ```
 
-`~/re-ctm-workspace` 是网页模型可以操作的目录。
+`$PWD` 是网页模型可以操作的目录。
 
 `~/.re-ctm` 是 Re-CTM 保存任务状态、验证信息和内部数据的目录。不要把它放进 workspace 里面。
 
@@ -78,15 +78,16 @@ mkdir -p ~/.re-ctm
 # 可选：不设置时，re-ctm serve 会自动生成 OAuth authorization key 并打印到本机终端。
 # export RE_CTM_OAUTH_PASSWORD='请换成你自己的登录密码'
 
-export RE_CTM_WORKSPACE="$HOME/re-ctm-workspace"
+export RE_CTM_WORKSPACE="$PWD"
 export RE_CTM_DATA_ROOT="$HOME/.re-ctm"
 export RE_CTM_PRIVATE_ROOT="$HOME/.re-ctm/private"
 export RE_CTM_DEBUG_ROOT="$HOME/.re-ctm/debug"
 
 export RE_CTM_NATIVE_MODE=safe
-export RE_CTM_NATIVE_EXEC_BACKEND=disabled
 export RE_CTM_LATEX_POLICY=required
 ```
+
+Linux 上如果安装了 `bwrap`，Re-CTM 会自动选择内置 Bubblewrap 执行后端并在每次启动时做 fail-closed 隔离自检；不需要额外设置 `RE_CTM_NATIVE_EXEC_BACKEND` 或 `RE_CTM_NATIVE_ISOLATION_ATTESTED=1`。如果没有可用的 Bubblewrap，任意命令执行仍会保持关闭。
 
 `RE_CTM_SERVER_URL` 不是必填项。未设置时，只要 Re-CTM 绑定在 loopback（例如 `127.0.0.1`），它会根据实际请求的 Host 和可信的本机反向代理头自动确定 OAuth issuer/resource。这适合 Cloudflare Quick Tunnel。
 
@@ -293,26 +294,28 @@ export RE_CTM_NATIVE_MODE=dangerous
 
 ## 9. 启用 exec_command
 
-默认：
-
-```bash
-export RE_CTM_NATIVE_EXEC_BACKEND=disabled
-```
-
-此时文件读取、搜索和修改仍然可用，但执行任意命令会被拒绝。
-
-Linux 上先确认 Bubblewrap：
+Linux 上安装 Bubblewrap 后，Re-CTM 默认自动启用隔离的 `exec_command`：
 
 ```bash
 bwrap --version
 ```
 
-再运行：
+服务启动时会自动做隔离 attestation；失败则服务不会开放该执行后端。
+
+`safe`、`trusted`、`dangerous` 仍控制 Native 权限策略。`dangerous` 会取消 CMT 命令权限门槛，并在隔离容器中继承宿主 PATH 中的用户工具链；Conda/Sage 环境和 PATH symlink 指向的本地工具目录会以只读方式挂载。因此类似下面的命令可以直接通过 Re-CTM 执行：
+
+```bash
+sage -c 'print(2+3)'
+magma
+python3 script.py
+```
+
+Re-CTM 的 data/private roots 不会因为 `dangerous` 被挂进执行环境。你仍可以手工检查隔离状态：
 
 ```bash
 re-ctm attest-native \
   --backend bubblewrap \
-  --workspace "$HOME/re-ctm-workspace" \
+  --workspace "$PWD" \
   --data-root "$HOME/.re-ctm" \
   --private-root "$HOME/.re-ctm/private"
 ```
@@ -322,7 +325,7 @@ re-ctm attest-native \
 ```bash
 python3 scripts/manual_native_isolation_test.py \
   --backend bubblewrap \
-  --workspace "$HOME/re-ctm-workspace" \
+  --workspace "$PWD" \
   --data-root "$HOME/.re-ctm" \
   --private-root "$HOME/.re-ctm/private" \
   --output native-isolation-validation.json
@@ -333,15 +336,6 @@ python3 scripts/manual_native_isolation_test.py \
 ```json
 "passed": true
 ```
-
-再设置：
-
-```bash
-export RE_CTM_NATIVE_EXEC_BACKEND=bubblewrap
-export RE_CTM_NATIVE_ISOLATION_ATTESTED=1
-```
-
-然后重新启动 Re-CTM。
 
 ## 10. 使用 Rethlas 数学模式
 

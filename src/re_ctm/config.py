@@ -4,6 +4,8 @@ import hashlib
 import ipaddress
 import os
 import secrets
+import shutil
+import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -74,6 +76,12 @@ class Settings:
             os.environ.get("RE_CTM_DEBUG_ROOT") or str(data_root / "debug")
         ).expanduser().resolve()
         native_mode = NativeMode(os.environ.get("RE_CTM_NATIVE_MODE") or NativeMode.SAFE)
+        configured_backend = (os.environ.get("RE_CTM_NATIVE_EXEC_BACKEND") or "").strip()
+        native_exec_backend = configured_backend or (
+            "bubblewrap"
+            if sys.platform.startswith("linux") and shutil.which("bwrap") is not None
+            else "disabled"
+        )
         latex_policy = LatexPolicy(
             os.environ.get("RE_CTM_LATEX_POLICY") or LatexPolicy.REQUIRED
         )
@@ -92,7 +100,7 @@ class Settings:
             private_root=private_root,
             debug_root=debug_root,
             native_mode=native_mode,
-            native_exec_backend=os.environ.get("RE_CTM_NATIVE_EXEC_BACKEND", "disabled"),
+            native_exec_backend=native_exec_backend,
             native_exec_helper=(
                 Path(os.environ["RE_CTM_NATIVE_EXEC_HELPER"]).expanduser().resolve()
                 if os.environ.get("RE_CTM_NATIVE_EXEC_HELPER")
@@ -162,10 +170,10 @@ class Settings:
                 category="validation",
                 details={"backend": self.native_exec_backend},
             )
-        if self.native_exec_backend != "disabled" and not self.native_isolation_attested:
+        if self.native_exec_backend == "external" and not self.native_isolation_attested:
             raise ReCTMError(
                 "NATIVE_ISOLATION_REQUIRED",
-                "Native command execution requires an attested hard-isolation backend.",
+                "External native command execution requires an explicitly attested hard-isolation backend.",
                 category="security",
                 details={"backend": self.native_exec_backend},
             )
