@@ -10,6 +10,27 @@
         "memory:generation:events"
       ],
       "commit_action": "assessment_complete",
+      "write_contract": [
+        {
+          "resource": "memory:generation:immediate_conclusions",
+          "content_schema": {"type": "object", "additionalProperties": true},
+          "example": {"summary": "State the cheapest verified deductions and their status."}
+        },
+        {
+          "resource": "memory:generation:events",
+          "content_schema": {"type": "object", "additionalProperties": true},
+          "example": {"event_type": "assessment", "summary": "Record the initial reasoning/retrieval plan."}
+        }
+      ],
+      "commit_payload_schema": {"type": "object", "additionalProperties": false, "properties": {}},
+      "minimal_submission": {
+        "writes": [
+          {"resource": "memory:generation:immediate_conclusions", "content": {"summary": "Verified initial deductions."}},
+          {"resource": "memory:generation:events", "content": {"event_type": "assessment", "summary": "Initial plan."}}
+        ],
+        "action": "assessment_complete",
+        "payload": {}
+      },
       "rules": [
         "Use the complete original statement as authoritative input.",
         "Do not claim the problem is impossible merely because it may be open.",
@@ -25,6 +46,21 @@
         "memory:generation:events"
       ],
       "commit_action": "exploration_complete",
+      "write_contract": [
+        {
+          "resource": "memory:generation:events",
+          "content_schema": {"type": "object", "additionalProperties": true},
+          "example": {"event_type": "exploration", "summary": "Record useful examples, counterexamples, retrieved facts, and proof directions."}
+        }
+      ],
+      "commit_payload_schema": {"type": "object", "additionalProperties": false, "properties": {}},
+      "minimal_submission": {
+        "writes": [
+          {"resource": "memory:generation:events", "content": {"event_type": "exploration", "summary": "Exploration conclusions."}}
+        ],
+        "action": "exploration_complete",
+        "payload": {}
+      },
       "rules": [
         "Search nontrivial claims, but stop leaning on retrieval when it no longer helps.",
         "When using an external result, record its complete statement and identifiers and check local definitions and assumptions.",
@@ -37,10 +73,48 @@
       "role": "generator",
       "title": "Propose materially different decomposition plans",
       "objective": "Create at least two distinct proof strategies, each with ordered subgoals, motivation, dependencies, and known risks.",
-      "required_records": [
-        "memory:generation:subgoals"
-      ],
+      "required_records": [],
       "commit_action": "plans_proposed",
+      "write_contract": [],
+      "commit_payload_schema": {
+        "type": "object",
+        "required": ["plans"],
+        "additionalProperties": false,
+        "properties": {
+          "plans": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "object",
+              "required": ["summary", "subgoals"],
+              "additionalProperties": false,
+              "properties": {
+                "plan_id": {"type": "string", "description": "Optional caller label only; the server issues canonical plan_id values."},
+                "summary": {"type": "string", "minLength": 1},
+                "subgoals": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+                "motivation": {"type": "array", "items": {"type": "string", "minLength": 1}},
+                "dependencies": {"type": "array", "items": {"type": "string", "minLength": 1}},
+                "risks": {"type": "array", "items": {"type": "string", "minLength": 1}}
+              }
+            }
+          }
+        }
+      },
+      "minimal_submission": {
+        "writes": [],
+        "action": "plans_proposed",
+        "payload": {
+          "plans": [
+            {"plan_id": "route-a", "summary": "First materially distinct route", "subgoals": ["First route subgoal"], "motivation": ["Why this route may work"], "dependencies": [], "risks": ["Main risk"]},
+            {"plan_id": "route-b", "summary": "Second materially distinct route", "subgoals": ["Second route subgoal"], "motivation": ["Why this route differs"], "dependencies": [], "risks": ["Main risk"]}
+          ]
+        }
+      },
+      "server_derives": [
+        "canonical plan_id values",
+        "canonical subgoal_id values",
+        "generation-memory decomposition_plan records"
+      ],
       "rules": [
         "Plans must be materially different rather than cosmetic rewrites.",
         "Each plan must state how it avoids known counterexamples and failed paths.",
@@ -55,6 +129,13 @@
         "memory:generation:proof_steps"
       ],
       "commit_action": "direct_proving_complete",
+      "write_contract": [
+        {
+          "resource": "memory:generation:proof_steps",
+          "content_schema": {"type": "object", "additionalProperties": true},
+          "example": {"plan_id": "Use a server-issued plan_id", "summary": "Record the mathematical work supporting the screening result."}
+        }
+      ],
       "commit_payload_contract": {
         "screening": "Submit any completed subset keyed by server-issued plan_id and subgoal_id. Each subgoal result needs solved|partial|stuck status and a non-empty summary. Partial submissions are retained and return exact missing ids without advancing state.",
         "server_derives": [
@@ -67,6 +148,45 @@
           "selected_plan_id only when multiple plans are completely solved",
           "proof_route"
         ]
+      },
+      "commit_payload_schema": {
+        "type": "object",
+        "required": ["screening"],
+        "additionalProperties": false,
+        "properties": {
+          "screening": {
+            "type": "object",
+            "description": "Keys are server-issued plan_id values; nested keys are server-issued subgoal_id values.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "required": ["status", "summary"],
+                "additionalProperties": false,
+                "properties": {
+                  "status": {"type": "string", "enum": ["solved", "partial", "stuck"]},
+                  "summary": {"type": "string", "minLength": 1}
+                }
+              }
+            }
+          },
+          "selected_plan_id": {"type": "string"},
+          "proof_route": {"type": "string", "minLength": 1}
+        }
+      },
+      "minimal_submission_template": {
+        "writes": [
+          {"resource": "memory:generation:proof_steps", "content": {"summary": "Mathematical work used to screen the reported subgoals."}}
+        ],
+        "action": "direct_proving_complete",
+        "payload": {
+          "screening": {
+            "<server plan_id>": {
+              "<server subgoal_id>": {"status": "solved", "summary": "Why this subgoal is solved."}
+            }
+          },
+          "proof_route": "Required when at least one complete plan is solved."
+        }
       },
       "rules": [
         "Try to carry each whole plan through before abandoning it.",
@@ -85,11 +205,38 @@
         "memory:branch:proof_steps"
       ],
       "commit_action": "branch_complete",
+      "write_contract": [
+        {
+          "resource": "memory:branch:proof_steps",
+          "content_schema": {"type": "object", "additionalProperties": true},
+          "example": {"summary": "Branch-local mathematical progress; sibling branches remain invisible."}
+        }
+      ],
       "commit_payload_contract": {
         "status": "solved|partial|failed",
         "summary": "non-empty",
         "solved_requires": "proof_route",
         "partial_or_failed_requires": "unproved_subgoals or failure_evidence"
+      },
+      "commit_payload_schema": {
+        "type": "object",
+        "required": ["status", "summary"],
+        "additionalProperties": false,
+        "properties": {
+          "status": {"type": "string", "enum": ["solved", "partial", "failed"]},
+          "summary": {"type": "string", "minLength": 1},
+          "proof_route": {"type": "string", "minLength": 1},
+          "proved_subgoals": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "unproved_subgoals": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "failure_evidence": {"type": "array", "items": {"type": "string", "minLength": 1}}
+        }
+      },
+      "minimal_submission": {
+        "writes": [
+          {"resource": "memory:branch:proof_steps", "content": {"summary": "Branch proof work."}}
+        ],
+        "action": "branch_complete",
+        "payload": {"status": "solved", "summary": "Branch solved the assigned route.", "proof_route": "Complete proof route.", "proved_subgoals": [], "unproved_subgoals": [], "failure_evidence": []}
       },
       "rules": [
         "Do not request or infer another branch's result before the join barrier.",
@@ -104,12 +251,28 @@
       "objective": "Compare every branch from the same frozen snapshot, select a complete route if one exists, or synthesize common failure information for replanning.",
       "required_records": [],
       "commit_action": "join_complete",
+      "write_contract": [],
       "commit_payload_contract": {
         "server_derives_outcome": "solved when a solved selected branch or synthesis_proof_route exists; otherwise failed",
         "considered_branch_ids": "Optional audit hint only; complete sealed-branch coverage is derived by the server.",
         "solved_requires": "If exactly one branch is solved the server selects it automatically; multiple solved branches require selected_branch_id or synthesis_proof_route.",
         "failed_requires": "A non-empty common_failures array."
       },
+      "commit_payload_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "considered_branch_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "Optional audit hint; the server derives complete sealed-branch coverage."},
+          "selected_branch_id": {"type": "string", "minLength": 1},
+          "synthesis_proof_route": {"type": "string", "minLength": 1},
+          "common_failures": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+        }
+      },
+      "submission_examples": [
+        {"when": "Exactly one sealed branch is solved", "writes": [], "action": "join_complete", "payload": {}},
+        {"when": "No sealed branch is solved", "writes": [], "action": "join_complete", "payload": {"common_failures": ["Shared obstruction preventing every branch from completing the proof."]}},
+        {"when": "Multiple sealed branches are solved", "writes": [], "action": "join_complete", "payload": {"selected_branch_id": "<server solved branch_id>"}}
+      ],
       "rules": [
         "Read all sealed results before selecting a route.",
         "Do not merge incompatible claims without rechecking them.",
@@ -120,10 +283,19 @@
       "role": "generator",
       "title": "Synthesize the key failures",
       "objective": "Turn failed direct and branch attempts into reusable constraints for the next planning generation.",
-      "required_records": [
-        "memory:generation:failed_paths"
-      ],
+      "required_records": [],
       "commit_action": "failures_identified",
+      "write_contract": [],
+      "commit_payload_schema": {
+        "type": "object",
+        "required": ["summary"],
+        "additionalProperties": false,
+        "properties": {
+          "summary": {"type": "object", "additionalProperties": true, "description": "Key failures and concrete implications for the next planning generation."}
+        }
+      },
+      "minimal_submission": {"writes": [], "action": "failures_identified", "payload": {"summary": {"obstruction": "Main recurring obstruction", "next_step": "How the next plan generation must change"}}},
+      "server_derives": ["memory:generation:failed_paths key_failures_summary record"],
       "rules": [
         "List plan-specific stuck points and common obstructions.",
         "Distinguish false subgoals, missing hypotheses, missing background, and merely incomplete arguments.",
@@ -134,10 +306,19 @@
       "role": "generator",
       "title": "Prepare a new planning generation",
       "objective": "Use accumulated failure knowledge, counterexamples, and successful partial steps to define a materially improved search space.",
-      "required_records": [
-        "memory:generation:big_decisions"
-      ],
+      "required_records": [],
       "commit_action": "replan_complete",
+      "write_contract": [],
+      "commit_payload_schema": {
+        "type": "object",
+        "required": ["decision"],
+        "additionalProperties": false,
+        "properties": {
+          "decision": {"type": "object", "additionalProperties": true, "description": "Materially improved search-space decision justified by accumulated failure evidence."}
+        }
+      },
+      "minimal_submission": {"writes": [], "action": "replan_complete", "payload": {"decision": {"change": "New direction", "reason": "What new evidence justifies it"}}},
+      "server_derives": ["memory:generation:big_decisions record"],
       "rules": [
         "Do not repeat a failed plan unchanged.",
         "Explain what new information justifies each new direction.",
@@ -152,8 +333,22 @@
         "proof"
       ],
       "commit_action": "proof_submitted",
+      "write_contract": [
+        {
+          "resource": "proof",
+          "content_schema": {"type": "string", "minLength": 1, "description": "A complete self-contained LaTeX document."},
+          "example": "\\documentclass{article}\\n\\usepackage{amsmath,amsthm}\\n\\begin{document}...\\end{document}"
+        }
+      ],
+      "commit_payload_schema": {"type": "object", "additionalProperties": false, "properties": {}},
+      "minimal_submission": {
+        "writes": [{"resource": "proof", "content": "<complete self-contained LaTeX document>"}],
+        "action": "proof_submitted",
+        "payload": {}
+      },
       "rules": [
         "The document must be self-contained and must not use input/include or shell escape.",
+        "Prefer commands provided by the declared document class and explicitly loaded packages; avoid undeclared convenience macros so the first LaTeX gate is likely to compile.",
         "Supporting definitions, lemmas, and propositions precede statements that use them.",
         "The final target theorem appears last and repeats the complete original statement.",
         "External results include complete statements, paper identifiers, theorem identifiers, and arXiv identifiers when available."
@@ -169,9 +364,59 @@
         "verification_report"
       ],
       "commit_action": "verification_submitted",
+      "write_contract": [
+        {
+          "resource": "memory:verifier:statement_checks",
+          "content_schema": {"type": "object", "additionalProperties": true},
+          "example": {"location": "Theorem proof, first inference", "status": "checked", "summary": "Why the inference is valid."}
+        },
+        {
+          "resource": "memory:verifier:events",
+          "content_schema": {"type": "object", "additionalProperties": true},
+          "example": {"event_type": "audit_complete", "summary": "Sequential audit completed."}
+        },
+        {
+          "resource": "memory:verifier:reference_checks",
+          "required_when": "The proof declares citations, theorem identifiers, or other external references.",
+          "content_schema": {"type": "object", "additionalProperties": true},
+          "example": {"reference": "Identifier used by the proof", "status": "checked", "summary": "Statement, definitions, assumptions, and applicability were checked."}
+        },
+        {
+          "resource": "verification_report",
+          "content_schema": {
+            "type": "object",
+            "required": ["verification_report"],
+            "additionalProperties": false,
+            "properties": {
+              "verification_report": {
+                "type": "object",
+                "required": ["summary", "critical_errors", "gaps"],
+                "additionalProperties": false,
+                "properties": {
+                  "summary": {"type": "string", "minLength": 1},
+                  "critical_errors": {"type": "array", "items": {"type": "object", "required": ["location", "issue"], "additionalProperties": false, "properties": {"location": {"type": "string", "minLength": 1}, "issue": {"type": "string", "minLength": 1}}}},
+                  "gaps": {"type": "array", "items": {"type": "object", "required": ["location", "issue"], "additionalProperties": false, "properties": {"location": {"type": "string", "minLength": 1}, "issue": {"type": "string", "minLength": 1}}}}
+                }
+              },
+              "repair_hints": {"type": "string", "description": "Required to be non-empty when critical_errors or gaps are non-empty."}
+            }
+          },
+          "example": {"verification_report": {"summary": "The proof is complete and correct.", "critical_errors": [], "gaps": []}, "repair_hints": ""}
+        }
+      ],
       "commit_payload_contract": {
         "memory_preconditions": "At least one statement_checks record and one audit event. If the proof cites external results, reference_checks must also be non-empty.",
-        "verification_report": "summary plus complete critical_errors and gaps arrays; wrong findings require repair_hints."
+        "server_reads_report_from": "the verification_report logical write; do not echo the report in commit payload"
+      },
+      "commit_payload_schema": {"type": "object", "additionalProperties": false, "properties": {}},
+      "minimal_submission": {
+        "writes": [
+          {"resource": "memory:verifier:statement_checks", "content": {"location": "proof", "status": "checked", "summary": "Sequential statement audit."}},
+          {"resource": "memory:verifier:events", "content": {"event_type": "audit_complete", "summary": "Audit completed."}},
+          {"resource": "verification_report", "content": {"verification_report": {"summary": "The proof is complete and correct.", "critical_errors": [], "gaps": []}, "repair_hints": ""}}
+        ],
+        "action": "verification_submitted",
+        "payload": {}
       },
       "rules": [
         "Do not access generation memory, branches, steering, or generator confidence.",
@@ -191,8 +436,21 @@
         "proof"
       ],
       "commit_action": "repair_submitted",
+      "write_contract": [
+        {
+          "resource": "proof",
+          "content_schema": {"type": "string", "minLength": 1, "description": "The complete replacement self-contained LaTeX document; it must differ from the failed proof."},
+          "example": "<full replacement LaTeX document>"
+        }
+      ],
       "commit_payload_contract": {
-        "proof": "The full replacement proof must differ from the last proof that received a wrong verdict."
+        "server_reads_replacement_from": "the proof logical write; do not echo proof bytes in commit payload"
+      },
+      "commit_payload_schema": {"type": "object", "additionalProperties": false, "properties": {}},
+      "minimal_submission": {
+        "writes": [{"resource": "proof", "content": "<full replacement LaTeX document>"}],
+        "action": "repair_submitted",
+        "payload": {}
       },
       "rules": [
         "Resolve critical errors first and then all remaining gaps.",

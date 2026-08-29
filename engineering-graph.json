@@ -112,10 +112,14 @@
     {
       "id": "PC-013",
       "constraint": "Native CLI compatibility is application-agnostic. The Bubblewrap toolchain view is the validated union of system roots, non-system host-PATH discovery, executable-symlink target prefixes, and operator-declared RE_CTM_NATIVE_EXEC_ALLOW_ROOTS. Every non-system root is canonicalized, ancestor-collapsed, forbidden from overlapping workspace/data/private trust domains, and mounted read-only."
+    },
+    {
+      "id": "PC-014",
+      "constraint": "Every model-active Rethlas task is a zero-guess MCP contract: the task envelope exposes exact logical-write schemas, the exact commit action, the commit-payload schema, and at least one valid submission example/template. Server-derived workflow facts are not redundantly required as model writes. Recoverable validation/conflict corrections return a fresh capability, explicit retryable/recoverable semantics, and retained-write guidance; permission/security failures remain hard."
     }
   ],
   "implementation_snapshot": {
-    "as_of": "2026-08-28T19:46:00-07:00",
+    "as_of": "2026-08-29T00:20:00-07:00",
     "authority": "This snapshot supersedes the original per-vertex planning labels without erasing the design-time history stored on each vertex.",
     "implemented_local": [
       "V02",
@@ -165,7 +169,7 @@
       "src/re_ctm/toolchains.py implements the application-agnostic system/PATH/symlink/explicit-root exposure plan, canonical overlap gate, PATH extension, ancestor collapse, content-minimized diagnostics, and read-only Bubblewrap mounts; helper-side defense revalidates the protected boundaries.",
       "The built-in Linux Bubblewrap backend performs fail-closed startup attestation automatically; scripts/manual_native_isolation_test.py remains target-PC adversarial release evidence, and tests use arbitrary non-product-named toolchains to prove execution, read-only mounts, explicit fallback roots, and private-root exclusion.",
       "tests/ exercises OAuth, legacy and modern MCP, fixed catalogs, native path confinement, toolchain exposure policy, capability ownership, branch barriers, verifier firewall, mechanical verdict/finalization, diagnostics, LaTeX safety, and the reference bubblewrap helper.",
-      "MCP server instructions and the rethlas_start tool contract route concrete mathematical work into the capability-gated workflow; rethlas_step combines task submission and advancement, exposes stable plan/subgoal ids, accepts incremental screening, and performs idempotent workspace export when terminal done is reached.",
+      "MCP server instructions and the rethlas_start tool contract route concrete mathematical work into the capability-gated workflow; every model-active Rethlas task now exposes a zero-guess write/commit contract and valid example/template, while rethlas_step combines task submission and advancement, returns explicit recoverable/retryable correction semantics with retained-write guidance, exposes stable plan/subgoal ids, accepts incremental screening, and performs idempotent workspace export when terminal done is reached.",
       "manual-validation.json remains the authority for browser, target-PC, external-retrieval, real-LaTeX, and 95-percent methodology acceptance."
     ]
   },

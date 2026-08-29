@@ -1,9 +1,9 @@
 {
   "project": {
     "name": "Re-CTM",
-    "status": "generic_native_toolchain_exposure_committed_pending_push",
+    "status": "zero_guess_rethlas_contract_local_validated_pending_push",
     "target": "A single installable OAuth MCP runtime combining streamlined CMT computer tools with a Rethlas-derived mathematical reasoning workflow.",
-    "updated_at": "2026-08-28T20:46:00-07:00",
+    "updated_at": "2026-08-29T00:26:00-07:00",
     "source_references": {
       "cmt_local_repo": "../coding-tools-mcp",
       "rethlas_local_repo": "../Rethlas",
@@ -135,6 +135,11 @@
     {
       "id": "AD-022",
       "decision": "Supersede per-application native-tool compatibility with one Native Toolchain Exposure Policy. Build the Bubblewrap view from system roots, non-system PATH prefixes, executable-symlink target prefixes, and operator-declared RE_CTM_NATIVE_EXEC_ALLOW_ROOTS; canonicalize and ancestor-collapse the union, extend sandbox PATH for explicit bin/sbin/Executables directories, reject relative/missing/broad/workspace/data/private-overlapping roots, mount every accepted non-system root read-only, report a diagnostic plan, and revalidate protected boundaries inside the Bubblewrap command builder. No Sage, Magma, Mathematica, Maple, or other product-name branch is permitted.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-023",
+      "decision": "Make every model-active Rethlas task a zero-guess self-describing contract. The task envelope exposes write_contract, exact commit_action, commit_payload_schema, and a schema-valid minimal/template/example submission. Do not require model writes for server-derived canonical records such as decomposition plans, failure synthesis, or replanning decisions. Strictly validate plan list fields instead of coercing strings into character arrays. Any validation/conflict correction handled by rethlas_step returns recoverable=true, retryable=true, a fresh capability, retained-write information, and guidance not to replay retained records; permission/security failures stay hard.",
       "status": "accepted"
     }
   ],
@@ -344,6 +349,7 @@
       "completed_evidence": [
         "Generation, branch, join, assembler, verifier, and repair methodology tasks are embedded in the package",
         "MCP initialization instructions and the rethlas_start tool description direct concrete proof/derivation/repair/verification requests into the workflow by default, while preserving an explicit informal-answer opt-out",
+        "Every model-active task now returns a zero-guess write/commit contract with a schema-valid example/template; server-derived decomposition-plan, failure-summary, and replanning records are no longer redundantly presented as required model writes",
         "Generation, verifier, and branch-local memory channels are persisted in the private vault",
         "Multiple decomposition plans, complete per-plan/per-subgoal direct screening, one-branch-per-plan rounds, explicit all-branch join, failure synthesis, replanning, verification audit records, changed-proof repair, and strict stopping rules are server-enforced",
         "Capability-gated rethlas_retrieve provides bounded HTTPS theorem search and persists results as external_unverified evidence in generation, branch, verifier, or repair memory",
@@ -424,9 +430,10 @@
         "95-percent Rethlas behavior acceptance suite"
       ],
       "completed_evidence": [
-        "62 deterministic and local integration tests pass",
+        "70 deterministic and local integration tests pass",
         "Loopback DCR to OAuth authorization to PKCE token to MCP tools/list passes",
         "Modern mirror-header and result-shaping tests pass",
+        "Zero-guess methodology contract tests cover every model-active state, validate every documented submission example against its declared schema, reject string-to-character-array coercion in plan fields, preserve plan dependencies, recover from write-time and commit-time validation errors with explicit retryable/fresh-capability semantics, retain accepted writes without requiring replay, keep stale-capability permission failures hard, and drive a complete easy rethlas_start -> rethlas_step -> done run with automatic proof_verified.tex export without any schema-correction turn",
         "Dangerous path confinement, native fail-closed execution, packaged bubblewrap attestation/private-canary denial, generic PATH/symlink/explicit-root toolchain discovery, canonical overlap denials, helper-side revalidation, read-only mount enforcement, branch barrier, complete screening/join contracts, verifier denial/audit prerequisites, owner-bound capability, wrong-verdict, finalization, automatic run-specific workspace export, idempotent terminal retry, isolated LaTeX, external retrieval normalization, and debug redaction tests pass",
         "scripts/run_local_checks.py writes local-validation.json"
       ],
@@ -457,6 +464,7 @@
         "re_ctm-0.1.0.dev3 built as sdist and wheel, installed into a clean virtual environment, and an installed-service OAuth/MCP smoke confirmed exactly 24 public tools (18 exact CTM + 6 Rethlas façade), hidden legacy rethlas_status call compatibility, concrete-mathematics routing instructions, and modern non-inheritance behavior",
         "re_ctm-0.1.0.dev4 built as sdist and wheel and installed into a clean virtual environment; with only native_mode=dangerous and no backend/attestation environment flags, the installed runtime automatically selected Bubblewrap, passed startup hard-isolation attestation, and executed the host-installed SageMath, Magma, and ordinary shell commands successfully while retaining private-vault isolation",
         "re_ctm-0.1.0.dev5 built as sdist and wheel and installed into a clean virtual environment; an arbitrary non-PATH Executables-style toolchain supplied through RE_CTM_NATIVE_EXEC_ALLOW_ROOTS executed by name, host PATH SageMath and Magma still executed, ordinary shell execution passed, the effective plan was reported, and writes to the exposed toolchain were denied",
+        "re_ctm-0.1.0.dev6 built as sdist and wheel and installed into a clean virtual environment; the installed package retained exactly 24 public tools, the rethlas_step public description advertised zero-guess task contracts, and embedded assess/propose_plans/verify/repair tasks all exposed write_contract, commit_payload_schema, step_protocol, and the corrected planning payload/write semantics",
         "The earlier installed-service smoke started without RE_CTM_SERVER_URL or RE_CTM_OAUTH_PASSWORD on loopback, generated a 43-character local-terminal OAuth authorization key with no structured-state leak, and resolved Cloudflare-style forwarded metadata to the matching public trycloudflare.com origin"
       ],
       "remaining": [
@@ -478,20 +486,21 @@
       "P5"
     ],
     "current_phase_id": "P3/P4/P6/P7/P8",
-    "current_focus": "CTM native compatibility remains exact at 18 native tools and the Rethlas surface remains six façade tools. Native CLI compatibility is now application-agnostic: Bubblewrap receives one validated read-only union of system, PATH, executable-symlink, and explicit allow roots, with no Sage/Magma/Mathematica special cases. Concrete mathematics routes through Rethlas, incremental screening remains server-id based, and terminal runs automatically publish proof_verified.tex. Nine real webpage/target-PC/compatibility/methodology acceptance checks remain post-push.",
+    "current_focus": "CTM native compatibility remains exact at 18 native tools and the Rethlas surface remains six façade tools. Native CLI compatibility is application-agnostic, while every model-active Rethlas task now exposes a zero-guess write/commit schema plus a valid submission example/template. Server-derived workflow facts are no longer redundantly echoed as required writes, and recoverable validation/conflict corrections explicitly return a fresh capability, retryability, failed-write/retained-write information, and no-replay guidance. Nine real webpage/target-PC/compatibility/methodology acceptance checks remain post-push.",
     "next_actions": [
       "Push the latest compatibility checkpoint to origin/main using the authenticated GitHub credential",
       "Observe the first GitHub Actions run after the push",
       "Run all checks in manual-validation.json and attach redacted evidence",
       "Run the packaged Bubblewrap isolation harness with representative --allow-root values on each target PC and attach redacted evidence",
       "Run ordinary natural-language mathematical problems through the real webpage client and confirm it selects rethlas_start without tool-name prompting",
+      "In a fresh webpage/model context with no prior protocol knowledge, complete an easy Rethlas run by following only the returned zero-guess task contracts and confirm there are no JSON/schema correction turns",
       "Validate automatic workspace export plus rethlas_artifact alternate-path behavior from the real webpage host"
     ]
   },
   "local_validation": {
     "report": "local-validation.json",
     "last_result": "passed",
-    "test_count": 62,
+    "test_count": 70,
     "graph_metrics": {
       "vertices": 31,
       "edges": 60,
@@ -520,6 +529,7 @@
       "MCP instructions and rethlas_start metadata contain the default concrete-mathematics routing contract",
       "24-tool public catalog exposes the exact 18 CTM native prefix plus six Rethlas façade tools, while hidden legacy Rethlas aliases remain callable through MCP tools/call",
       "Direct screening uses server-issued plan/subgoal ids, retains partial progress, reports exact missing ids, derives plan/outcome/branch-set fields server-side, and treats validation/conflict corrections as recoverable rethlas_step submissions",
+      "Zero-guess Rethlas task contracts across assess/explore/propose_plans/direct_proving/branch/join/failure/replan/assemble/verify/repair, including exact logical-write content schemas, exact commit payload schemas, schema-valid examples/templates, strict plan list typing with dependencies, server-derived-record non-duplication, write-time retained-progress recovery, explicit retryable/recoverable semantics, and hard stale-capability failures",
       "Native workspace boundary and fail-closed execution",
       "Reference Linux bubblewrap helper attestation and private-vault canary denial",
       "Application-agnostic Native Toolchain Exposure Policy: arbitrary Conda-style, bin/Executables-style, PATH-symlink, and explicit roots; safe-mode explicit PATH extension; canonical de-duplication; ancestor collapse; relative/missing/broad/workspace/data/private overlap denial; private-target symlink exclusion; helper-side defense-in-depth; read-only mutation denial; content-minimized and operator-detailed diagnostics",
@@ -534,7 +544,8 @@
       "Live theorem-search endpoint smoke",
       "Wheel build, clean installation, installed helper version, and installed helper attestation",
       "Installed dev3 service smoke covering redacted OAuth DCR/PKCE, legacy MCP, modern mirror headers, exactly 24 public tools, hidden legacy Rethlas alias call compatibility, and dangerous non-inheritance",
-      "Installed dev5 wheel smoke covering automatic Bubblewrap attestation, generic explicit non-PATH tool execution, host PATH SageMath and Magma, ordinary shell execution, exposure-plan diagnostics, and read-only toolchain enforcement"
+      "Installed dev5 wheel smoke covering automatic Bubblewrap attestation, generic explicit non-PATH tool execution, host PATH SageMath and Magma, ordinary shell execution, exposure-plan diagnostics, and read-only toolchain enforcement",
+      "Installed dev6 wheel smoke covering exactly 24 public tools plus packaged zero-guess Rethlas write/commit contracts and corrected planning semantics"
     ],
     "explicitly_not_validated": [
       "Final webpage MCP host compatibility",
@@ -560,19 +571,19 @@
       "basis": "Identity confirmed from public commits owned by GitHub account I0amLK; configured only in this repository."
     },
     "remote": "https://github.com/I0amLK/Re-CTM.git",
-    "push_status": "generic_toolchain_exposure_committed_fast_forward_ready",
+    "push_status": "zero_guess_contract_committed_fast_forward_ready",
     "latest_local_commit": "Resolve with `git rev-parse HEAD`; the ledger intentionally avoids a self-referential commit hash.",
     "push_attempt": {
       "transport": "https",
-      "remote_observed_head": "77591346ae16d7370a3b9b16b28eaa90488d8670",
-      "result": "generic_toolchain_exposure_committed_fast_forward_ready",
-      "reason": "A fresh ls-remote confirms GitHub main is 7759134. The already committed dev4 native-execution checkpoint and the dev5 generic toolchain-exposure checkpoint are a linear continuation, so the remaining action is an authenticated normal push with no pull, merge, rebase, or force.",
+      "remote_observed_head": "825d05b893f23cbdff80a77803db0b4118ca523f",
+      "result": "zero_guess_contract_committed_fast_forward_ready",
+      "reason": "A fresh ls-remote on 2026-08-29 confirms GitHub main is 825d05b (dev5 generic toolchain exposure). The dev6 zero-guess Rethlas contract checkpoint is a linear continuation, so the remaining action after the local commit is an authenticated normal push with no pull, merge, rebase, or force.",
       "ssh_fallback": "not_needed_for_current_remote_state"
     },
     "initial_files": [
       "All current source, tests, graph, debug, validation, and planning files are intended for the initial commit."
     ],
-    "working_tree_note": "All tracked generic toolchain-exposure changes are committed on the linear branch above remote 7759134. The only remaining worktree entry is the intentionally untouched untracked user artifact pushout_abelianization_exact_sequence.tex, which is not part of the Re-CTM source commit."
+    "working_tree_note": "After the dev6 zero-guess contract checkpoint is committed, the only intended remaining worktree entry is the intentionally untouched untracked user artifact pushout_abelianization_exact_sequence.tex, which is not part of the Re-CTM source commit."
   },
   "engineering_debug_notes": [
     {
@@ -806,6 +817,10 @@
     {
       "timestamp": "2026-08-28T20:46:00-07:00",
       "event": "Replaced software-by-software compatibility with a generic Native Toolchain Exposure Policy. Added RE_CTM_NATIVE_EXEC_ALLOW_ROOTS, canonical system/PATH/symlink/explicit union planning, filtered inherited PATH, common bin/sbin/Executables PATH extension, broad/missing/relative/trust-domain overlap denials, ancestor collapse, read-only Bubblewrap mounts, helper-protocol propagation and revalidation, startup mount-plan probing, diagnostics, target manual probes, INV-011/PC-013/AD-022, 62 passing tests, and a clean dev5 wheel smoke covering an arbitrary explicit toolchain plus SageMath, Magma, shell, and mutation denial."
+    },
+    {
+      "timestamp": "2026-08-29T00:26:00-07:00",
+      "event": "Converted every model-active Rethlas task into a zero-guess self-describing contract after two live workflow exercises exposed hidden JSON assumptions. Added exact write_contract and commit_payload_schema data, schema-valid submissions/templates, server-derived-record non-duplication for planning/failure/replan, strict plan-array typing with dependency preservation, write-time as well as commit-time recoverable corrections with retryable/fresh-capability/retained-write guidance, hard permission-error preservation, startup methodology-contract validation, a no-schema-correction end-to-end façade regression through automatic proof_verified.tex export, 70 passing deterministic tests, PC-014/AD-023/MV-008 acceptance criteria, and a clean dev6 wheel smoke confirming the packaged contracts and 24-tool catalog."
     }
   ]
 }

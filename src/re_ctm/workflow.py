@@ -946,14 +946,16 @@ class WorkflowEngine:
             branches = self.store.list_branches(claims.run_id)
             sealed_ids = {str(item["branch_id"]) for item in branches if item["status"] == "sealed"}
             considered = payload.get("considered_branch_ids")
-            if considered is not None and (
-                not isinstance(considered, list)
-                or any(str(item) not in sealed_ids for item in considered)
-            ):
-                raise invalid_argument(
-                    "considered_branch_ids may contain only sealed branch ids; complete coverage is server-derived",
-                    sealed_branch_ids=sorted(sealed_ids),
+            if considered is not None:
+                considered_ids = _string_array(
+                    considered,
+                    label="considered_branch_ids",
                 )
+                if any(item not in sealed_ids for item in considered_ids):
+                    raise invalid_argument(
+                        "considered_branch_ids may contain only sealed branch ids; complete coverage is server-derived",
+                        sealed_branch_ids=sorted(sealed_ids),
+                    )
             branch_results = {
                 branch_id: self.vault.read_branch_result(claims.run_id, branch_id)
                 for branch_id in sealed_ids
@@ -963,8 +965,14 @@ class WorkflowEngine:
                 for branch_id, result in branch_results.items()
                 if isinstance(result, Mapping) and result.get("status") == "solved"
             )
-            selected = str(payload.get("selected_branch_id") or "")
-            synthesis_route = str(payload.get("synthesis_proof_route") or "").strip()
+            raw_selected = payload.get("selected_branch_id")
+            if raw_selected is not None and not isinstance(raw_selected, str):
+                raise invalid_argument("selected_branch_id must be a string when supplied")
+            selected = (raw_selected or "").strip()
+            raw_synthesis_route = payload.get("synthesis_proof_route")
+            if raw_synthesis_route is not None and not isinstance(raw_synthesis_route, str):
+                raise invalid_argument("synthesis_proof_route must be a string when supplied")
+            synthesis_route = (raw_synthesis_route or "").strip()
             if not selected and not synthesis_route and len(solved_branch_ids) == 1:
                 selected = solved_branch_ids[0]
             if selected and selected not in solved_branch_ids:
@@ -979,10 +987,13 @@ class WorkflowEngine:
                     solved_branch_ids=solved_branch_ids,
                 )
             outcome = "solved" if synthesis_route or selected else "failed"
+            common_failures: list[str] | None = None
             if outcome == "failed":
-                common_failures = payload.get("common_failures")
-                if not isinstance(common_failures, list) or not common_failures:
-                    raise invalid_argument("failed join requires non-empty common_failures")
+                common_failures = _string_array(
+                    payload.get("common_failures"),
+                    label="common_failures",
+                    required=True,
+                )
             normalized_join = {
                 **payload,
                 "outcome": outcome,
@@ -990,6 +1001,8 @@ class WorkflowEngine:
                 "considered_branch_ids": sorted(sealed_ids),
                 "joined_at": utc_now(),
             }
+            if common_failures is not None:
+                normalized_join["common_failures"] = common_failures
             self.vault.write_join_result(claims.run_id, normalized_join)
             self.vault.append_generation_memory(
                 claims.run_id,
@@ -1124,13 +1137,30 @@ class WorkflowEngine:
                 category="validation",
                 details={"branch_id": branch_id, "channel": "proof_steps"},
             )
-        status = str(payload.get("status") or "")
+        raw_status = payload.get("status")
+        status = raw_status.strip() if isinstance(raw_status, str) else ""
         if status not in {"solved", "partial", "failed"}:
             raise invalid_argument("branch status must be solved, partial, or failed")
-        summary = str(payload.get("summary") or "").strip()
-        proof_route = str(payload.get("proof_route") or "").strip()
-        unproved_subgoals = [str(item) for item in payload.get("unproved_subgoals") or []]
-        failure_evidence = [str(item) for item in payload.get("failure_evidence") or []]
+        raw_summary = payload.get("summary")
+        if not isinstance(raw_summary, str):
+            raise invalid_argument("branch result summary must be a string")
+        summary = raw_summary.strip()
+        raw_proof_route = payload.get("proof_route")
+        if raw_proof_route is not None and not isinstance(raw_proof_route, str):
+            raise invalid_argument("branch proof_route must be a string when supplied")
+        proof_route = (raw_proof_route or "").strip()
+        proved_subgoals = _string_array(
+            payload.get("proved_subgoals"),
+            label="proved_subgoals",
+        )
+        unproved_subgoals = _string_array(
+            payload.get("unproved_subgoals"),
+            label="unproved_subgoals",
+        )
+        failure_evidence = _string_array(
+            payload.get("failure_evidence"),
+            label="failure_evidence",
+        )
         if not summary:
             raise invalid_argument("branch result requires a non-empty summary")
         if status == "solved" and not proof_route:
@@ -1145,7 +1175,7 @@ class WorkflowEngine:
             "status": status,
             "summary": summary,
             "proof_route": proof_route or None,
-            "proved_subgoals": list(payload.get("proved_subgoals") or []),
+            "proved_subgoals": proved_subgoals,
             "unproved_subgoals": unproved_subgoals,
             "failure_evidence": failure_evidence,
         }
@@ -1499,15 +1529,36 @@ def _validate_plans(value: Any, *, plan_round: int = 1) -> list[dict[str, Any]]:
     for index, item in enumerate(value, start=1):
         if not isinstance(item, Mapping):
             raise invalid_argument("each plan must be a JSON object")
-        source_plan_id = str(item.get("plan_id") or "").strip()
+        raw_source_plan_id = item.get("plan_id")
+        if raw_source_plan_id is not None and not isinstance(raw_source_plan_id, str):
+            raise invalid_argument("plan_id must be a string when supplied")
+        source_plan_id = (raw_source_plan_id or "").strip()
         plan_id = f"plan-r{max(1, plan_round)}-{index}"
-        summary = str(item.get("summary") or "").strip()
-        subgoals = item.get("subgoals")
-        if not summary or not isinstance(subgoals, list) or not subgoals:
-            raise invalid_argument("each plan requires summary and non-empty subgoals")
-        normalized_subgoals = [str(goal).strip() for goal in subgoals]
-        if any(not goal for goal in normalized_subgoals):
-            raise invalid_argument("plan subgoals must be non-empty strings", plan_id=plan_id)
+        raw_summary = item.get("summary")
+        if not isinstance(raw_summary, str) or not raw_summary.strip():
+            raise invalid_argument("each plan requires a non-empty string summary")
+        summary = raw_summary.strip()
+        normalized_subgoals = _string_array(
+            item.get("subgoals"),
+            label="plan subgoals",
+            required=True,
+            plan_id=plan_id,
+        )
+        motivation = _string_array(
+            item.get("motivation"),
+            label="plan motivation",
+            plan_id=plan_id,
+        )
+        dependencies = _string_array(
+            item.get("dependencies"),
+            label="plan dependencies",
+            plan_id=plan_id,
+        )
+        risks = _string_array(
+            item.get("risks"),
+            label="plan risks",
+            plan_id=plan_id,
+        )
         plans.append(
             {
                 "plan_id": plan_id,
@@ -1515,8 +1566,9 @@ def _validate_plans(value: Any, *, plan_round: int = 1) -> list[dict[str, Any]]:
                 "summary": summary,
                 "subgoals": normalized_subgoals,
                 "subgoal_ids": [f"sg-{subgoal_index}" for subgoal_index in range(1, len(normalized_subgoals) + 1)],
-                "motivation": list(item.get("motivation") or []),
-                "risks": list(item.get("risks") or []),
+                "motivation": motivation,
+                "dependencies": dependencies,
+                "risks": risks,
             }
         )
     if len({plan["summary"].lower() for plan in plans}) != len(plans):
@@ -1545,10 +1597,35 @@ def _public_active_plans(active_plans: Any) -> list[dict[str, Any]]:
                     for subgoal_id, text in zip(ids, texts)
                 ],
                 "motivation": list(plan.get("motivation") or []),
+                "dependencies": list(plan.get("dependencies") or []),
                 "risks": list(plan.get("risks") or []),
             }
         )
     return public
+
+
+def _string_array(
+    value: Any,
+    *,
+    label: str,
+    required: bool = False,
+    **details: Any,
+) -> list[str]:
+    if value is None:
+        if required:
+            raise invalid_argument(f"{label} must be a non-empty array of non-empty strings", **details)
+        return []
+    if not isinstance(value, list) or (required and not value):
+        raise invalid_argument(
+            f"{label} must be {'a non-empty ' if required else 'an '}array of non-empty strings",
+            **details,
+        )
+    normalized: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise invalid_argument(f"{label} entries must be non-empty strings", **details)
+        normalized.append(item.strip())
+    return normalized
 
 
 def _merge_direct_screening(
@@ -1627,8 +1704,10 @@ def _merge_direct_screening(
                     subgoal_id=subgoal_id,
                     active_subgoal_ids=ids,
                 )
-            status = str(raw_result.get("status") or "")
-            summary = str(raw_result.get("summary") or "").strip()
+            raw_status = raw_result.get("status")
+            raw_summary = raw_result.get("summary")
+            status = raw_status.strip() if isinstance(raw_status, str) else ""
+            summary = raw_summary.strip() if isinstance(raw_summary, str) else ""
             if status not in {"solved", "partial", "stuck"} or not summary:
                 raise invalid_argument(
                     "subgoal screening requires status solved|partial|stuck and a non-empty summary",

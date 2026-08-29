@@ -160,14 +160,16 @@
       "steps": [
         "Submit a concrete mathematical proof request in ordinary natural language without naming rethlas_start and confirm the MCP client follows the server instructions by starting and completing a Rethlas run; separately request a direct informal answer and confirm the explicit opt-out is respected.",
         "Use representative easy, difficult, citation-heavy, counterexample-sensitive, and repair-requiring math problems.",
+        "In a fresh webpage/model context with no prior Re-CTM protocol knowledge, inspect each returned task contract and complete at least one easy end-to-end run without any JSON-shape/schema correction; confirm write_contract, commit_action, commit_payload_schema, and a valid submission example/template are present at every model-active state.",
         "Inspect memory channels, multiple plan generation, server-issued plan/subgoal ids, incremental direct screening, one-branch-per-plan work, all-branch join, failure synthesis, replanning, verification audits, and changed-proof repair.",
         "During direct screening intentionally submit only a subset of plan/subgoal results; confirm the server stays in direct_proving, returns exact missing ids, retains accepted progress, and advances only after coverage is complete without requiring plan status or branch_plans to be echoed.",
-        "Trigger one recoverable rethlas_step validation error after a logical write; confirm writes_retained=true, the returned fresh capability can continue, and the capability used for the failed submission is revoked.",
+        "Trigger one recoverable rethlas_step validation error during a later write after an earlier write succeeded; confirm recoverable=true, retryable=true, writes_retained=true, failed_write identifies the rejected record, the fresh capability can continue without replaying the retained record, and the superseded capability is revoked. Separately confirm a stale/foreign capability remains a hard permission failure.",
         "Use rethlas_retrieve for nontrivial claims; for useful results, inspect the source paper context/proof and persist definitions, applicability checks, and identifiers before relying on them."
       ],
       "expected": [
         "Concrete proof/derivation/repair/verification requests route into Rethlas by default rather than ending as an unverified chat-only proof.",
         "Core Rethlas methodology is observably preserved despite sequential domains.",
+        "A fresh model can follow the task-provided zero-guess contracts without reading server source or learning hidden JSON requirements from failures.",
         "Failures remain queryable and influence new plans.",
         "External results include complete statements and applicability checks.",
         "Operator judges the target 95-percent functional-equivalence criterion."

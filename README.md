@@ -257,6 +257,10 @@ rethlas_artifact
 
 旧版 Re-CTM 的 `rethlas_next/read/write/search/commit/status/steer/resume/cancel/get_artifact/export_final` 调用仍由服务器接受，作为隐藏兼容入口，但不再出现在 `tools/list` 中，避免模型在大量内部协议工具之间反复选择。
 
+`rethlas_step` 返回的当前任务现在是 **zero-guess contract**：模型不需要猜内部 JSON 结构。每个模型参与的 workflow state 都会明确给出 `write_contract`、`commit_action`、`commit_payload_schema`，以及一个最小合法 submission/template/example。Memory write 默认是一条 JSON object 记录；如果某一步由服务器从 commit payload 自动生成 canonical memory（例如 decomposition plans、failure summary、replan decision），task 会把 `write_contract` 明确设为空，避免客户端重复写同一流程事实。
+
+如果某次 `rethlas_step` 的 write 或 commit 因 validation/conflict 需要修正，服务器会返回 `submission.recoverable=true`、`retryable=true` 和新的 capability。已经成功的逻辑 writes 会明确标记为 retained，客户端应继续使用新 capability，并且**不要重放 retained writes**。权限/安全错误仍然是 hard failure，不会被这个修正机制吞掉。
+
 原来 CTM 的长命令生命周期也继续使用。例如网页模型启动一个耗时测试后，可以得到 `command_id`，随后继续等待输出、读取保留输出、向 TTY 程序输入内容，或者终止进程。实际使用时仍然直接用自然语言即可，例如：
 
 ```text

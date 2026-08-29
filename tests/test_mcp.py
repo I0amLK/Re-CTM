@@ -227,6 +227,21 @@ class MCPDispatcherTestCase(unittest.TestCase):
         )
         self.assertTrue(stale["isError"])
         self.assertEqual(stale["structuredContent"]["error"]["code"], "CAPABILITY_REVOKED")
+        stale_step = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": advanced["capability"],
+                "action": "exploration_complete",
+                "payload": {},
+            },
+            self.principal,
+        )
+        self.assertTrue(stale_step["isError"])
+        self.assertEqual(
+            stale_step["structuredContent"]["error"]["code"],
+            "CAPABILITY_REVOKED",
+        )
         recovered = self.tools.call(
             "rethlas_step",
             {
@@ -262,6 +277,284 @@ class MCPDispatcherTestCase(unittest.TestCase):
             legacy_over_mcp["result"]["structuredContent"]["state"],
             "propose_plans",
         )
+
+    def test_rethlas_step_write_validation_is_recoverable_and_retains_prior_writes(self) -> None:
+        started = self.tools.call(
+            "rethlas_start",
+            {"problem_tex": r"\textbf{Problem.} Prove $1=1$.", "problem_id": "write-recovery"},
+            self.principal,
+        )["structuredContent"]
+        run_id = started["run_id"]
+        task = self.tools.call(
+            "rethlas_step",
+            {"run_id": run_id},
+            self.principal,
+        )["structuredContent"]
+
+        recoverable = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": task["capability"],
+                "writes": [
+                    {
+                        "resource": "memory:generation:immediate_conclusions",
+                        "content": {"conclusion": "Reflexivity."},
+                    },
+                    {
+                        "resource": "memory:generation:events",
+                        "content": ["this batch shape is intentionally invalid"],
+                    },
+                ],
+                "action": "assessment_complete",
+            },
+            self.principal,
+        )
+        self.assertFalse(recoverable["isError"])
+        payload = recoverable["structuredContent"]
+        self.assertEqual(payload["state"], "assess")
+        self.assertEqual(payload["writes_applied"], 1)
+        self.assertTrue(payload["submission"]["recoverable"])
+        self.assertTrue(payload["submission"]["retryable"])
+        self.assertTrue(payload["submission"]["error"]["retryable"])
+        self.assertTrue(payload["submission"]["writes_retained"])
+        self.assertEqual(
+            payload["submission"]["failed_write"],
+            {"index": 1, "resource": "memory:generation:events"},
+        )
+        self.assertIn("write_contract", payload["task"])
+
+        corrected = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": payload["capability"],
+                "writes": [
+                    {
+                        "resource": "memory:generation:events",
+                        "content": {"event_type": "assessment", "summary": "Corrected second record only."},
+                    }
+                ],
+                "action": "assessment_complete",
+                "payload": {},
+            },
+            self.principal,
+        )["structuredContent"]
+        self.assertEqual(corrected["state"], "explore")
+
+    def test_planning_contract_rejects_string_lists_and_preserves_dependencies(self) -> None:
+        started = self.tools.call(
+            "rethlas_start",
+            {"problem_tex": r"\textbf{Problem.} Prove a planning test statement.", "problem_id": "plan-contract"},
+            self.principal,
+        )["structuredContent"]
+        run_id = started["run_id"]
+        assess = self.tools.call("rethlas_step", {"run_id": run_id}, self.principal)["structuredContent"]
+        explore = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": assess["capability"],
+                "writes": [
+                    {"resource": "memory:generation:immediate_conclusions", "content": {"summary": "Initial deduction."}},
+                    {"resource": "memory:generation:events", "content": {"event_type": "assessment"}},
+                ],
+                "action": "assessment_complete",
+                "payload": {},
+            },
+            self.principal,
+        )["structuredContent"]
+        planning = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": explore["capability"],
+                "writes": [
+                    {"resource": "memory:generation:events", "content": {"event_type": "exploration"}}
+                ],
+                "action": "exploration_complete",
+                "payload": {},
+            },
+            self.principal,
+        )["structuredContent"]
+        self.assertEqual(planning["state"], "propose_plans")
+        self.assertEqual(planning["task"]["write_contract"], [])
+        self.assertEqual(planning["task"]["commit_payload_schema"]["required"], ["plans"])
+
+        invalid = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": planning["capability"],
+                "action": "plans_proposed",
+                "payload": {
+                    "plans": [
+                        {"summary": "Route one", "subgoals": ["A"], "motivation": "not-an-array"},
+                        {"summary": "Route two", "subgoals": ["B"]},
+                    ]
+                },
+            },
+            self.principal,
+        )
+        self.assertFalse(invalid["isError"])
+        invalid_payload = invalid["structuredContent"]
+        self.assertEqual(invalid_payload["state"], "propose_plans")
+        self.assertTrue(invalid_payload["submission"]["recoverable"])
+        self.assertTrue(invalid_payload["submission"]["error"]["retryable"])
+        self.assertIn("motivation", invalid_payload["submission"]["error"]["message"])
+
+        direct = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": invalid_payload["capability"],
+                "action": "plans_proposed",
+                "payload": {
+                    "plans": [
+                        {
+                            "plan_id": "route-a",
+                            "summary": "Route one",
+                            "subgoals": ["A"],
+                            "motivation": ["First approach"],
+                            "dependencies": ["Lemma A"],
+                            "risks": ["Risk A"],
+                        },
+                        {
+                            "plan_id": "route-b",
+                            "summary": "Route two",
+                            "subgoals": ["B"],
+                            "motivation": ["Second approach"],
+                            "dependencies": [],
+                            "risks": ["Risk B"],
+                        },
+                    ]
+                },
+            },
+            self.principal,
+        )["structuredContent"]
+        self.assertEqual(direct["state"], "direct_proving")
+        self.assertEqual(direct["context"]["active_plans"][0]["dependencies"], ["Lemma A"])
+
+    def test_zero_guess_easy_flow_reaches_done_without_schema_corrections(self) -> None:
+        started = self.tools.call(
+            "rethlas_start",
+            {"problem_tex": r"\textbf{Problem.} Prove $1=1$.", "problem_id": "zero-guess-e2e"},
+            self.principal,
+        )["structuredContent"]
+        run_id = started["run_id"]
+
+        assess = self.tools.call("rethlas_step", {"run_id": run_id}, self.principal)["structuredContent"]
+        self.assertEqual(assess["state"], "assess")
+        self.assertEqual(assess["task"]["minimal_submission"]["action"], "assessment_complete")
+        explore = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": assess["capability"],
+                **assess["task"]["minimal_submission"],
+            },
+            self.principal,
+        )["structuredContent"]
+        self.assertNotIn("error", explore.get("submission", {}))
+        self.assertEqual(explore["state"], "explore")
+
+        planning = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": explore["capability"],
+                **explore["task"]["minimal_submission"],
+            },
+            self.principal,
+        )["structuredContent"]
+        self.assertNotIn("error", planning.get("submission", {}))
+        self.assertEqual(planning["state"], "propose_plans")
+
+        direct = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": planning["capability"],
+                **planning["task"]["minimal_submission"],
+            },
+            self.principal,
+        )["structuredContent"]
+        self.assertNotIn("error", direct.get("submission", {}))
+        self.assertEqual(direct["state"], "direct_proving")
+        active = direct["context"]["active_plans"]
+        screening = {
+            plan["plan_id"]: {
+                subgoal["subgoal_id"]: {
+                    "status": "solved",
+                    "summary": "For this tautological test problem, the stated subgoal is immediate.",
+                }
+                for subgoal in plan["subgoals"]
+            }
+            for plan in active
+        }
+        assembled = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": direct["capability"],
+                "writes": [
+                    {
+                        "resource": "memory:generation:proof_steps",
+                        "content": {"summary": "Reflexivity proves the target equality."},
+                    }
+                ],
+                "action": direct["task"]["commit_action"],
+                "payload": {
+                    "screening": screening,
+                    "selected_plan_id": active[0]["plan_id"],
+                    "proof_route": "Use reflexivity of equality: every object equals itself, hence $1=1$.",
+                },
+            },
+            self.principal,
+        )["structuredContent"]
+        self.assertNotIn("error", assembled.get("submission", {}))
+        self.assertEqual(assembled["state"], "assemble")
+
+        proof = (
+            "\\documentclass{article}\n"
+            "\\usepackage{amsmath,amsthm}\n"
+            "\\newtheorem{theorem}{Theorem}\n"
+            "\\begin{document}\n"
+            "\\begin{theorem} $1=1$. \\end{theorem}\n"
+            "\\begin{proof} This follows from reflexivity of equality. \\end{proof}\n"
+            "\\end{document}\n"
+        )
+        verify = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": assembled["capability"],
+                "writes": [{"resource": "proof", "content": proof}],
+                "action": assembled["task"]["commit_action"],
+                "payload": {},
+            },
+            self.principal,
+        )["structuredContent"]
+        self.assertNotIn("error", verify.get("submission", {}))
+        self.assertEqual(verify["state"], "verify")
+
+        verification_submission = verify["task"]["minimal_submission"]
+        done = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": verify["capability"],
+                **verification_submission,
+            },
+            self.principal,
+        )["structuredContent"]
+        self.assertNotIn("error", done.get("submission", {}))
+        self.assertEqual(done["state"], "done")
+        self.assertEqual(done["verdict"], "correct")
+        self.assertTrue(done["final_artifact_available"])
+        exported = self.workspace / done["workspace_export_path"]
+        self.assertTrue(exported.is_file())
+        self.assertEqual(exported.read_text(encoding="utf-8"), proof)
 
     def test_rethlas_step_exposes_stable_screening_ids_and_accepts_partial_progress(self) -> None:
         started = self.tools.call(

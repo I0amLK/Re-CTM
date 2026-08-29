@@ -523,7 +523,7 @@ TOOL_SPECS: dict[str, ToolSpec] = {
     ),
     "rethlas_step": ToolSpec(
         "Advance Rethlas workflow",
-        "Issue the current Rethlas task, or submit its logical writes plus commit payload and immediately return the next task. Incomplete screening is accepted in place and returns exact missing plan/subgoal ids instead of failing the run.",
+        "Issue the current Rethlas task, or submit its logical writes plus commit payload and immediately return the next task. Always follow the returned task.write_contract, task.commit_payload_schema, and task minimal/example submission instead of guessing JSON shapes. Each memory write is one JSON object unless the current write_contract explicitly says otherwise. Recoverable validation/conflict corrections return a fresh capability and identify whether earlier writes were retained. Incomplete screening is accepted in place and returns exact missing plan/subgoal ids instead of failing the run.",
         {
             **OBJECT,
             "required": ["run_id"],
@@ -537,13 +537,13 @@ TOOL_SPECS: dict[str, ToolSpec] = {
                         "required": ["resource", "content"],
                         "properties": {
                             "resource": {"type": "string", "minLength": 1},
-                            "content": {},
+                            "content": {"description": "Match the current task.write_contract entry for this resource. Memory resources accept one JSON object per write; do not batch records as an array unless explicitly allowed by that contract."},
                         },
                         "additionalProperties": False,
                     },
                 },
-                "action": {"type": "string"},
-                "payload": {"type": "object"},
+                "action": {"type": "string", "description": "Use the current task.commit_action exactly."},
+                "payload": {"type": "object", "description": "Match the current task.commit_payload_schema exactly; use an empty object when the schema has no required fields."},
             },
         },
         destructive=True,
@@ -996,6 +996,49 @@ class ToolRuntime:
             trace_id=trace_id,
         )
 
+    def _recoverable_rethlas_step(
+        self,
+        *,
+        principal: OAuthPrincipal,
+        run_id: str,
+        capability: str,
+        error: ReCTMError,
+        write_results: list[dict[str, Any]],
+        trace_id: str,
+        failed_write: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        current = self.workflow.next_task(
+            owner_id=principal.client_id,
+            run_id=run_id,
+            trace_id=trace_id,
+        )
+        self.workflow.capabilities.revoke(
+            capability,
+            "superseded_by_recoverable_step",
+            trace_id=trace_id,
+        )
+        error_payload = error.to_payload()
+        error_payload["retryable"] = True
+        submission: dict[str, Any] = {
+            "ok": False,
+            "complete": False,
+            "recoverable": True,
+            "retryable": True,
+            "error": error_payload,
+            "writes_retained": bool(write_results),
+            "correction": (
+                "Use the fresh capability in this response and follow the returned task write_contract and "
+                "commit_payload_schema. Do not replay retained writes unless a genuinely new logical record is needed."
+            ),
+        }
+        if failed_write is not None:
+            submission["failed_write"] = dict(failed_write)
+        return {
+            **current,
+            "submission": submission,
+            "writes_applied": len(write_results),
+        }
+
     def _rethlas_step(
         self,
         principal: OAuthPrincipal,
@@ -1026,18 +1069,36 @@ class ToolRuntime:
         if writes and not action:
             raise invalid_argument("action is required when writes are submitted")
         write_results: list[dict[str, Any]] = []
-        for item in writes:
-            if not isinstance(item, Mapping):
-                raise invalid_argument("each write must be an object")
-            write_results.append(
-                self.workflow.write(
-                    owner_id=principal.client_id,
-                    capability=capability,
-                    resource=str(item.get("resource") or ""),
-                    content=item.get("content"),
-                    trace_id=trace_id,
+        for index, item in enumerate(writes):
+            try:
+                if not isinstance(item, Mapping):
+                    raise invalid_argument("each write must be an object")
+                write_results.append(
+                    self.workflow.write(
+                        owner_id=principal.client_id,
+                        capability=capability,
+                        resource=str(item.get("resource") or ""),
+                        content=item.get("content"),
+                        trace_id=trace_id,
+                    )
                 )
-            )
+            except ReCTMError as exc:
+                if exc.category not in {"validation", "conflict"}:
+                    raise
+                failed_resource = (
+                    str(item.get("resource") or "")
+                    if isinstance(item, Mapping)
+                    else ""
+                )
+                return self._recoverable_rethlas_step(
+                    principal=principal,
+                    run_id=run_id,
+                    capability=capability,
+                    error=exc,
+                    write_results=write_results,
+                    trace_id=trace_id,
+                    failed_write={"index": index, "resource": failed_resource},
+                )
         if not action:
             raise invalid_argument("action is required to complete a Rethlas step")
         try:
@@ -1051,26 +1112,14 @@ class ToolRuntime:
         except ReCTMError as exc:
             if exc.category not in {"validation", "conflict"}:
                 raise
-            current = self.workflow.next_task(
-                owner_id=principal.client_id,
+            return self._recoverable_rethlas_step(
+                principal=principal,
                 run_id=run_id,
+                capability=capability,
+                error=exc,
+                write_results=write_results,
                 trace_id=trace_id,
             )
-            self.workflow.capabilities.revoke(
-                capability,
-                "superseded_by_recoverable_step",
-                trace_id=trace_id,
-            )
-            return {
-                **current,
-                "submission": {
-                    "ok": False,
-                    "complete": False,
-                    "error": exc.to_payload(),
-                    "writes_retained": bool(write_results),
-                },
-                "writes_applied": len(write_results),
-            }
         next_task = self._attach_done_export_if_needed(
             principal,
             self.workflow.next_task(
@@ -1331,10 +1380,19 @@ def _render_summary(name: str, payload: Mapping[str, Any]) -> str:
         submission = payload.get("submission")
         if name == "rethlas_step" and isinstance(submission, Mapping) and isinstance(submission.get("error"), Mapping):
             error = submission["error"]
-            retained = " Previous logical writes were retained." if submission.get("writes_retained") else ""
+            retained = (
+                " Successful logical writes were retained; do not replay them."
+                if submission.get("writes_retained")
+                else ""
+            )
+            recovery = (
+                " Continue with the fresh capability and the returned task contract."
+                if submission.get("recoverable")
+                else ""
+            )
             return (
                 f"Run {payload.get('run_id')} remains in {payload.get('state')}; submission needs correction: "
-                f"{error.get('code')}: {error.get('message')}.{retained}"
+                f"{error.get('code')}: {error.get('message')}.{retained}{recovery}"
             )
         if name == "rethlas_step" and isinstance(submission, Mapping) and submission.get("complete") is False:
             missing = submission.get("missing_screening") or []
