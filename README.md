@@ -85,6 +85,9 @@ export RE_CTM_DEBUG_ROOT="$HOME/.re-ctm/debug"
 
 export RE_CTM_NATIVE_MODE=safe
 export RE_CTM_LATEX_POLICY=required
+
+# 可选：仅当某个 CLI 工具链的依赖目录无法从 PATH/symlink 自动推断时使用。
+# export RE_CTM_NATIVE_EXEC_ALLOW_ROOTS="/opt/vendor-suite:/srv/shared-math-runtime"
 ```
 
 Linux 上如果安装了 `bwrap`，Re-CTM 会自动选择内置 Bubblewrap 执行后端并在每次启动时做 fail-closed 隔离自检；不需要额外设置 `RE_CTM_NATIVE_EXEC_BACKEND` 或 `RE_CTM_NATIVE_ISOLATION_ATTESTED=1`。如果没有可用的 Bubblewrap，任意命令执行仍会保持关闭。
@@ -302,13 +305,38 @@ bwrap --version
 
 服务启动时会自动做隔离 attestation；失败则服务不会开放该执行后端。
 
-`safe`、`trusted`、`dangerous` 仍控制 Native 权限策略。`dangerous` 会取消 CMT 命令权限门槛，并在隔离容器中继承宿主 PATH 中的用户工具链；Conda/Sage 环境和 PATH symlink 指向的本地工具目录会以只读方式挂载。因此类似下面的命令可以直接通过 Re-CTM 执行：
+`safe`、`trusted`、`dangerous` 仍控制 Native 权限策略。Re-CTM 不维护 Sage、Magma、Mathematica 等软件名单，而是使用统一的 **Native Toolchain Exposure Policy**：
+
+```text
+系统只读 roots
+  ∪ PATH 自动发现的工具链 prefix
+  ∪ executable symlink 的真实 target prefix
+  ∪ RE_CTM_NATIVE_EXEC_ALLOW_ROOTS 显式 roots
+        ↓ canonicalize / 去重 / ancestor collapse
+        ↓ 拒绝 workspace、data root、private root 与过宽根目录
+        ↓ Bubblewrap --ro-bind
+```
+
+`trusted` 与 `dangerous` 会继承宿主 PATH 并自动发现其中的非系统工具链；`safe` 不继承宿主 PATH，但仍可使用运维者显式允许的只读工具链。Conda/venv 的 `bin` 会提升到环境 prefix，普通 `bin`/`sbin`/`Executables` 会提升到产品 prefix，PATH 中的 symlink 会解析真实 target。整个过程不检查应用名称。
+
+因此只要程序能从启动 Re-CTM 时的终端 PATH 找到，或其运行根通过显式 roots 声明，类似命令都可以通过同一机制执行：
 
 ```bash
 sage -c 'print(2+3)'
 magma
+wolframscript -code '2+3'
 python3 script.py
 ```
+
+某些软件把可执行文件、库或数据库分散在 PATH 无法推断的目录中。这时使用 Linux 的 `:` 分隔绝对路径：
+
+```bash
+export RE_CTM_NATIVE_EXEC_ALLOW_ROOTS="/opt/Wolfram/Mathematica/15.0:/srv/shared-cas-runtime"
+```
+
+这些目录必须已经存在，不能是 `/`、完整 `$HOME`、`/home`、`/var`、`/opt` 等过宽聚合根，不能与 workspace、`~/.re-ctm` 或它们的祖先/后代重叠；应声明具体产品/运行时子目录，最终只读挂载。`re-ctm check-config` 与 `check_exec_environment` 会显示解析后的 toolchain exposure plan。
+
+显式 roots 当前只由内置 Bubblewrap 后端实现；与 `RE_CTM_NATIVE_EXEC_BACKEND=external` 同时配置会直接拒绝启动，避免第三方 helper 静默忽略目录。
 
 Re-CTM 的 data/private roots 不会因为 `dangerous` 被挂进执行环境。你仍可以手工检查隔离状态：
 
@@ -317,8 +345,11 @@ re-ctm attest-native \
   --backend bubblewrap \
   --workspace "$PWD" \
   --data-root "$HOME/.re-ctm" \
-  --private-root "$HOME/.re-ctm/private"
+  --private-root "$HOME/.re-ctm/private" \
+  --allow-root /opt/vendor-suite
 ```
+
+没有显式 roots 时删去 `--allow-root`；有多个时重复该参数。
 
 如果这里通过，从源码仓库继续运行完整隔离测试：
 
@@ -328,8 +359,11 @@ python3 scripts/manual_native_isolation_test.py \
   --workspace "$PWD" \
   --data-root "$HOME/.re-ctm" \
   --private-root "$HOME/.re-ctm/private" \
+  --allow-root /opt/vendor-suite \
   --output native-isolation-validation.json
 ```
+
+没有显式 roots 时删去 `--allow-root`；有多个时重复该参数。报告会验证这些 roots 在真实目标机上可见但不可写。
 
 确认报告包含：
 

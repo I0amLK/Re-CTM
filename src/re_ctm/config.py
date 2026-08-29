@@ -11,6 +11,10 @@ from pathlib import Path
 
 from .enums import LatexPolicy, NativeMode
 from .errors import ReCTMError
+from .toolchains import (
+    parse_native_exec_allow_roots,
+    validate_explicit_toolchain_roots,
+)
 
 
 def _truthy(value: str | None) -> bool:
@@ -54,6 +58,7 @@ class Settings:
     native_exec_backend: str = "disabled"
     native_exec_helper: Path | None = None
     native_isolation_attested: bool = False
+    native_exec_allow_roots: tuple[Path, ...] = ()
     latex_policy: LatexPolicy = LatexPolicy.REQUIRED
     debug_enabled: bool = False
     trace_payloads: bool = False
@@ -108,6 +113,9 @@ class Settings:
             ),
             native_isolation_attested=_truthy(
                 os.environ.get("RE_CTM_NATIVE_ISOLATION_ATTESTED")
+            ),
+            native_exec_allow_roots=parse_native_exec_allow_roots(
+                os.environ.get("RE_CTM_NATIVE_EXEC_ALLOW_ROOTS")
             ),
             latex_policy=latex_policy,
             debug_enabled=_truthy(os.environ.get("RE_CTM_DEBUG")),
@@ -182,6 +190,19 @@ class Settings:
                 "NATIVE_HELPER_REQUIRED",
                 "RE_CTM_NATIVE_EXEC_HELPER is required for the external backend.",
                 category="validation",
+            )
+        if self.native_exec_allow_roots and self.native_exec_backend != "bubblewrap":
+            raise ReCTMError(
+                "NATIVE_TOOLCHAIN_ROOTS_UNSUPPORTED",
+                "RE_CTM_NATIVE_EXEC_ALLOW_ROOTS currently requires the built-in Bubblewrap backend.",
+                category="validation",
+                details={"backend": self.native_exec_backend},
+            )
+        if self.native_exec_allow_roots:
+            validate_explicit_toolchain_roots(
+                self.native_exec_allow_roots,
+                workspace=self.workspace,
+                forbidden_paths=(self.data_root, self.private_root),
             )
         if not 1 <= self.theorem_search_timeout_seconds <= 300:
             raise ReCTMError(

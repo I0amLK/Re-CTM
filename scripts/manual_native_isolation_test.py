@@ -22,6 +22,7 @@ from re_ctm.native import (  # noqa: E402
     ExternalHelperExecBackend,
     NativeWorkspace,
 )
+from re_ctm.toolchains import build_toolchain_exposure_plan  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -33,6 +34,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--private-root", required=True)
     parser.add_argument("--backend", choices=["bubblewrap", "external"], default="bubblewrap")
     parser.add_argument("--helper")
+    parser.add_argument(
+        "--allow-root",
+        action="append",
+        default=[],
+        help="Additional absolute toolchain root to validate and mount read-only; repeatable.",
+    )
     parser.add_argument("--output", default="native-isolation-validation.json")
     args = parser.parse_args(argv)
 
@@ -46,22 +53,37 @@ def main(argv: list[str] | None = None) -> int:
     if args.backend == "external":
         if not args.helper:
             parser.error("--helper is required with --backend=external")
+        if args.allow_root:
+            parser.error("--allow-root is currently supported only by the built-in bubblewrap backend")
         backend = ExternalHelperExecBackend(Path(args.helper))
+        exposure_summary: dict[str, Any] = {
+            "policy": "external_helper_owned",
+            "resolved_read_only_root_count": 0,
+        }
     else:
-        backend = BubblewrapExecBackend()
+        plan = build_toolchain_exposure_plan(
+            mode=NativeMode.DANGEROUS,
+            workspace=workspace,
+            forbidden_paths=(data_root, private_root),
+            explicit_roots=tuple(Path(value).expanduser() for value in args.allow_root),
+            host_path=os.environ.get("PATH", ""),
+        )
+        backend = BubblewrapExecBackend(exposure_plan=plan)
+        exposure_summary = plan.summary(include_paths=True)
 
     report: dict[str, Any] = {
-        "schema_version": "1.0.0",
+        "schema_version": "1.1.0",
         "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "backend": args.backend,
         "workspace": str(workspace),
         "data_root": str(data_root),
         "private_root": str(private_root),
+        "toolchain_exposure": exposure_summary,
         "checks": [],
         "passed": False,
         "operator_acknowledgement": (
-            "A passing result is target-specific evidence. Review this JSON before setting "
-            "RE_CTM_NATIVE_ISOLATION_ATTESTED=1."
+            "A passing result is target-specific release evidence. The built-in Bubblewrap "
+            "backend still performs mandatory fail-closed attestation at every startup."
         ),
     }
     canary_name = f"re-ctm-private-canary-{secrets.token_hex(8)}.txt"
@@ -75,6 +97,48 @@ def main(argv: list[str] | None = None) -> int:
             forbidden_paths=(data_root, private_root),
         )
         _record(report, "helper_attestation", True, attestation=attestation)
+
+        declared_roots = exposure_summary.get("explicit_roots")
+        if isinstance(declared_roots, list) and declared_roots:
+            read_only_script = """import json, os, sys
+paths = json.loads(sys.argv[1])
+out = []
+for index, path in enumerate(paths):
+    target = os.path.join(path, ".re-ctm-write-probe-" + str(index))
+    try:
+        with open(target, "w", encoding="utf-8") as handle:
+            handle.write("no")
+        out.append([path, True])
+        os.unlink(target)
+    except OSError:
+        out.append([path, False])
+print(json.dumps(out, sort_keys=True))
+"""
+            read_only_probe = backend.execute(
+                workspace=workspace,
+                argv=[
+                    "/usr/bin/python3",
+                    "-c",
+                    read_only_script,
+                    json.dumps(declared_roots),
+                ],
+                workdir=".",
+                timeout_ms=10_000,
+                mode=NativeMode.DANGEROUS,
+            )
+            try:
+                read_only_results = json.loads(str(read_only_probe.get("stdout") or "[]"))
+            except json.JSONDecodeError:
+                read_only_results = []
+            _record(
+                report,
+                "declared_toolchain_roots_are_read_only",
+                read_only_probe.get("exit_code") == 0
+                and len(read_only_results) == len(declared_roots)
+                and all(item[1] is False for item in read_only_results),
+                result=_summary(read_only_probe),
+                root_count=len(declared_roots),
+            )
 
         visible = backend.execute(
             workspace=workspace,

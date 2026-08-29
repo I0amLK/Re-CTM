@@ -10,9 +10,22 @@ from unittest import mock
 
 from re_ctm.cli import build_parser, main
 from re_ctm.config import Settings
+from re_ctm.errors import ReCTMError
 
 
 class CLITestCase(unittest.TestCase):
+    def test_attest_native_accepts_repeatable_generic_allow_roots(self) -> None:
+        args = build_parser().parse_args(
+            [
+                "attest-native",
+                "--allow-root",
+                "/opt/vendor/one",
+                "--allow-root",
+                "/srv/runtime/two",
+            ]
+        )
+        self.assertEqual(args.allow_root, ["/opt/vendor/one", "/srv/runtime/two"])
+
     def test_linux_bubblewrap_is_automatic_native_backend(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -32,6 +45,59 @@ class CLITestCase(unittest.TestCase):
             self.assertEqual(settings.native_exec_backend, "bubblewrap")
             self.assertFalse(settings.native_isolation_attested)
             settings.validate()
+
+    def test_native_exec_allow_roots_are_parsed_and_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            workspace = root / "workspace"
+            data = root / "data"
+            first = root / "toolchains" / "first"
+            second = root / "toolchains" / "second"
+            workspace.mkdir()
+            first.mkdir(parents=True)
+            second.mkdir(parents=True)
+            env = {
+                "RE_CTM_WORKSPACE": str(workspace),
+                "RE_CTM_DATA_ROOT": str(data),
+                "RE_CTM_PRIVATE_ROOT": str(data / "private"),
+                "RE_CTM_DEBUG_ROOT": str(data / "debug"),
+                "RE_CTM_NATIVE_MODE": "dangerous",
+                "RE_CTM_NATIVE_EXEC_BACKEND": "bubblewrap",
+                "RE_CTM_NATIVE_EXEC_ALLOW_ROOTS": os.pathsep.join(
+                    (str(first), str(second))
+                ),
+                "RE_CTM_LATEX_POLICY": "static_only",
+            }
+            output = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), redirect_stdout(output):
+                code = main(["check-config"])
+            self.assertEqual(code, 0)
+            payload = output.getvalue()
+            self.assertIn(str(first.resolve()), payload)
+            self.assertIn(str(second.resolve()), payload)
+            self.assertIn('"mount_mode": "read_only"', payload)
+            self.assertIn('"explicit_root_count": 2', payload)
+
+    def test_allow_roots_fail_closed_for_disabled_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            workspace = root / "workspace"
+            toolchain = root / "toolchain"
+            workspace.mkdir()
+            toolchain.mkdir()
+            env = {
+                "RE_CTM_WORKSPACE": str(workspace),
+                "RE_CTM_DATA_ROOT": str(root / "data"),
+                "RE_CTM_PRIVATE_ROOT": str(root / "data" / "private"),
+                "RE_CTM_DEBUG_ROOT": str(root / "data" / "debug"),
+                "RE_CTM_NATIVE_EXEC_BACKEND": "disabled",
+                "RE_CTM_NATIVE_EXEC_ALLOW_ROOTS": str(toolchain),
+            }
+            with mock.patch.dict(os.environ, env, clear=True), self.assertRaises(
+                ReCTMError
+            ) as error:
+                Settings.from_env()
+            self.assertEqual(error.exception.code, "NATIVE_TOOLCHAIN_ROOTS_UNSUPPORTED")
 
     def test_serve_defaults_follow_environment(self) -> None:
         with mock.patch.dict(

@@ -62,7 +62,11 @@
         "Run `re-ctm attest-native --backend bubblewrap --workspace <workspace> --data-root <data-root> --private-root <private-root>` without enabling native execution.",
         "Run `python3 scripts/manual_native_isolation_test.py --backend bubblewrap --workspace <workspace> --data-root <data-root> --private-root <private-root> --output native-isolation-validation.json` and review every check.",
         "Run Re-CTM with native_mode=dangerous on Linux with bwrap installed and confirm the built-in Bubblewrap backend is selected automatically and startup attestation succeeds without an acknowledgement flag.",
-        "Confirm user-installed PATH tools such as SageMath and Magma execute inside the isolated backend while configured Re-CTM data/private roots remain invisible.",
+        "Create arbitrary non-product-named CLI toolchains in a Conda-style prefix, a bin/Executables prefix, and a PATH symlink target; confirm all are discovered without application-name configuration.",
+        "Place an additional CLI plus runtime outside PATH, expose it with RE_CTM_NATIVE_EXEC_ALLOW_ROOTS, and confirm it executes by name through the extended sandbox PATH.",
+        "Attempt to declare relative, missing, `/`, complete-home, workspace-overlapping, data-overlapping, and private-overlapping allow roots and confirm startup/check-config fails closed.",
+        "Attempt to mutate every exposed toolchain root and confirm Bubblewrap presents it read-only; point a PATH symlink into private state and confirm the target is excluded.",
+        "Run representative installed tools such as SageMath, Magma, Mathematica/wolframscript, or site-local equivalents when available, while configured Re-CTM data/private roots remain invisible.",
         "Use exec_command to enumerate mounts and attempt direct reads of the configured Re-CTM data/private roots.",
         "Attempt privilege escalation, parent-environment recovery, namespace creation, and access through interpreters or nested shells."
       ],
@@ -70,6 +74,7 @@
         "Native workspace remains usable.",
         "Private run store is not mounted or otherwise reachable.",
         "The helper response is nonce-bound and attests mount, user, PID, environment, capability, and network properties.",
+        "The effective toolchain view is application-agnostic, canonical, ancestor-collapsed, read-only, diagnostic, and disjoint from workspace/data/private trust domains.",
         "Safe mode has a private network namespace; trusted/dangerous network behavior matches the selected native policy.",
         "Dangerous never grants a rethlas_* capability or finalization authority."
       ],

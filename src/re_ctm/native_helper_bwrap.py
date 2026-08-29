@@ -207,32 +207,81 @@ def _attest(request: Mapping[str, Any]) -> dict[str, Any]:
             )
         forbidden_paths.append(str(path))
 
+    host_path = request.get("host_path")
+    if host_path is not None and (
+        not isinstance(host_path, str)
+        or "\x00" in host_path
+        or len(host_path.encode("utf-8")) > 256 * 1024
+    ):
+        raise HelperError(
+            "NATIVE_HELPER_INVALID_ARGUMENT",
+            "host_path must be a bounded NUL-free string",
+        )
+    raw_extra_roots = request.get("extra_read_roots") or []
+    if (
+        not isinstance(raw_extra_roots, list)
+        or len(raw_extra_roots) > 256
+        or not all(
+            isinstance(item, str) and item and "\x00" not in item
+            for item in raw_extra_roots
+        )
+    ):
+        raise HelperError(
+            "NATIVE_HELPER_INVALID_ARGUMENT",
+            "extra_read_roots must be a bounded array of non-empty NUL-free paths",
+        )
+
     probe_name = f".re-ctm-attest-{request_id[:12]}"
-    probe_script = (
-        "import json,os,sys;"
-        "paths=json.loads(sys.argv[1]);"
-        "probe=sys.argv[2];"
-        "result={'workspace_mounted':os.path.isdir('/workspace'),"
-        "'forbidden_visible':[p for p in paths if os.path.lexists(p)],"
-        "'parent_secret_visible':bool(os.environ.get('RE_CTM_ATTEST_PARENT_SECRET')),"
-        "'no_new_privs':None,'workspace_writable':False};"
-        "status=open('/proc/self/status',encoding='utf-8').read();"
-        "result['no_new_privs']=('NoNewPrivs:\\t1' in status);"
-        "target='/workspace/'+probe;"
-        "open(target,'w',encoding='utf-8').write('ok');"
-        "result['workspace_writable']=os.path.isfile(target);"
-        "os.unlink(target);"
-        "print(json.dumps(result,sort_keys=True))"
-    )
+    probe_script = """import json, os, sys
+forbidden = json.loads(sys.argv[1])
+probe = sys.argv[2]
+toolchains = json.loads(sys.argv[3])
+result = {
+    "workspace_mounted": os.path.isdir("/workspace"),
+    "forbidden_visible": [path for path in forbidden if os.path.lexists(path)],
+    "parent_secret_visible": bool(os.environ.get("RE_CTM_ATTEST_PARENT_SECRET")),
+    "no_new_privs": None,
+    "workspace_writable": False,
+    "toolchain_visible": [path for path in toolchains if os.path.isdir(path)],
+    "toolchain_write_succeeded": [],
+}
+status = open("/proc/self/status", encoding="utf-8").read()
+result["no_new_privs"] = "NoNewPrivs:\\t1" in status
+target = "/workspace/" + probe
+with open(target, "w", encoding="utf-8") as handle:
+    handle.write("ok")
+result["workspace_writable"] = os.path.isfile(target)
+os.unlink(target)
+for index, root in enumerate(toolchains):
+    write_target = os.path.join(root, probe + "-toolchain-" + str(index))
+    try:
+        with open(write_target, "w", encoding="utf-8") as handle:
+            handle.write("must-fail")
+        result["toolchain_write_succeeded"].append(root)
+        os.unlink(write_target)
+    except OSError:
+        pass
+print(json.dumps(result, sort_keys=True))
+"""
     parent_env = _helper_child_env()
     parent_env["RE_CTM_ATTEST_PARENT_SECRET"] = "must-not-enter-sandbox"
     result = _run_in_sandbox(
         workspace=workspace,
-        argv=["/usr/bin/python3", "-c", probe_script, json.dumps(forbidden_paths), probe_name],
+        argv=[
+            "/usr/bin/python3",
+            "-c",
+            probe_script,
+            json.dumps(forbidden_paths),
+            probe_name,
+            json.dumps(raw_extra_roots),
+        ],
         workdir=".",
         timeout_ms=15_000,
         mode=mode,
         parent_env=parent_env,
+        host_path=host_path or None,
+        extra_read_roots=raw_extra_roots,
+        forbidden_paths=forbidden_paths,
     )
     if result["exit_code"] != 0:
         raise HelperError(
@@ -257,12 +306,25 @@ def _attest(request: Mapping[str, Any]) -> dict[str, Any]:
         )
     forbidden_visible = probe.get("forbidden_visible")
     forbidden_hidden = isinstance(forbidden_visible, list) and not forbidden_visible
+    toolchain_visible = probe.get("toolchain_visible")
+    toolchain_write_succeeded = probe.get("toolchain_write_succeeded")
+    toolchains_visible = (
+        isinstance(toolchain_visible, list)
+        and set(str(item) for item in toolchain_visible)
+        == set(str(item) for item in raw_extra_roots)
+    )
+    toolchains_read_only = (
+        isinstance(toolchain_write_succeeded, list)
+        and not toolchain_write_succeeded
+    )
     if (
         probe.get("workspace_mounted") is not True
         or probe.get("workspace_writable") is not True
         or probe.get("parent_secret_visible") is not False
         or probe.get("no_new_privs") is not True
         or not forbidden_hidden
+        or not toolchains_visible
+        or not toolchains_read_only
     ):
         raise HelperError(
             "NATIVE_HELPER_ATTESTATION_FAILED",
@@ -276,9 +338,22 @@ def _attest(request: Mapping[str, Any]) -> dict[str, Any]:
                 "forbidden_visible_count": len(forbidden_visible)
                 if isinstance(forbidden_visible, list)
                 else None,
+                "toolchain_expected_count": len(raw_extra_roots),
+                "toolchain_visible_count": len(toolchain_visible)
+                if isinstance(toolchain_visible, list)
+                else None,
+                "toolchain_write_succeeded_count": len(toolchain_write_succeeded)
+                if isinstance(toolchain_write_succeeded, list)
+                else None,
             },
         )
     attestation = _attestation(mode=mode, forbidden_paths_hidden=True)
+    attestation.update(
+        {
+            "toolchain_roots_validated": True,
+            "toolchain_read_only_root_count": len(raw_extra_roots),
+        }
+    )
     return {
         "protocol": PROTOCOL,
         "operation": "attest",
@@ -289,6 +364,8 @@ def _attest(request: Mapping[str, Any]) -> dict[str, Any]:
             "workspace_writable": True,
             "parent_environment_cleared": True,
             "forbidden_path_count": len(forbidden_paths),
+            "toolchain_root_count": len(raw_extra_roots),
+            "toolchain_roots_read_only": True,
         },
     }
 
@@ -326,6 +403,31 @@ def _execute(request: Mapping[str, Any]) -> dict[str, Any]:
             "NATIVE_HELPER_INVALID_ARGUMENT",
             "timeout_ms must be between 1 and 600000",
         )
+    host_path = request.get("host_path")
+    if host_path is not None and (
+        not isinstance(host_path, str)
+        or "\x00" in host_path
+        or len(host_path.encode("utf-8")) > 256 * 1024
+    ):
+        raise HelperError(
+            "NATIVE_HELPER_INVALID_ARGUMENT",
+            "host_path must be a bounded NUL-free string",
+        )
+    raw_extra_roots = request.get("extra_read_roots") or []
+    raw_forbidden_paths = request.get("forbidden_paths") or []
+    for name, value in (
+        ("extra_read_roots", raw_extra_roots),
+        ("forbidden_paths", raw_forbidden_paths),
+    ):
+        if (
+            not isinstance(value, list)
+            or len(value) > 256
+            or not all(isinstance(item, str) and item and "\x00" not in item for item in value)
+        ):
+            raise HelperError(
+                "NATIVE_HELPER_INVALID_ARGUMENT",
+                f"{name} must be a bounded array of non-empty NUL-free paths",
+            )
     result = _run_in_sandbox(
         workspace=workspace,
         argv=list(argv),
@@ -333,6 +435,16 @@ def _execute(request: Mapping[str, Any]) -> dict[str, Any]:
         timeout_ms=timeout_ms,
         mode=mode,
         parent_env=_helper_child_env(),
+        host_path=host_path or None,
+        extra_read_roots=raw_extra_roots,
+        forbidden_paths=raw_forbidden_paths,
+    )
+    attestation = _attestation(mode=mode, forbidden_paths_hidden=True)
+    attestation.update(
+        {
+            "toolchain_roots_validated": True,
+            "toolchain_read_only_root_count": len(raw_extra_roots),
+        }
     )
     return {
         "protocol": PROTOCOL,
@@ -348,7 +460,7 @@ def _execute(request: Mapping[str, Any]) -> dict[str, Any]:
         "stderr": result["stderr"]["text"],
         "stdout_meta": {key: value for key, value in result["stdout"].items() if key != "text"},
         "stderr_meta": {key: value for key, value in result["stderr"].items() if key != "text"},
-        "attestation": _attestation(mode=mode, forbidden_paths_hidden=True),
+        "attestation": attestation,
     }
 
 
@@ -360,12 +472,18 @@ def _run_in_sandbox(
     timeout_ms: int,
     mode: str,
     parent_env: Mapping[str, str],
+    host_path: str | None = None,
+    extra_read_roots: Iterable[Path | str] = (),
+    forbidden_paths: Iterable[Path | str] = (),
 ) -> dict[str, Any]:
     command = _bubblewrap_command(
         workspace=workspace,
         workdir=workdir,
         mode=mode,
         argv=argv,
+        host_path=host_path,
+        extra_read_roots=extra_read_roots,
+        forbidden_paths=forbidden_paths,
     )
     started = time.monotonic()
     process = subprocess.Popen(
@@ -448,6 +566,7 @@ def _bubblewrap_command(
     extra_env: Mapping[str, str] | None = None,
     host_path: str | None = None,
     extra_read_roots: Iterable[Path | str] = (),
+    forbidden_paths: Iterable[Path | str] = (),
 ) -> list[str]:
     bwrap = shutil.which("bwrap")
     if bwrap is None:
@@ -501,12 +620,59 @@ def _bubblewrap_command(
     for root in SYSTEM_READ_ROOTS:
         if Path(root).exists():
             command.extend(["--ro-bind", root, root])
+    workspace_root = workspace.expanduser().resolve(strict=True)
+    normalized_forbidden = tuple(
+        Path(raw_path).expanduser().resolve(strict=False)
+        for raw_path in forbidden_paths
+    )
+    unsafe_exact = {
+        Path(value).resolve(strict=False)
+        for value in (
+            "/",
+            "/proc",
+            "/sys",
+            "/dev",
+            "/run",
+            "/tmp",
+            "/home",
+            "/root",
+            "/var",
+            "/srv",
+            "/opt",
+            "/mnt",
+            "/media",
+        )
+    }
     normalized_extra_roots: list[Path] = []
     seen_extra_roots: set[Path] = set()
     for raw_root in extra_read_roots:
         root = Path(raw_root).expanduser().resolve(strict=True)
         if not root.is_dir() or root in seen_extra_roots:
             continue
+        if root in unsafe_exact:
+            raise HelperError(
+                "NATIVE_TOOLCHAIN_ROOT_DENIED",
+                "read-only toolchain root is an unsafe broad or virtual filesystem root",
+                category="security",
+                details={"root": str(root)},
+            )
+        if (
+            root == workspace_root
+            or root.is_relative_to(workspace_root)
+            or workspace_root.is_relative_to(root)
+            or any(
+                root == forbidden
+                or root.is_relative_to(forbidden)
+                or forbidden.is_relative_to(root)
+                for forbidden in normalized_forbidden
+            )
+        ):
+            raise HelperError(
+                "NATIVE_TOOLCHAIN_ROOT_DENIED",
+                "read-only toolchain root overlaps a protected trust domain",
+                category="security",
+                details={"root": str(root)},
+            )
         seen_extra_roots.add(root)
         normalized_extra_roots.append(root)
     command.extend(

@@ -58,6 +58,16 @@ RE_CTM_NATIVE_MODE=safe
 
 On Linux, if `bwrap` is installed and `RE_CTM_NATIVE_EXEC_BACKEND` is omitted, Re-CTM automatically selects the built-in Bubblewrap backend and performs mandatory startup attestation. Set `RE_CTM_NATIVE_EXEC_BACKEND=disabled` only when command execution should be intentionally unavailable.
 
+Native scientific/computer tools are exposed by policy rather than by an application allowlist. Trusted/dangerous modes derive read-only toolchain roots from non-system PATH entries and executable symlink targets. For split or non-PATH installations, declare additional absolute directories with the platform path separator (`:` on Linux):
+
+```bash
+RE_CTM_NATIVE_EXEC_ALLOW_ROOTS=/opt/vendor-suite:/srv/shared-runtime
+```
+
+Every declared root must exist and is canonicalized before startup. Re-CMT rejects `/`, the complete service-account home, broad aggregate roots such as `/home`, `/var`, and `/opt`, workspace/data/private overlaps, and unsupported backends; declare a specific product/runtime subtree instead. Accepted roots are ancestor-collapsed and mounted read-only. `re-ctm check-config` prints the effective exposure plan; `check_exec_environment` reports the live plan after startup.
+
+The current external-helper protocol does not promise operator-declared roots; configuring `RE_CTM_NATIVE_EXEC_ALLOW_ROOTS` with `RE_CTM_NATIVE_EXEC_BACKEND=external` fails closed instead of silently ignoring the roots.
+
 `RE_CTM_OAUTH_PASSWORD` is optional for an interactive operator launch. If omitted, `re-ctm serve` generates a high-entropy authorization key and prints it once to the local terminal. Set it explicitly only when a stable operator password is preferred or automation must know it in advance.
 
 `RE_CTM_SERVER_URL` is optional. For a stable public hostname or named tunnel, set it explicitly:
@@ -79,8 +89,11 @@ re-ctm attest-native \
   --backend bubblewrap \
   --workspace /srv/re-ctm/workspace \
   --data-root /var/lib/re-ctm \
-  --private-root /var/lib/re-ctm/private
+  --private-root /var/lib/re-ctm/private \
+  --allow-root /opt/vendor-suite
 ```
+
+Omit or repeat `--allow-root` to match the configured explicit roots.
 
 Then run the adversarial target harness from the repository:
 
@@ -90,10 +103,13 @@ python3 scripts/manual_native_isolation_test.py \
   --workspace /srv/re-ctm/workspace \
   --data-root /var/lib/re-ctm \
   --private-root /var/lib/re-ctm/private \
+  --allow-root /opt/vendor-suite \
   --output native-isolation-validation.json
 ```
 
-Review the JSON before treating that target as accepted for production. `RE_CTM_NATIVE_ISOLATION_ATTESTED=1` remains required only for an operator-supplied external helper. `dangerous` still does not grant a workflow capability: it changes native-tool policy inside the attested namespace, and additionally exposes host PATH user toolchains as read-only roots while the configured Re-CTM data/private roots remain unmounted.
+Omit `--allow-root` when none are configured; repeat it for every declared root. The report includes a target-specific read-only write probe for those roots.
+
+Review the JSON before treating that target as accepted for production. `RE_CTM_NATIVE_ISOLATION_ATTESTED=1` remains required only for an operator-supplied external helper. `dangerous` still does not grant a workflow capability: it changes native-tool policy inside the attested namespace. Host-PATH discovery and explicit toolchain roots use one canonical, read-only mount plan while the configured workspace/data/private trust domains remain excluded.
 
 ## 6. Start Re-CTM
 

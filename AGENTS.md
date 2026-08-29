@@ -10,9 +10,10 @@ Re-CTM combines a native CMT plane and a Rethlas workflow plane in one OAuth MCP
 4. L1 `dangerous` never implies an L2 capability. Do not add `native_mode` to capability claims or workflow authorization decisions.
 5. The native workspace and Re-CTM data/private roots must not overlap.
 6. Native arbitrary execution fails closed unless a hard-isolation backend is available and attested. The built-in Linux Bubblewrap backend attests on every startup; external helpers require explicit operator attestation. The private vault must not be mounted in that worker.
-7. OAuth authenticates a client but does not replace run ownership or workflow capability validation.
-8. If `RE_CTM_OAUTH_PASSWORD` is unset for an interactive `serve`, generate a high-entropy authorization key at startup and reveal it only to the local operator terminal. Never write the raw generated key to structured debug events, project ledgers, validation reports, HTTP responses, or persistent state.
-9. `RE_CTM_SERVER_URL` is a fixed OAuth-origin override, not a mandatory startup dependency. Without it, dynamic OAuth-origin discovery is allowed only on a loopback-bound HTTP server; forwarded proxy headers are trusted only from a loopback peer, and the resulting authorization code/token issuer/audience remain bound to that effective origin.
+7. Native toolchain exposure is application-agnostic. Build one canonical union of system roots, validated PATH/symlink discovery, and `RE_CTM_NATIVE_EXEC_ALLOW_ROOTS`; reject broad, missing, relative, workspace/data/private-overlapping roots and mount every accepted non-system root read-only. Do not add per-application Sage/Magma/Mathematica special cases.
+8. OAuth authenticates a client but does not replace run ownership or workflow capability validation.
+9. If `RE_CTM_OAUTH_PASSWORD` is unset for an interactive `serve`, generate a high-entropy authorization key at startup and reveal it only to the local operator terminal. Never write the raw generated key to structured debug events, project ledgers, validation reports, HTTP responses, or persistent state.
+10. `RE_CTM_SERVER_URL` is a fixed OAuth-origin override, not a mandatory startup dependency. Without it, dynamic OAuth-origin discovery is allowed only on a loopback-bound HTTP server; forwarded proxy headers are trusted only from a loopback peer, and the resulting authorization code/token issuer/audience remain bound to that effective origin.
 
 ## Workflow invariants
 

@@ -15,6 +15,7 @@ from .enums import LatexPolicy, NativeMode
 from .errors import ReCTMError
 from .native import BubblewrapExecBackend, ExternalHelperExecBackend, NativeWorkspace
 from .server import run_server
+from .toolchains import build_toolchain_exposure_plan, parse_native_exec_allow_roots
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -49,6 +50,12 @@ def build_parser() -> argparse.ArgumentParser:
     attest.add_argument("--workspace")
     attest.add_argument("--data-root")
     attest.add_argument("--private-root")
+    attest.add_argument(
+        "--allow-root",
+        action="append",
+        default=[],
+        help="Additional absolute Bubblewrap toolchain root; repeatable.",
+    )
     return parser
 
 
@@ -73,6 +80,12 @@ def main(argv: list[str] | None = None) -> int:
             ).expanduser().resolve()
             NativeWorkspace(workspace, private_root=private_root)
             if args.backend == "external":
+                if args.allow_root or os.environ.get("RE_CTM_NATIVE_EXEC_ALLOW_ROOTS"):
+                    raise ReCTMError(
+                        "NATIVE_TOOLCHAIN_ROOTS_UNSUPPORTED",
+                        "--allow-root and RE_CTM_NATIVE_EXEC_ALLOW_ROOTS require the built-in Bubblewrap backend.",
+                        category="validation",
+                    )
                 if not args.helper:
                     raise ReCTMError(
                         "NATIVE_HELPER_REQUIRED",
@@ -80,8 +93,26 @@ def main(argv: list[str] | None = None) -> int:
                         category="validation",
                     )
                 backend = ExternalHelperExecBackend(Path(args.helper))
+                exposure: dict[str, object] = {
+                    "policy": "external_helper_owned",
+                    "resolved_read_only_root_count": 0,
+                }
             else:
-                backend = BubblewrapExecBackend()
+                explicit_roots = (
+                    *parse_native_exec_allow_roots(
+                        os.environ.get("RE_CTM_NATIVE_EXEC_ALLOW_ROOTS")
+                    ),
+                    *(Path(value).expanduser() for value in args.allow_root),
+                )
+                plan = build_toolchain_exposure_plan(
+                    mode=NativeMode.DANGEROUS,
+                    workspace=workspace,
+                    forbidden_paths=(data_root, private_root),
+                    explicit_roots=explicit_roots,
+                    host_path=os.environ.get("PATH", ""),
+                )
+                backend = BubblewrapExecBackend(exposure_plan=plan)
+                exposure = plan.summary(include_paths=True)
             attestation = backend.attest(
                 workspace=workspace,
                 forbidden_paths=(data_root, private_root),
@@ -94,10 +125,13 @@ def main(argv: list[str] | None = None) -> int:
                         "workspace": str(workspace),
                         "data_root": str(data_root),
                         "private_root": str(private_root),
+                        "toolchain_exposure": exposure,
                         "attestation": attestation,
                         "operator_action": (
-                            "After target-PC manual validation succeeds, set "
-                            "RE_CTM_NATIVE_EXEC_BACKEND and RE_CTM_NATIVE_ISOLATION_ATTESTED=1."
+                            "Retain this as target-specific evidence. The built-in Bubblewrap "
+                            "backend will repeat fail-closed attestation at service startup."
+                            if args.backend == "bubblewrap"
+                            else "After independent review succeeds, configure the external helper and set RE_CTM_NATIVE_ISOLATION_ATTESTED=1."
                         ),
                     },
                     indent=2,
@@ -114,6 +148,20 @@ def main(argv: list[str] | None = None) -> int:
         settings.validate()
         settings = materialize_secrets(settings)
         if args.command == "check-config":
+            exposure = (
+                build_toolchain_exposure_plan(
+                    mode=settings.native_mode,
+                    workspace=settings.workspace,
+                    forbidden_paths=(settings.data_root, settings.private_root),
+                    explicit_roots=settings.native_exec_allow_roots,
+                    host_path=os.environ.get("PATH", ""),
+                ).summary(include_paths=True)
+                if settings.native_exec_backend == "bubblewrap"
+                else {
+                    "policy": "unavailable",
+                    "resolved_read_only_root_count": 0,
+                }
+            )
             print(
                 json.dumps(
                     {
@@ -124,6 +172,10 @@ def main(argv: list[str] | None = None) -> int:
                         "native_mode": settings.native_mode.value,
                         "native_exec_backend": settings.native_exec_backend,
                         "native_isolation_attested": settings.native_isolation_attested,
+                        "native_exec_allow_roots": [
+                            str(path) for path in settings.native_exec_allow_roots
+                        ],
+                        "toolchain_exposure": exposure,
                         "native_startup_attestation": (
                             "automatic_fail_closed"
                             if settings.native_exec_backend == "bubblewrap"

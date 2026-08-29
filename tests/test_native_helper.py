@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from re_ctm.enums import NativeMode
 from re_ctm.errors import ReCTMError
@@ -17,6 +18,8 @@ from re_ctm.native import (
     NativeWorkspace,
     discover_dangerous_toolchain_roots,
 )
+from re_ctm.toolchains import build_toolchain_exposure_plan
+from re_ctm.native_helper_bwrap import HelperError, _bubblewrap_command
 
 
 @unittest.skipUnless(sys.platform.startswith("linux") and shutil.which("bwrap"), "bubblewrap required")
@@ -97,6 +100,64 @@ class BubblewrapNativeHelperTestCase(unittest.TestCase):
             backend.attest(workspace=self.workspace, forbidden_paths=(self.private,))
         self.assertEqual(denied.exception.code, "NATIVE_HELPER_PROTOCOL_ERROR")
 
+    def test_bubblewrap_command_revalidates_protected_root_overlap(self) -> None:
+        with self.assertRaises(HelperError) as denied:
+            _bubblewrap_command(
+                workspace=self.workspace,
+                workdir=".",
+                mode="dangerous",
+                argv=["/bin/true"],
+                extra_read_roots=(self.private,),
+                forbidden_paths=(self.data, self.private),
+            )
+        self.assertEqual(denied.exception.code, "NATIVE_TOOLCHAIN_ROOT_DENIED")
+
+    def test_runtime_refuses_unattested_bubblewrap_instance(self) -> None:
+        debug = DebugEventBus(self.root / "unattested-events.jsonl", self.private, enabled=True)
+        runtime = NativeRuntime(
+            NativeWorkspace(self.workspace, private_root=self.private),
+            NativeMode.DANGEROUS,
+            debug,
+            exec_backend=BubblewrapExecBackend(),
+        )
+        try:
+            with self.assertRaises(ReCTMError) as denied:
+                runtime.exec_command(cmd="true")
+        finally:
+            runtime.close()
+        self.assertEqual(denied.exception.code, "NATIVE_ISOLATION_REQUIRED")
+
+    def test_parent_requires_toolchain_attestation_fields(self) -> None:
+        backend = BubblewrapExecBackend()
+
+        def incomplete(request: dict[str, object], *, timeout_seconds: float) -> dict[str, object]:
+            _ = timeout_seconds
+            return {
+                "protocol": "re-ctm-native-helper-v1",
+                "operation": request["operation"],
+                "request_id": request["request_id"],
+                "ok": True,
+                "attestation": {
+                    "hard_isolation": True,
+                    "workspace_mounted": True,
+                    "forbidden_paths_hidden": True,
+                    "private_vault_mounted": False,
+                    "network_isolated": True,
+                    "no_privilege_escalation": True,
+                    "mount_namespace": True,
+                    "user_namespace": True,
+                    "pid_namespace": True,
+                },
+            }
+
+        with mock.patch.object(backend, "_invoke", side_effect=incomplete):
+            with self.assertRaises(ReCTMError) as denied:
+                backend.attest(
+                    workspace=self.workspace,
+                    forbidden_paths=(self.data, self.private),
+                )
+        self.assertEqual(denied.exception.code, "NATIVE_HELPER_ATTESTATION_INVALID")
+
     def test_dangerous_runtime_mounts_user_path_toolchain_read_only(self) -> None:
         toolchain = self.root / "toolchain"
         bin_dir = toolchain / "bin"
@@ -110,7 +171,7 @@ class BubblewrapNativeHelperTestCase(unittest.TestCase):
             forbidden_paths=(self.data, self.private),
             host_path=host_path,
         )
-        self.assertIn(bin_dir.resolve(), roots)
+        self.assertIn(toolchain.resolve(), roots)
 
         backend = BubblewrapExecBackend(host_path=host_path, extra_read_roots=roots)
         backend.attest(
@@ -126,10 +187,65 @@ class BubblewrapNativeHelperTestCase(unittest.TestCase):
         )
         try:
             result = runtime.exec_command(cmd="fake-cas", yield_time_ms=10_000)
+            denied_write = runtime.exec_command(
+                cmd=f"printf no > {toolchain / 'must-remain-read-only'}",
+                yield_time_ms=10_000,
+            )
         finally:
             runtime.close()
         self.assertEqual(result["exit_code"], 0)
         self.assertEqual(result["stdout"], "cas-ok\n")
+        self.assertNotEqual(denied_write["exit_code"], 0)
+        self.assertFalse((toolchain / "must-remain-read-only").exists())
+
+    def test_explicit_generic_toolchain_root_is_on_path_and_reported(self) -> None:
+        product = self.root / "nonstandard" / "vendor-product"
+        executables = product / "Executables"
+        executables.mkdir(parents=True)
+        executable = executables / "symbolic-kernel"
+        executable.write_text("#!/bin/sh\nprintf 'generic-ok\\n'\n", encoding="utf-8")
+        executable.chmod(0o755)
+        plan = build_toolchain_exposure_plan(
+            mode=NativeMode.SAFE,
+            workspace=self.workspace,
+            forbidden_paths=(self.data, self.private),
+            explicit_roots=(product,),
+            host_path=str(self.root / "not-inherited"),
+        )
+        backend = BubblewrapExecBackend(exposure_plan=plan)
+        attestation = backend.attest(
+            workspace=self.workspace,
+            forbidden_paths=(self.data, self.private),
+        )
+        self.assertTrue(attestation["toolchain_roots_validated"])
+        self.assertEqual(attestation["toolchain_read_only_root_count"], 1)
+        synchronous = backend.execute(
+            workspace=self.workspace,
+            argv=["symbolic-kernel"],
+            workdir=".",
+            timeout_ms=10_000,
+            mode=NativeMode.SAFE,
+        )
+        self.assertEqual(synchronous["exit_code"], 0)
+        self.assertEqual(synchronous["stdout"], "generic-ok\n")
+        debug = DebugEventBus(self.root / "explicit-events.jsonl", self.private, enabled=True)
+        runtime = NativeRuntime(
+            NativeWorkspace(self.workspace, private_root=self.private),
+            NativeMode.SAFE,
+            debug,
+            exec_backend=backend,
+        )
+        try:
+            result = runtime.exec_command(cmd="symbolic-kernel", yield_time_ms=10_000)
+            environment = runtime.check_exec_environment()
+        finally:
+            runtime.close()
+        self.assertEqual(result["exit_code"], 0)
+        self.assertEqual(result["stdout"], "generic-ok\n")
+        exposure = environment["toolchain_exposure"]
+        self.assertEqual(exposure["policy"], "system_plus_path_discovery_plus_explicit_roots")
+        self.assertEqual(exposure["explicit_root_count"], 1)
+        self.assertEqual(exposure["resolved_read_only_roots"], [str(product.resolve())])
 
 
 if __name__ == "__main__":

@@ -14,12 +14,12 @@ from .native import (
     ExternalHelperExecBackend,
     NativeRuntime,
     NativeWorkspace,
-    discover_dangerous_toolchain_roots,
 )
 from .oauth import OAuthService, OAuthStore
 from .research import TheoremSearchClient
 from .storage import StateStore
 from .tools import ToolRuntime
+from .toolchains import build_toolchain_exposure_plan
 from .vault import PrivateVault
 from .workflow import WorkflowEngine
 
@@ -80,23 +80,26 @@ def build_application(settings: Settings) -> ReCTMApplication:
             forbidden_paths=(settings.data_root, settings.private_root),
         )
     elif settings.native_exec_backend == "bubblewrap":
-        host_path = os.environ.get("PATH", "") if settings.native_mode.value == "dangerous" else None
-        toolchain_roots = (
-            discover_dangerous_toolchain_roots(
-                workspace=settings.workspace,
-                forbidden_paths=(settings.data_root, settings.private_root),
-                host_path=host_path,
-            )
-            if settings.native_mode.value == "dangerous"
-            else ()
+        exposure_plan = build_toolchain_exposure_plan(
+            mode=settings.native_mode,
+            workspace=settings.workspace,
+            forbidden_paths=(settings.data_root, settings.private_root),
+            explicit_roots=settings.native_exec_allow_roots,
+            host_path=os.environ.get("PATH", ""),
         )
         exec_backend = BubblewrapExecBackend(
-            host_path=host_path,
-            extra_read_roots=toolchain_roots,
+            exposure_plan=exposure_plan,
         )
         exec_backend.attest(
             workspace=settings.workspace,
             forbidden_paths=(settings.data_root, settings.private_root),
+        )
+        debug.emit(
+            "native.toolchain_exposure_planned",
+            "application",
+            decision="allow",
+            reason="validated_read_only_toolchain_mount_plan",
+            details=exposure_plan.summary(include_paths=False),
         )
     else:
         exec_backend = DisabledExecBackend()

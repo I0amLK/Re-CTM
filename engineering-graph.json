@@ -108,10 +108,14 @@
     {
       "id": "PC-012",
       "constraint": "The MCP contract routes concrete mathematical proof, derivation, proof-repair, and rigorous verification tasks into rethlas_start unless the user explicitly requests a direct informal answer; the client must continue through rethlas_step until done rather than substitute an unverified chat response. The step contract must expose server-issued plan/subgoal identifiers and accept incremental screening without requiring the model to echo server-derived plan status, branch sets, or full-text subgoal keys."
+    },
+    {
+      "id": "PC-013",
+      "constraint": "Native CLI compatibility is application-agnostic. The Bubblewrap toolchain view is the validated union of system roots, non-system host-PATH discovery, executable-symlink target prefixes, and operator-declared RE_CTM_NATIVE_EXEC_ALLOW_ROOTS. Every non-system root is canonicalized, ancestor-collapsed, forbidden from overlapping workspace/data/private trust domains, and mounted read-only."
     }
   ],
   "implementation_snapshot": {
-    "as_of": "2026-08-27T02:11:00-07:00",
+    "as_of": "2026-08-28T19:46:00-07:00",
     "authority": "This snapshot supersedes the original per-vertex planning labels without erasing the design-time history stored on each vertex.",
     "implemented_local": [
       "V02",
@@ -158,8 +162,9 @@
       "src/re_ctm/processes.py and tests/test_ctm_native_compat.py restore command_id lifecycle operations including polling, retained-output reads, TTY stdin interaction, timeout, and termination under bubblewrap.",
       "src/re_ctm/server.py and tests/test_http.py implement loopback-only dynamic OAuth-origin resolution for Cloudflare-style X-Forwarded-Host/X-Forwarded-Proto while preserving explicit RE_CTM_SERVER_URL precedence and token issuer/audience binding.",
       "rethlas_artifact, its hidden legacy export alias, and NativeRuntime.export_verified_latex implement the mechanically-finalized private-to-native artifact bridge with workspace confinement and overwrite baselines.",
-      "The built-in Linux Bubblewrap backend performs fail-closed startup attestation automatically; scripts/manual_native_isolation_test.py remains target-PC adversarial release evidence, and dangerous-mode user toolchain roots are mounted read-only without exposing Re-CTM data/private roots.",
-      "tests/ exercises OAuth, legacy and modern MCP, fixed catalogs, native path confinement, capability ownership, branch barriers, verifier firewall, mechanical verdict/finalization, diagnostics, LaTeX safety, and the reference bubblewrap helper.",
+      "src/re_ctm/toolchains.py implements the application-agnostic system/PATH/symlink/explicit-root exposure plan, canonical overlap gate, PATH extension, ancestor collapse, content-minimized diagnostics, and read-only Bubblewrap mounts; helper-side defense revalidates the protected boundaries.",
+      "The built-in Linux Bubblewrap backend performs fail-closed startup attestation automatically; scripts/manual_native_isolation_test.py remains target-PC adversarial release evidence, and tests use arbitrary non-product-named toolchains to prove execution, read-only mounts, explicit fallback roots, and private-root exclusion.",
+      "tests/ exercises OAuth, legacy and modern MCP, fixed catalogs, native path confinement, toolchain exposure policy, capability ownership, branch barriers, verifier firewall, mechanical verdict/finalization, diagnostics, LaTeX safety, and the reference bubblewrap helper.",
       "MCP server instructions and the rethlas_start tool contract route concrete mathematical work into the capability-gated workflow; rethlas_step combines task submission and advancement, exposes stable plan/subgoal ids, accepts incremental screening, and performs idempotent workspace export when terminal done is reached.",
       "manual-validation.json remains the authority for browser, target-PC, external-retrieval, real-LaTeX, and 95-percent methodology acceptance."
     ]
@@ -265,7 +270,9 @@
       "responsibilities": [
         "Make the private Rethlas vault unreachable to native commands even in dangerous mode",
         "Require a container, mount namespace, separate OS identity, or an equivalent tested isolation backend",
-        "Refuse native arbitrary execution when isolation is not attested"
+        "Refuse native arbitrary execution when isolation is not attested",
+        "Build and validate one application-agnostic read-only toolchain exposure plan from system roots, PATH discovery, symlink targets, and explicit allow roots",
+        "Reject every toolchain root that overlaps the writable workspace or Re-CTM data/private state"
       ],
       "implementation_status": "planned_fail_closed"
     },
@@ -279,6 +286,7 @@
         "Retain command_id state for write_stdin, read_output, and kill_command lifecycle operations",
         "Support POSIX TTY interaction when requested",
         "Honor native policy",
+        "Execute against the validated toolchain mount plan without application-name special cases",
         "Expose no private-vault mount",
         "Return structured diagnostics"
       ],
@@ -1161,6 +1169,12 @@
       "statement": "An automatically generated OAuth authorization key is operator-terminal-only secret material.",
       "formal": "generated_oauth_key => local_terminal_reveal AND NOT(debug_log OR state_store OR validation_report OR http_response)",
       "test": "Start serve without RE_CTM_OAUTH_PASSWORD, confirm a generated key is passed to the OAuth service and terminal reveal path, then scan structured events/reports for absence of the raw key."
+    },
+    {
+      "id": "INV-011",
+      "statement": "Every non-system native toolchain mount is canonical, read-only, and disjoint from workspace/data/private trust domains.",
+      "formal": "ExposedRoots = Validate(SystemRoots U PathRoots U SymlinkTargetRoots U ExplicitRoots); forall r in ExposedRoots_non_system: canonical(r) AND mount(r)=read_only AND disjoint(r,workspace,data_root,private_root)",
+      "test": "Use arbitrary non-product-named PATH, symlink-target, Conda-style, Executables-style, and explicit roots; prove execution succeeds, writes to toolchains fail, overlapping/missing/relative/broad roots fail closed, private-target symlinks are excluded, and helper-side revalidation rejects a protected root even if the planner is bypassed."
     }
   ],
   "workflow_transition_graph": {

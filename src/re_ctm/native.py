@@ -19,6 +19,7 @@ from .enums import NativeMode
 from .errors import ReCTMError, invalid_argument
 from .native_helper_bwrap import _bubblewrap_command, _helper_child_env
 from .processes import CommandManager, MAX_ACTIVE_COMMANDS
+from .toolchains import ToolchainExposurePlan, build_toolchain_exposure_plan
 
 
 DEFAULT_EXCLUDED = {
@@ -528,13 +529,116 @@ class BubblewrapExecBackend(ExternalHelperExecBackend):
         output_limit: int = 1_048_576,
         host_path: str | None = None,
         extra_read_roots: Iterable[Path] = (),
+        exposure_plan: ToolchainExposurePlan | None = None,
     ) -> None:
         super().__init__(
             Path(__file__).with_name("native_helper_bwrap.py"),
             output_limit=output_limit,
         )
-        self.host_path = host_path
-        self.extra_read_roots = tuple(extra_read_roots)
+        self.exposure_plan = exposure_plan
+        self.host_path = exposure_plan.sandbox_path if exposure_plan is not None else host_path
+        self.extra_read_roots = (
+            exposure_plan.read_only_roots
+            if exposure_plan is not None
+            else tuple(extra_read_roots)
+        )
+        self.forbidden_paths: tuple[Path, ...] = ()
+
+    def attest(
+        self,
+        *,
+        workspace: Path,
+        forbidden_paths: Iterable[Path],
+    ) -> dict[str, Any]:
+        self.forbidden_paths = tuple(
+            path.expanduser().resolve(strict=False) for path in forbidden_paths
+        )
+        request = {
+            "protocol": NATIVE_HELPER_PROTOCOL,
+            "operation": "attest",
+            "request_id": secrets.token_urlsafe(18),
+            "workspace": str(workspace.expanduser().resolve(strict=True)),
+            "forbidden_paths": [str(path) for path in self.forbidden_paths],
+            "mode": NativeMode.SAFE.value,
+            "host_path": self.host_path or "",
+            "extra_read_roots": [str(path) for path in self.extra_read_roots],
+        }
+        payload = self._invoke(request, timeout_seconds=30.0)
+        attestation = self._validate_response(
+            payload,
+            request=request,
+            require_safe_network=True,
+        )
+        expected_root_count = len(self.extra_read_roots)
+        if (
+            attestation.get("toolchain_roots_validated") is not True
+            or attestation.get("toolchain_read_only_root_count") != expected_root_count
+        ):
+            raise ReCTMError(
+                "NATIVE_HELPER_ATTESTATION_INVALID",
+                "Bubblewrap startup attestation did not validate the complete read-only toolchain plan.",
+                category="security",
+                details={
+                    "expected_root_count": expected_root_count,
+                    "reported_root_count": attestation.get(
+                        "toolchain_read_only_root_count"
+                    ),
+                },
+            )
+        attestation["toolchain_host_path_inherited"] = bool(
+            self.exposure_plan is not None
+            and self.exposure_plan.host_path_inherited
+        )
+        self.attestation = dict(attestation)
+        return dict(attestation)
+
+    def execute(
+        self,
+        *,
+        workspace: Path,
+        argv: list[str],
+        workdir: str,
+        timeout_ms: int,
+        mode: NativeMode,
+    ) -> dict[str, Any]:
+        request = {
+            "protocol": NATIVE_HELPER_PROTOCOL,
+            "operation": "execute",
+            "request_id": secrets.token_urlsafe(18),
+            "workspace": str(workspace),
+            "argv": argv,
+            "workdir": workdir,
+            "timeout_ms": timeout_ms,
+            "mode": mode.value,
+            "host_path": self.host_path or "",
+            "extra_read_roots": [str(path) for path in self.extra_read_roots],
+            "forbidden_paths": [str(path) for path in self.forbidden_paths],
+            "required_isolation": {
+                "private_vault_not_mounted": True,
+                "no_privilege_escalation": True,
+                "toolchain_roots_read_only": True,
+            },
+        }
+        payload = self._invoke(
+            request,
+            timeout_seconds=max(1.0, timeout_ms / 1000 + 5.0),
+        )
+        attestation = self._validate_response(
+            payload,
+            request=request,
+            require_safe_network=mode is NativeMode.SAFE,
+        )
+        if (
+            attestation.get("toolchain_roots_validated") is not True
+            or attestation.get("toolchain_read_only_root_count")
+            != len(self.extra_read_roots)
+        ):
+            raise ReCTMError(
+                "NATIVE_HELPER_ATTESTATION_INVALID",
+                "Bubblewrap execution response did not validate the complete read-only toolchain plan.",
+                category="security",
+            )
+        return payload
 
 
 def discover_dangerous_toolchain_roots(
@@ -543,88 +647,14 @@ def discover_dangerous_toolchain_roots(
     forbidden_paths: Iterable[Path],
     host_path: str | None = None,
 ) -> tuple[Path, ...]:
-    """Discover read-only host toolchain roots needed by dangerous mode.
+    """Compatibility wrapper around the generic exposure-plan builder."""
 
-    The workspace is already mounted separately and server data/private roots
-    are always excluded. System prefixes are already provided by bubblewrap,
-    so this function focuses on user-installed environments such as Conda/Sage
-    and PATH symlinks such as ~/.local/bin/magma -> ~/magma/magma.
-    """
-
-    workspace_root = workspace.expanduser().resolve(strict=True)
-    forbidden = tuple(path.expanduser().resolve(strict=False) for path in forbidden_paths)
-    system_roots = tuple(
-        Path(path).resolve(strict=False)
-        for path in ("/usr", "/bin", "/sbin", "/lib", "/lib64")
-    )
-
-    def blocked(path: Path) -> bool:
-        if path == workspace_root or path.is_relative_to(workspace_root):
-            return True
-        if any(
-            path == root or path.is_relative_to(root) or root.is_relative_to(path)
-            for root in forbidden
-        ):
-            return True
-        return any(path == root or path.is_relative_to(root) for root in system_roots)
-
-    candidates: list[Path] = []
-
-    def add(path: Path) -> None:
-        try:
-            resolved = path.expanduser().resolve(strict=True)
-        except OSError:
-            return
-        if not resolved.is_dir() or blocked(resolved):
-            return
-        if any(resolved == existing or resolved.is_relative_to(existing) for existing in candidates):
-            return
-        candidates[:] = [
-            existing for existing in candidates if not existing.is_relative_to(resolved)
-        ]
-        candidates.append(resolved)
-
-    for raw_entry in (host_path or os.environ.get("PATH", "")).split(os.pathsep):
-        if not raw_entry:
-            continue
-        entry = Path(raw_entry).expanduser()
-        if not entry.is_absolute():
-            continue
-        try:
-            resolved_entry = entry.resolve(strict=True)
-        except OSError:
-            continue
-        if not resolved_entry.is_dir() or blocked(resolved_entry):
-            continue
-
-        prefix = resolved_entry.parent
-        if resolved_entry.name in {"bin", "sbin"} and (
-            (prefix / "conda-meta").is_dir() or (prefix / "pyvenv.cfg").is_file()
-        ):
-            add(prefix)
-        else:
-            add(resolved_entry)
-
-        try:
-            entries = list(resolved_entry.iterdir())[:4096]
-        except OSError:
-            entries = []
-        for executable in entries:
-            if not executable.is_symlink():
-                continue
-            try:
-                target = executable.resolve(strict=True)
-            except OSError:
-                continue
-            target_root = target.parent
-            if target_root.name in {"bin", "sbin"} and (
-                (target_root.parent / "conda-meta").is_dir()
-                or (target_root.parent / "pyvenv.cfg").is_file()
-            ):
-                target_root = target_root.parent
-            add(target_root)
-
-    return tuple(sorted(candidates, key=str))
+    return build_toolchain_exposure_plan(
+        mode=NativeMode.DANGEROUS,
+        workspace=workspace,
+        forbidden_paths=forbidden_paths,
+        host_path=host_path,
+    ).discovered_roots
 
 
 class AtomicNativeEditor:
@@ -751,6 +781,7 @@ class NativeRuntime:
 
     def server_info(self) -> dict[str, Any]:
         raw_attestation = getattr(self.exec_backend, "attestation", None)
+        exposure_plan = getattr(self.exec_backend, "exposure_plan", None)
         attestation = (
             {
                 key: raw_attestation.get(key)
@@ -779,6 +810,14 @@ class NativeRuntime:
             "private_vault_visible": False,
             "native_exec_backend": type(self.exec_backend).__name__,
             "native_exec_attestation": attestation,
+            "toolchain_exposure": (
+                exposure_plan.summary(include_paths=False)
+                if isinstance(exposure_plan, ToolchainExposurePlan)
+                else {
+                    "policy": "unavailable",
+                    "resolved_read_only_root_count": 0,
+                }
+            ),
             "ctm_native_tool_compatibility": "18_of_18_surface",
             "command_lifecycle": {
                 "max_active_commands": MAX_ACTIVE_COMMANDS,
@@ -794,6 +833,7 @@ class NativeRuntime:
     def check_exec_environment(self, **arguments: Any) -> dict[str, Any]:
         _ = arguments
         raw_attestation = getattr(self.exec_backend, "attestation", None)
+        exposure_plan = getattr(self.exec_backend, "exposure_plan", None)
         global_tmp = {
             NativeMode.SAFE: "blocked",
             NativeMode.TRUSTED: "tmp-prefix",
@@ -828,6 +868,15 @@ class NativeRuntime:
             "landlock_enabled": False,
             "landlock_abi": None,
             "global_tmp_write": global_tmp,
+            "toolchain_exposure": (
+                exposure_plan.summary(include_paths=True)
+                if isinstance(exposure_plan, ToolchainExposurePlan)
+                else {
+                    "policy": "unavailable",
+                    "mount_mode": "none",
+                    "resolved_read_only_root_count": 0,
+                }
+            ),
             "warnings": warnings,
         }
 
@@ -1068,6 +1117,19 @@ class NativeRuntime:
             isinstance(key, str) and isinstance(value, str) for key, value in extra_env.items()
         ):
             raise invalid_argument("env must be an object whose values are strings")
+        if not isinstance(self.exec_backend, DisabledExecBackend):
+            attestation = getattr(self.exec_backend, "attestation", None)
+            if not (
+                isinstance(attestation, Mapping)
+                and attestation.get("hard_isolation") is True
+                and attestation.get("private_vault_mounted") is False
+            ):
+                raise ReCTMError(
+                    "NATIVE_ISOLATION_REQUIRED",
+                    "Native execution backend has not completed a valid hard-isolation attestation.",
+                    category="security",
+                    details={"backend": type(self.exec_backend).__name__},
+                )
         ctm_compat.check_command_policy(
             self.mode.value,
             cmd,
@@ -1097,16 +1159,9 @@ class NativeRuntime:
                 mode=self.mode.value,
                 argv=child_argv,
                 extra_env={str(key): str(value) for key, value in extra_env.items()},
-                host_path=(
-                    self.exec_backend.host_path
-                    if self.mode is NativeMode.DANGEROUS
-                    else None
-                ),
-                extra_read_roots=(
-                    self.exec_backend.extra_read_roots
-                    if self.mode is NativeMode.DANGEROUS
-                    else ()
-                ),
+                host_path=self.exec_backend.host_path,
+                extra_read_roots=self.exec_backend.extra_read_roots,
+                forbidden_paths=self.exec_backend.forbidden_paths,
             )
             return self.command_manager.start(
                 command_argv,

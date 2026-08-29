@@ -1,9 +1,9 @@
 {
   "project": {
     "name": "Re-CTM",
-    "status": "dangerous_native_toolchain_compatibility_committed_pending_push",
+    "status": "generic_native_toolchain_exposure_committed_pending_push",
     "target": "A single installable OAuth MCP runtime combining streamlined CMT computer tools with a Rethlas-derived mathematical reasoning workflow.",
-    "updated_at": "2026-08-28T19:46:00-07:00",
+    "updated_at": "2026-08-28T20:46:00-07:00",
     "source_references": {
       "cmt_local_repo": "../coding-tools-mcp",
       "rethlas_local_repo": "../Rethlas",
@@ -130,6 +130,11 @@
     {
       "id": "AD-021",
       "decision": "On Linux, automatically use the built-in Bubblewrap native backend when bwrap is installed and require its startup attestation to succeed. In dangerous mode, expose the host PATH plus narrowly discovered read-only user toolchain roots (including Conda/Sage prefixes and PATH symlink targets such as Magma) while continuing to exclude Re-CTM data/private roots. Manual isolation validation remains release evidence rather than a runtime enablement flag.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-022",
+      "decision": "Supersede per-application native-tool compatibility with one Native Toolchain Exposure Policy. Build the Bubblewrap view from system roots, non-system PATH prefixes, executable-symlink target prefixes, and operator-declared RE_CTM_NATIVE_EXEC_ALLOW_ROOTS; canonicalize and ancestor-collapse the union, extend sandbox PATH for explicit bin/sbin/Executables directories, reject relative/missing/broad/workspace/data/private-overlapping roots, mount every accepted non-system root read-only, report a diagnostic plan, and revalidate protected boundaries inside the Bubblewrap command builder. No Sage, Magma, Mathematica, Maple, or other product-name branch is permitted.",
       "status": "accepted"
     }
   ],
@@ -266,7 +271,7 @@
         "Define verifier data firewall"
       ],
       "completed_evidence": [
-        "engineering-graph.json contains 31 vertices, 60 collapsed undirected edges, cycle rank 30, articulation/bridge analysis, ten security invariants, and a validation boundary",
+        "engineering-graph.json contains 31 vertices, 60 collapsed undirected edges, cycle rank 30, articulation/bridge analysis, eleven security invariants, and a validation boundary",
         "scripts/validate_engineering_graph.py recomputes and checks the graph metrics",
         "AGENTS.md freezes the native/workflow non-inheritance and validation axioms"
       ]
@@ -312,13 +317,14 @@
         "Native paths stay workspace-confined in dangerous mode",
         "On Linux with bwrap installed, Re-CTM automatically selects the built-in Bubblewrap backend and performs fail-closed startup attestation; systems without an approved backend keep arbitrary execution disabled",
         "A packaged Linux bubblewrap helper implements a separate process, mount/user/PID/IPC/UTS namespaces, cleared environment, dropped capabilities, bounded output, timeout cleanup, safe-mode network isolation, nonce-bound responses, and startup attestation",
+        "The application-agnostic Native Toolchain Exposure Policy combines system roots, trusted/dangerous PATH discovery, executable-symlink target prefixes, and RE_CTM_NATIVE_EXEC_ALLOW_ROOTS; it canonicalizes, de-duplicates, ancestor-collapses, overlap-checks, extends sandbox PATH for explicit roots, mounts accepted roots read-only, and exposes a diagnostic plan without logging raw paths",
         "The built-in bubblewrap path restores exec_command -> command_id -> write_stdin/read_output/kill_command lifecycle, including tty=true interaction and retained output paging",
         "The local adversarial harness proved that dangerous commands can write the native workspace but cannot observe the private-vault canary or inherited secret environment"
       ],
       "remaining": [
         "Run scripts/manual_native_isolation_test.py on every intended target-PC class as release evidence for the automatically attested built-in Bubblewrap backend",
         "Run MV-009 to compare all 18 CTM native schemas and representative behavior against the reference Coding Tools MCP on the target PC",
-        "Validate trusted/dangerous network behavior and system-toolchain compatibility on the target PC",
+        "Validate trusted/dangerous network behavior and the generic PATH/symlink/explicit-root toolchain policy on every target-PC installation layout",
         "Independently review or replace the reference helper for non-Linux deployment targets"
       ]
     },
@@ -418,10 +424,10 @@
         "95-percent Rethlas behavior acceptance suite"
       ],
       "completed_evidence": [
-        "50 deterministic and local integration tests pass",
+        "62 deterministic and local integration tests pass",
         "Loopback DCR to OAuth authorization to PKCE token to MCP tools/list passes",
         "Modern mirror-header and result-shaping tests pass",
-        "Dangerous path confinement, native fail-closed execution, packaged bubblewrap attestation/private-canary denial, branch barrier, complete screening/join contracts, verifier denial/audit prerequisites, owner-bound capability, wrong-verdict, finalization, automatic run-specific workspace export, idempotent terminal retry, isolated LaTeX, external retrieval normalization, and debug redaction tests pass",
+        "Dangerous path confinement, native fail-closed execution, packaged bubblewrap attestation/private-canary denial, generic PATH/symlink/explicit-root toolchain discovery, canonical overlap denials, helper-side revalidation, read-only mount enforcement, branch barrier, complete screening/join contracts, verifier denial/audit prerequisites, owner-bound capability, wrong-verdict, finalization, automatic run-specific workspace export, idempotent terminal retry, isolated LaTeX, external retrieval normalization, and debug redaction tests pass",
         "scripts/run_local_checks.py writes local-validation.json"
       ],
       "remaining": [
@@ -450,6 +456,7 @@
         "docs/DEPLOYMENT.md and scripts/smoke_oauth_mcp.py provide target setup, redacted OAuth/MCP verification, isolation evidence, and claims boundaries",
         "re_ctm-0.1.0.dev3 built as sdist and wheel, installed into a clean virtual environment, and an installed-service OAuth/MCP smoke confirmed exactly 24 public tools (18 exact CTM + 6 Rethlas façade), hidden legacy rethlas_status call compatibility, concrete-mathematics routing instructions, and modern non-inheritance behavior",
         "re_ctm-0.1.0.dev4 built as sdist and wheel and installed into a clean virtual environment; with only native_mode=dangerous and no backend/attestation environment flags, the installed runtime automatically selected Bubblewrap, passed startup hard-isolation attestation, and executed the host-installed SageMath, Magma, and ordinary shell commands successfully while retaining private-vault isolation",
+        "re_ctm-0.1.0.dev5 built as sdist and wheel and installed into a clean virtual environment; an arbitrary non-PATH Executables-style toolchain supplied through RE_CTM_NATIVE_EXEC_ALLOW_ROOTS executed by name, host PATH SageMath and Magma still executed, ordinary shell execution passed, the effective plan was reported, and writes to the exposed toolchain were denied",
         "The earlier installed-service smoke started without RE_CTM_SERVER_URL or RE_CTM_OAUTH_PASSWORD on loopback, generated a 43-character local-terminal OAuth authorization key with no structured-state leak, and resolved Cloudflare-style forwarded metadata to the matching public trycloudflare.com origin"
       ],
       "remaining": [
@@ -471,12 +478,12 @@
       "P5"
     ],
     "current_phase_id": "P3/P4/P6/P7/P8",
-    "current_focus": "CTM native compatibility remains exact at 18 native tools, while the LLM-facing Rethlas surface is reduced to 6 façade tools (24 public tools total) with hidden legacy Rethlas aliases retained for compatibility. Concrete mathematical proof/derivation/repair/verification requests route into Rethlas, direct screening now uses server-issued plan/subgoal ids with incremental completion, and a completed MCP run automatically writes proof_verified.tex to a run-specific workspace path. Nine real webpage/target-PC/compatibility/methodology acceptance checks remain post-push.",
+    "current_focus": "CTM native compatibility remains exact at 18 native tools and the Rethlas surface remains six façade tools. Native CLI compatibility is now application-agnostic: Bubblewrap receives one validated read-only union of system, PATH, executable-symlink, and explicit allow roots, with no Sage/Magma/Mathematica special cases. Concrete mathematics routes through Rethlas, incremental screening remains server-id based, and terminal runs automatically publish proof_verified.tex. Nine real webpage/target-PC/compatibility/methodology acceptance checks remain post-push.",
     "next_actions": [
       "Push the latest compatibility checkpoint to origin/main using the authenticated GitHub credential",
       "Observe the first GitHub Actions run after the push",
       "Run all checks in manual-validation.json and attach redacted evidence",
-      "Run the packaged bubblewrap isolation harness on the target PC before enabling native exec",
+      "Run the packaged Bubblewrap isolation harness with representative --allow-root values on each target PC and attach redacted evidence",
       "Run ordinary natural-language mathematical problems through the real webpage client and confirm it selects rethlas_start without tool-name prompting",
       "Validate automatic workspace export plus rethlas_artifact alternate-path behavior from the real webpage host"
     ]
@@ -484,7 +491,7 @@
   "local_validation": {
     "report": "local-validation.json",
     "last_result": "passed",
-    "test_count": 50,
+    "test_count": 62,
     "graph_metrics": {
       "vertices": 31,
       "edges": 60,
@@ -515,6 +522,7 @@
       "Direct screening uses server-issued plan/subgoal ids, retains partial progress, reports exact missing ids, derives plan/outcome/branch-set fields server-side, and treats validation/conflict corrections as recoverable rethlas_step submissions",
       "Native workspace boundary and fail-closed execution",
       "Reference Linux bubblewrap helper attestation and private-vault canary denial",
+      "Application-agnostic Native Toolchain Exposure Policy: arbitrary Conda-style, bin/Executables-style, PATH-symlink, and explicit roots; safe-mode explicit PATH extension; canonical de-duplication; ancestor collapse; relative/missing/broad/workspace/data/private overlap denial; private-target symlink exclusion; helper-side defense-in-depth; read-only mutation denial; content-minimized and operator-detailed diagnostics",
       "Debug redaction and content-minimized bundle",
       "Static and bubblewrap-isolated required LaTeX policy",
       "Capability-gated theorem-search normalization and domain-local persistence",
@@ -525,11 +533,13 @@
       "CLI serve host/port defaults follow RE_CTM_HOST and RE_CTM_PORT while explicit flags override them",
       "Live theorem-search endpoint smoke",
       "Wheel build, clean installation, installed helper version, and installed helper attestation",
-      "Installed dev3 service smoke covering redacted OAuth DCR/PKCE, legacy MCP, modern mirror headers, exactly 24 public tools, hidden legacy Rethlas alias call compatibility, and dangerous non-inheritance"
+      "Installed dev3 service smoke covering redacted OAuth DCR/PKCE, legacy MCP, modern mirror headers, exactly 24 public tools, hidden legacy Rethlas alias call compatibility, and dangerous non-inheritance",
+      "Installed dev5 wheel smoke covering automatic Bubblewrap attestation, generic explicit non-PATH tool execution, host PATH SageMath and Magma, ordinary shell execution, exposure-plan diagnostics, and read-only toolchain enforcement"
     ],
     "explicitly_not_validated": [
       "Final webpage MCP host compatibility",
       "Target-PC dangerous-mode OS isolation",
+      "Every proprietary/site-local toolchain packaging layout and license/runtime-data arrangement on every target PC",
       "Full target-PC behavior parity for every edge case of the reference Coding Tools MCP 18-tool implementation (MV-009)",
       "Target-client external theorem/web retrieval quality and source-context review",
       "Long multi-turn mathematical quality",
@@ -550,19 +560,19 @@
       "basis": "Identity confirmed from public commits owned by GitHub account I0amLK; configured only in this repository."
     },
     "remote": "https://github.com/I0amLK/Re-CTM.git",
-    "push_status": "rethlas_facade_incremental_screening_committed_fast_forward_ready",
+    "push_status": "generic_toolchain_exposure_committed_fast_forward_ready",
     "latest_local_commit": "Resolve with `git rev-parse HEAD`; the ledger intentionally avoids a self-referential commit hash.",
     "push_attempt": {
       "transport": "https",
-      "remote_observed_head": "786c6d21f20a7cc65bc07e09e9b6746ca403dc79",
-      "result": "rethlas_facade_checkpoint_committed_fast_forward_ready",
-      "reason": "A fresh ls-remote confirms GitHub main is 786c6d2 and the Rethlas façade/incremental-screening checkpoint is directly on top. No pull, merge, rebase, or force is required; the remaining action is an authenticated normal push from the user's terminal.",
+      "remote_observed_head": "77591346ae16d7370a3b9b16b28eaa90488d8670",
+      "result": "generic_toolchain_exposure_committed_fast_forward_ready",
+      "reason": "A fresh ls-remote confirms GitHub main is 7759134. The already committed dev4 native-execution checkpoint and the dev5 generic toolchain-exposure checkpoint are a linear continuation, so the remaining action is an authenticated normal push with no pull, merge, rebase, or force.",
       "ssh_fallback": "not_needed_for_current_remote_state"
     },
     "initial_files": [
       "All current source, tests, graph, debug, validation, and planning files are intended for the initial commit."
     ],
-    "working_tree_note": "All tracked façade/incremental-screening changes are committed directly on top of remote 786c6d2. The only remaining worktree entry is the intentionally untouched untracked user artifact pushout_abelianization_exact_sequence.tex, which is not part of the Re-CTM source commit."
+    "working_tree_note": "All tracked generic toolchain-exposure changes are committed on the linear branch above remote 7759134. The only remaining worktree entry is the intentionally untouched untracked user artifact pushout_abelianization_exact_sequence.tex, which is not part of the Re-CTM source commit."
   },
   "engineering_debug_notes": [
     {
@@ -673,6 +683,11 @@
       "id": "R-013",
       "risk": "rethlas_step may successfully append logical memory records before a later commit-format validation fails, so a naive client retry could duplicate non-screening memory records.",
       "mitigation": "Treat validation/conflict failures as recoverable submissions rather than tool errors, explicitly return writes_retained and a fresh current task/capability, revoke the capability used for the superseded step, keep direct-screening progress id-keyed and overwrite-idempotent, and require real-client MV-008 evidence that the host follows the returned correction instead of replaying retained writes."
+    },
+    {
+      "id": "R-014",
+      "risk": "PATH discovery cannot infer every hidden runtime/library/database directory of arbitrarily packaged scientific software, while overly broad roots could expose unrelated host data.",
+      "mitigation": "Use application-agnostic prefix and symlink discovery for the common case, RE_CTM_NATIVE_EXEC_ALLOW_ROOTS for operator-declared split installations, one canonical overlap gate for every source, strict existence/absolute/broad-root checks, ancestor collapse, read-only mounts, helper-side revalidation, diagnostic plans, and MV-003 target evidence."
     }
   ],
   "change_log": [
@@ -787,6 +802,10 @@
     {
       "timestamp": "2026-08-28T19:46:00-07:00",
       "event": "Restored meaningful Native dangerous execution without weakening the Rethlas vault boundary. Linux installs now auto-select built-in Bubblewrap when available and perform mandatory startup attestation without requiring RE_CTM_NATIVE_ISOLATION_ATTESTED=1. Dangerous-mode execution inherits the host PATH plus narrowly discovered read-only user toolchain roots while excluding configured data/private roots. On the reference target, source and clean-wheel dev4 runtimes both executed SageMath, Magma, and ordinary shell commands successfully; the deterministic suite now contains 50 passing tests."
+    },
+    {
+      "timestamp": "2026-08-28T20:46:00-07:00",
+      "event": "Replaced software-by-software compatibility with a generic Native Toolchain Exposure Policy. Added RE_CTM_NATIVE_EXEC_ALLOW_ROOTS, canonical system/PATH/symlink/explicit union planning, filtered inherited PATH, common bin/sbin/Executables PATH extension, broad/missing/relative/trust-domain overlap denials, ancestor collapse, read-only Bubblewrap mounts, helper-protocol propagation and revalidation, startup mount-plan probing, diagnostics, target manual probes, INV-011/PC-013/AD-022, 62 passing tests, and a clean dev5 wheel smoke covering an arbitrary explicit toolchain plus SageMath, Magma, shell, and mutation denial."
     }
   ]
 }
