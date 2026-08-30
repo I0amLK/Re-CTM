@@ -184,13 +184,46 @@
         "Capture tools/list from the reference Coding Tools MCP and Re-CTM, and compare the 18 CTM native names, order, required fields, enums, defaults, and annotations.",
         "Exercise read_file, list_dir, list_files, search_text, apply_patch, Git tools, request_permissions, and view_image against the same disposable workspace.",
         "With the Re-CTM bubblewrap backend enabled, run a long command that returns command_id, poll with write_stdin, page retained stdout/stderr with read_output, interact with a tty=true command, and terminate another command with kill_command.",
-        "Repeat command lifecycle checks in safe, trusted, and dangerous native modes and confirm dangerous does not grant any rethlas_* workflow capability."
+        "Repeat command lifecycle checks in safe, trusted, and dangerous native modes and confirm dangerous does not grant any rethlas_* workflow capability.",
+        "Trigger one command timeout and one explicit kill_command and inspect termination.source, requested_timeout_ms, elapsed_ms, observed_signal, term_sent_by_re_ctm, and kill_sent_by_re_ctm. If a real CAS process is later killed externally, confirm Re-CTM reports external_or_unknown unless it has evidence that it sent the terminating signal."
       ],
       "expected": [
         "No CTM native tool is missing from Re-CTM; tools/list exposes exactly 18 CTM native tools plus 6 Rethlas façade tools, while superseded Rethlas protocol names remain callable as hidden aliases.",
         "Existing CTM-style calls using patch envelopes and cmd/workdir command arguments remain accepted.",
         "Long-running command IDs remain usable through write_stdin, read_output, and kill_command for the lifetime of the Re-CTM server process.",
-        "Any documented Re-CTM differences are security-boundary adaptations rather than missing CTM lifecycle functionality."
+        "Any documented Re-CTM differences are security-boundary adaptations rather than missing CTM lifecycle functionality.",
+        "Termination provenance is additive diagnostics and does not alter the reference CTM timeout/TERM/KILL lifecycle."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "MV-010",
+      "name": "v0.2 Verified Research Workspace acceptance",
+      "status": "pending",
+      "steps": [
+        "On a disposable copy of a dev6/v0.1 private state directory containing at least one terminal run and one in-progress run, start v0.2.0, confirm the state schema migrates additively, and resume the old in-progress run under workflow protocol 1 without acquiring proof_manifest requirements.",
+        "Create a research project and OPEN claims through the public Rethlas façade, then start a project-linked protocol-2 run with workflow_mode=auto or compact. Confirm the run receives a frozen project snapshot hash and Native dangerous cannot read the private registry directly.",
+        "Complete a direct local lemma through the compact lane and confirm it still traverses LaTeX validation, independent verifier, and finalizer before one immutable VERIFIED revision is promoted. Repeat terminal delivery and confirm no duplicate revision is created.",
+        "Create a CONDITIONAL dependency carrying an explicit condition such as GRH, use its frozen revision in a later proof_manifest, and confirm the downstream promoted revision mechanically inherits the condition rather than relying on a model-supplied status label.",
+        "Start two project runs from the same claim base revision, let one promote first, then finish the other. Confirm the second mathematical run remains done/correct while registry promotion records an optimistic-concurrency conflict instead of overwriting the newer active revision.",
+        "Force one registry-promotion attempt to fail after a mathematically correct run reaches done. Confirm final_tex remains available, the run stays done/correct, promotion remains retryable/pending, and a later terminal rethlas_step retries promotion without re-running the proof.",
+        "After a VERIFIED claim revision exists, create a newer OPEN revision and start another project-linked run. Confirm the frozen snapshot still contains the historical VERIFIED revision as an eligible dependency while exposing its superseded lifecycle status.",
+        "Run a reference-using proof. Omit the material reference audit once and confirm the server mechanically inserts a verification gap; then audit the same reference as SOURCE_VERIFIED or INDEPENDENTLY_REDERIVED with assumptions/notation/source checks plus evidence_basis/evidence_locator and confirm a correct proof can finalize. Confirm a LeanSearch/OpenAlex discovery snapshot alone is rejected as SOURCE_VERIFIED original-source evidence.",
+        "Use rethlas_retrieve theorem_search plus paper_search/paper_lookup/theorem_context on real network connectivity, including an author/title/keywords-only paper search. Confirm results have stable reference ids/source provenance, paper operations use the configured fixed provider, redirects cannot leave the allowed HTTPS provider host, and no public argument permits an arbitrary URL fetch.",
+        "Inspect the verifier task for a project-linked proof and confirm it sees only the dependency revisions declared in proof_manifest, not unrelated project claims, speculative notes, generation memory, branches, steering, or generator confidence.",
+        "Retrieve proof_manifest, reference_audit, project_manifest, and project_summary_tex through rethlas_artifact; export the project manifest/summary to workspace and confirm they contain claim/revision/status/hash/dependency/condition/audit facts but no private reasoning, owner/OAuth material, or capability handles. Put an unsafe external-file command such as \\input in an OPEN claim and confirm project_summary_tex is refused while project_manifest remains available.",
+        "Force one compact proof to fail verification twice and confirm the first wrong verdict enters repair while the second changes the effective mode to full and continues at explore. Separately exercise compact assembler outcome=escalate."
+      ],
+      "expected": [
+        "Schema migration preserves old workflow state and protocol compatibility while refusing a database from a newer unsupported runtime.",
+        "Project state remains private from Native dangerous and owner isolation applies to all project/claim/artifact reads and mutations.",
+        "VERIFIED/CONDITIONAL revisions originate only from mechanically finalized correct runs, are immutable, idempotent by source run, and never overwrite a concurrent newer revision.",
+        "Registry promotion is a non-fatal second phase after mathematical finalization: promotion errors cannot invalidate verified LaTeX and are retried idempotently on later terminal calls.",
+        "Compact mode reduces exploration only; it never bypasses LaTeX, independent verification, repair, or finalization.",
+        "Frozen project snapshots make dependency resolution reproducible, retain historical VERIFIED/CONDITIONAL revisions even after later OPEN revisions supersede them, and propagate conditional hypotheses mechanically through declared dependencies.",
+        "Material references cannot silently pass without a resolved verifier audit and source/provenance evidence remains traceable.",
+        "Paper-aware retrieval is useful on the target network but remains bounded and fixed-provider rather than an arbitrary URL fetcher.",
+        "Portable project artifacts are sufficient for research/project management without exposing private chain-of-thought-like workflow memory."
       ],
       "evidence": []
     }

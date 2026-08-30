@@ -261,6 +261,8 @@ rethlas_artifact
 
 如果某次 `rethlas_step` 的 write 或 commit 因 validation/conflict 需要修正，服务器会返回 `submission.recoverable=true`、`retryable=true` 和新的 capability。已经成功的逻辑 writes 会明确标记为 retained，客户端应继续使用新 capability，并且**不要重放 retained writes**。权限/安全错误仍然是 hard failure，不会被这个修正机制吞掉。
 
+从 **Re-CTM v0.2.0** 开始，这六个 façade 还共同提供 Verified Research Workspace：跨 run 的 project/claim registry、冻结的 project snapshot、`proof_manifest`、reference provenance/audit、paper-aware retrieval，以及不削弱 verifier 的 compact verified lane。public tool 数量仍保持 24；这些能力通过现有六个 Rethlas façade 的 typed operations 暴露，而不是继续增加协议工具。
+
 原来 CTM 的长命令生命周期也继续使用。例如网页模型启动一个耗时测试后，可以得到 `command_id`，随后继续等待输出、读取保留输出、向 TTY 程序输入内容，或者终止进程。实际使用时仍然直接用自然语言即可，例如：
 
 ```text
@@ -274,6 +276,8 @@ rethlas_artifact
 ```text
 如果刚才的命令还没有结束，停止它。
 ```
+
+命令结束后还会返回 `termination` provenance。Re-CTM 会区分自身 command timeout、显式 `kill_command`、服务关闭，以及只能观察到外部 signal 的 `external_or_unknown`。例如程序收到 `SIGKILL` 而 Re-CTM 从未发送 KILL 时，结果不会猜测为 OOM，而会明确标记原因未知。这个诊断是 additive metadata，不改变原 CTM 的 timeout/TERM/KILL 生命周期语义。
 
 需要 `exec_command`、`write_stdin`、`kill_command` 这组完整生命周期功能时，Linux 上推荐按下一节启用 Bubblewrap backend。
 
@@ -398,6 +402,14 @@ python3 scripts/manual_native_isolation_test.py \
 
 启动后请保留返回的 `run_id`。后续查看进度、恢复、干预和取最终结果都使用同一个 `run_id`。
 
+v0.2.0 的新 run 使用 workflow protocol 2。默认 `workflow_mode=auto`：server 在 `assess` 后决定走 full research workflow，还是走 compact verified lane。Compact 只压缩生成侧的 explore/multi-plan/branch 成本，仍然必须经过完整 LaTeX gate、独立 verifier、wrong→repair 和机械 finalizer；如果 compact assembler 发现需要研究性探索，可以主动升级到 full，compact 连续两次 verifier wrong 也会由 server 自动升级到 `explore`。`workflow_mode=full` 可以显式要求完整路线，`workflow_mode=compact` 只是 compact 请求，不会绕过 server 的安全判断。
+
+如果你在做一篇论文或一组互相依赖的定理，可以先创建一个 research project，再把 run 绑定到某个 claim。Project registry 保存在 Re-CTM private trust domain，不在 native workspace 中；`dangerous` Native 权限不会因此获得 project authority。一个已验证 claim 的 revision 是 immutable，后续加强或修订会生成新 revision，并可记录 `depends_on`、`supersedes` 和条件假设。
+
+生命周期上的 `SUPERSEDED` 不等于数学失效：如果一个 VERIFIED/CONDITIONAL revision 后来被新的 OPEN revision 取代，后续 frozen project snapshot 仍保留这个历史已验证 revision，模型可以继续把它作为显式 dependency 使用。Registry promotion 是数学 finalization 的下游第二阶段；即使 promotion 临时失败，已经 `done/correct` 的 proof 和 `proof_verified.tex` 仍然有效，后续 terminal `rethlas_step` 会幂等重试 promotion。
+
+Protocol-2 assembler 除了完整 LaTeX proof，还提交结构化 `proof_manifest`，其中声明目标 statement、冻结 project snapshot 中实际使用的 dependency revision IDs、material reference IDs、conditional hypotheses 和 computational evidence。只有 LaTeX 通过、server-computed verifier verdict 为 correct、finalizer 完成后，project-linked run 才能机械 promotion 为 `VERIFIED` 或 `CONDITIONAL` revision；模型和 Native tools 都没有 `set_verified` 权限。
+
 默认最终文件会自动写到：
 
 ```text
@@ -451,13 +463,13 @@ rethlas-output/<run_id>/proof_verified.tex
 默认 theorem retrieval 地址：
 
 ```text
-https://leansearch.net/api/search
+https://leansearch.net/thm/search
 ```
 
 可覆盖：
 
 ```bash
-export RE_CTM_THEOREM_SEARCH_URL=https://leansearch.net/api/search
+export RE_CTM_THEOREM_SEARCH_URL=https://leansearch.net/thm/search
 export RE_CTM_THEOREM_SEARCH_TIMEOUT_SECONDS=30
 ```
 
@@ -467,7 +479,9 @@ export RE_CTM_THEOREM_SEARCH_TIMEOUT_SECONDS=30
 在这个 Rethlas 任务中搜索与当前关键引理有关的外部数学结果，并核对适用条件。
 ```
 
-外部搜索结果只是待核验资料，不应自动视为正确证明。
+`rethlas_retrieve` 的旧调用继续默认为 `theorem_search`。v0.2.0 还支持 typed retrieval：`paper_search`、`paper_lookup` 和 `theorem_context`。Paper provider 固定为受限 HTTPS OpenAlex endpoint；caller 不能传任意 URL 让 server fetch，因此不会把研究检索变成通用 SSRF 入口。所有响应都受 timeout/response-size/content-type 边界约束。
+
+每个 inline 或 retrieved reference 都会得到稳定 `reference_id`；retrieval 还会保存 immutable source snapshot/hash。外部结果一律先是 candidate/external-unverified evidence，不能自动成为证明事实。Protocol-2 proof 必须在 `proof_manifest.reference_ids` 中声明实际依赖的引用；Verifier 对这些引用逐条写 `SOURCE_VERIFIED`、`INDEPENDENTLY_REDERIVED`、`UNRESOLVED` 或 `NOT_MATERIAL` disposition，并同时记录 `evidence_basis` 与 `evidence_locator`。例如 `SOURCE_VERIFIED` 必须说明实际检查的是 run 内保存的 source body snapshot，还是另行检查的 DOI/arXiv/论文位置；LeanSearch/OpenAlex 的 discovery metadata snapshot 本身不能冒充“已核查原论文”。缺失或 unresolved 的 material reference 会由 server 机械加入 verification gap，因此即使 verifier model 忘记报告也不能得到 `correct`。
 
 ## 16. 获取最终 proof_verified.tex
 
@@ -494,6 +508,8 @@ rethlas-output/<run_id>/proof_verified.tex
 自动默认导出是幂等的：重复取得 `done` 状态时，如果文件内容完全相同，不会重复改写。若自动目标路径已有不同内容，Re-CTM 不会覆盖它；显式导出到已有目标时仍要求当前文件的 SHA-256 baseline。
 
 对已经完成但尚未落盘的旧 run，可以直接要求“把这个 run 的最终文件写到默认位置”；当前公开入口是 `rethlas_artifact` 的 `export` 动作，省略路径时会使用该 run 的 `workspace_export_path`。旧 `rethlas_export_final` 名称仍作为隐藏兼容入口接受。
+
+Protocol-2 run 还可以读取 `proof_manifest` 和 `reference_audit`。Project owner 可以通过同一个 `rethlas_artifact` façade 取得 portable `project_manifest` 或 `project_summary_tex`，并导出到 workspace。Project manifest 只包含 claim/revision/status/hash/dependency/condition/reference-audit 等可发布结构，不包含 owner/OAuth 绑定信息、branch private memory、verifier scratch、capability token 或 steering history；每个已验证 revision 还附带 content-minimized provenance 摘要。`project_summary_tex` 会先经过与 proof 相同的静态外部文件/shell 安全检查；如果 OPEN claim 中出现 `\input`、`\include` 等危险命令，summary `.tex` 会被拒绝，但 JSON project manifest 仍可正常取得。
 
 ## 17. LaTeX 模式
 

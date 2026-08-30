@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from functools import lru_cache
 from importlib.resources import files
@@ -54,7 +55,7 @@ def task_for_state(state: WorkflowState) -> dict[str, Any]:
             category="validation",
             details={"state": state.value},
         )
-    result = dict(task)
+    result = copy.deepcopy(task)
     result["step_protocol"] = {
         "tool": "rethlas_step",
         "use_current_envelope_fields": ["run_id", "capability"],

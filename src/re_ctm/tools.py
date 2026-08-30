@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
 from . import __version__
 from .debug import DebugEventBus, new_trace_id
 from .errors import ReCTMError, invalid_argument
+from .latex import static_latex_errors
 from .native import NativeRuntime
 from .oauth import OAuthPrincipal
 from .processes import COMMAND_BUFFER_BYTES, COMMAND_HEAD_BUFFER_DIVISOR
@@ -336,6 +338,20 @@ TOOL_SPECS: dict[str, ToolSpec] = {
             "properties": {
                 "problem_tex": {"type": "string", "minLength": 1},
                 "problem_id": {"type": "string"},
+                "project_id": {
+                    "type": "string",
+                    "description": "Optional owner project to snapshot and link to this run.",
+                },
+                "target_claim_id": {
+                    "type": "string",
+                    "description": "Optional claim in project_id to receive a mechanically promoted revision after finalization.",
+                },
+                "workflow_mode": {
+                    "type": "string",
+                    "enum": ["auto", "compact", "full"],
+                    "default": "auto",
+                },
+                "register_result": {"type": "boolean", "default": True},
                 "export_path": {
                     "type": "string",
                     "description": "Optional workspace-relative .tex destination. Defaults to rethlas-output/<run_id>/proof_verified.tex.",
@@ -404,14 +420,38 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         read_only=True,
     ),
     "rethlas_retrieve": ToolSpec(
-        "Retrieve external mathematical results",
-        "Query the bounded theorem-search integration under the active Rethlas capability and persist returned unverified references in domain-local memory.",
+        "Retrieve external mathematical research",
+        "Use one capability-gated research façade for theorem search, paper discovery/lookup, or stored theorem context. External providers are fixed HTTPS trust domains with bounded responses; returned references remain unverified until verifier audit.",
         {
             **OBJECT,
-            "required": ["capability", "query"],
+            "required": ["capability"],
+            "oneOf": [
+                {"type": "object", "required": ["query"], "properties": {"operation": {"const": "theorem_search"}}},
+                {
+                    "type": "object",
+                    "required": ["operation"],
+                    "properties": {"operation": {"const": "paper_search"}},
+                    "anyOf": [
+                        {"type": "object", "required": ["query"]},
+                        {"type": "object", "required": ["author"]},
+                        {"type": "object", "required": ["title"]},
+                        {"type": "object", "required": ["keywords"]}
+                    ]
+                },
+                {"type": "object", "required": ["operation", "query"], "properties": {"operation": {"const": "paper_lookup"}}},
+                {"type": "object", "required": ["operation", "query"], "properties": {"operation": {"const": "theorem_context"}}}
+            ],
             "properties": {
                 "capability": {"type": "string"},
                 "query": {"type": "string", "minLength": 1},
+                "operation": {
+                    "type": "string",
+                    "enum": ["theorem_search", "paper_search", "paper_lookup", "theorem_context"],
+                    "default": "theorem_search",
+                },
+                "author": {"type": "string", "minLength": 1},
+                "title": {"type": "string", "minLength": 1},
+                "keywords": {"type": "string", "minLength": 1},
                 "search_intent": {
                     "type": "string",
                     "enum": [
@@ -554,9 +594,28 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         {
             **OBJECT,
             "required": ["operation"],
+            "oneOf": [
+                {"type": "object", "required": ["run_id"], "properties": {"operation": {"const": "status"}}},
+                {"type": "object", "required": ["capability", "resource"], "properties": {"operation": {"const": "read"}}},
+                {"type": "object", "required": ["capability", "resource", "query"], "properties": {"operation": {"const": "search"}}},
+                {"type": "object", "properties": {"operation": {"const": "projects"}}},
+                {"type": "object", "required": ["project_id"], "properties": {"operation": {"const": "project_status"}}},
+                {"type": "object", "required": ["claim_id"], "properties": {"operation": {"const": "claim"}}},
+                {"type": "object", "required": ["project_id", "query"], "properties": {"operation": {"const": "theorem_search"}}},
+                {"type": "object", "required": ["project_id"], "properties": {"operation": {"const": "dependency_graph"}}},
+                {"type": "object", "required": ["run_id"], "properties": {"operation": {"const": "reference_audit"}}}
+            ],
             "properties": {
-                "operation": {"type": "string", "enum": ["status", "read", "search"]},
+                "operation": {
+                    "type": "string",
+                    "enum": [
+                        "status", "read", "search", "projects", "project_status", "claim",
+                        "theorem_search", "dependency_graph", "reference_audit"
+                    ],
+                },
                 "run_id": {"type": "string"},
+                "project_id": {"type": "string"},
+                "claim_id": {"type": "string"},
                 "capability": {"type": "string"},
                 "resource": {"type": "string"},
                 "query": {"type": "string"},
@@ -566,32 +625,88 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         read_only=True,
     ),
     "rethlas_control": ToolSpec(
-        "Control Rethlas run",
-        "Queue owner steering or cancel a run. Resuming/continuing is done by calling rethlas_step with run_id.",
+        "Control Rethlas run or project",
+        "Queue owner steering/cancellation for a run, or create owner-scoped research projects and claims. Verified claim revisions remain finalizer-only and cannot be minted through this tool.",
         {
             **OBJECT,
-            "required": ["run_id", "action"],
+            "required": ["action"],
+            "oneOf": [
+                {"type": "object", "required": ["run_id", "message"], "properties": {"action": {"const": "steer"}}},
+                {"type": "object", "required": ["run_id"], "properties": {"action": {"const": "cancel"}}},
+                {"type": "object", "required": ["title"], "properties": {"action": {"const": "project_create"}}},
+                {"type": "object", "required": ["project_id", "title"], "properties": {"action": {"const": "claim_create"}}},
+                {"type": "object", "required": ["claim_id", "statement_tex"], "properties": {"action": {"const": "claim_revise"}}}
+            ],
             "properties": {
-                "run_id": {"type": "string", "minLength": 1},
-                "action": {"type": "string", "enum": ["steer", "cancel"]},
+                "run_id": {"type": "string"},
+                "action": {"type": "string", "enum": ["steer", "cancel", "project_create", "claim_create", "claim_revise"]},
                 "message": {"type": "string"},
                 "reason": {"type": "string"},
+                "project_id": {"type": "string"},
+                "claim_id": {"type": "string"},
+                "title": {"type": "string"},
+                "statement_tex": {"type": "string"},
+                "conditions": {"type": "array", "items": {"type": "string"}},
+                "expected_base_revision_id": {"type": "string"},
+                "metadata": {"type": "object", "additionalProperties": True},
             },
         },
         destructive=True,
     ),
     "rethlas_artifact": ToolSpec(
         "Read or export Rethlas artifact",
-        "Return a run artifact or ensure the mechanically finalized LaTeX is written to the workspace. Final export never bypasses the mechanical verification gate.",
+        "Return/export run artifacts or portable owner project manifests/summaries. Final proof export never bypasses the mechanical verification gate, and project artifacts never expose private reasoning memory.",
         {
             **OBJECT,
-            "required": ["run_id", "action"],
+            "required": ["action"],
+            "oneOf": [
+                {
+                    "type": "object",
+                    "required": ["run_id"],
+                    "properties": {
+                        "action": {"const": "get"},
+                        "artifact": {
+                            "type": "string",
+                            "enum": ["draft_tex", "final_tex", "proof_manifest", "verification_report", "reference_audit", "transition_log", "debug_manifest"]
+                        }
+                    }
+                },
+                {
+                    "type": "object",
+                    "required": ["project_id", "artifact"],
+                    "properties": {
+                        "action": {"const": "get"},
+                        "artifact": {"type": "string", "enum": ["project_manifest", "project_summary_tex"]}
+                    }
+                },
+                {
+                    "type": "object",
+                    "required": ["run_id"],
+                    "properties": {
+                        "action": {"const": "export"},
+                        "artifact": {"type": "string", "enum": ["final_tex"]}
+                    }
+                },
+                {
+                    "type": "object",
+                    "required": ["project_id", "artifact"],
+                    "properties": {
+                        "action": {"const": "export"},
+                        "artifact": {"type": "string", "enum": ["project_manifest", "project_summary_tex"]}
+                    }
+                }
+            ],
             "properties": {
-                "run_id": {"type": "string", "minLength": 1},
+                "run_id": {"type": "string"},
+                "project_id": {"type": "string"},
                 "action": {"type": "string", "enum": ["get", "export"]},
                 "artifact": {
                     "type": "string",
-                    "enum": ["draft_tex", "final_tex", "verification_report", "transition_log", "debug_manifest"],
+                    "enum": [
+                        "draft_tex", "final_tex", "proof_manifest", "verification_report",
+                        "reference_audit", "transition_log", "debug_manifest",
+                        "project_manifest", "project_summary_tex"
+                    ],
                 },
                 "path": {"type": "string", "minLength": 1},
                 "expected_sha256": {"type": "string"},
@@ -615,6 +730,22 @@ def validate_tool_arguments(name: str, arguments: Mapping[str, Any]) -> None:
 
 
 def _validate_schema_value(value: Any, schema: Mapping[str, Any], *, path: str) -> None:
+    if "const" in schema and value != schema["const"]:
+        raise invalid_argument(f"{path} must equal {schema['const']!r}")
+    one_of = schema.get("oneOf")
+    if isinstance(one_of, list):
+        matches = sum(
+            1 for candidate in one_of
+            if isinstance(candidate, Mapping) and _schema_matches(value, candidate, path=path)
+        )
+        if matches != 1:
+            raise invalid_argument(f"{path} must match exactly one oneOf schema")
+    any_of = schema.get("anyOf")
+    if isinstance(any_of, list) and not any(
+        isinstance(candidate, Mapping) and _schema_matches(value, candidate, path=path)
+        for candidate in any_of
+    ):
+        raise invalid_argument(f"{path} must match at least one anyOf schema")
     expected_type = schema.get("type")
     if expected_type is not None and not _schema_type_matches(value, expected_type):
         raise invalid_argument(f"{path} must be {_schema_type_name(expected_type)}")
@@ -656,6 +787,14 @@ def _validate_schema_value(value: Any, schema: Mapping[str, Any], *, path: str) 
                 raise invalid_argument(f"{child_path} is not a recognized argument")
             elif isinstance(additional, Mapping):
                 _validate_schema_value(item, additional, path=child_path)
+
+
+def _schema_matches(value: Any, schema: Mapping[str, Any], *, path: str) -> bool:
+    try:
+        _validate_schema_value(value, schema, path=path)
+    except ReCTMError:
+        return False
+    return True
 
 
 def _schema_type_matches(value: Any, expected_type: Any) -> bool:
@@ -902,6 +1041,16 @@ class ToolRuntime:
                 "default_workspace_path": "rethlas-output/<run_id>/proof_verified.tex",
                 "explicit_alternate_export_tool": "rethlas_artifact",
             },
+            "research_workspace": {
+                "state_schema_version": self.workflow.store.schema_version(),
+                "workflow_protocol_version": 2,
+                "project_registry": True,
+                "compact_verified_lane": True,
+                "proof_manifest": True,
+                "reference_audit": True,
+                "paper_search_provider": "https://api.openalex.org/works",
+                "verified_promotion_is_finalizer_only": True,
+            },
             "native": native_info,
             "authorization_axioms": {
                 "native": "OAuth identity AND native mode",
@@ -928,6 +1077,11 @@ class ToolRuntime:
             references=[item for item in references if isinstance(item, Mapping)],
             native_mode=self.native.mode.value,
             workspace_export_path=export_path or None,
+            project_id=(str(arguments.get("project_id") or "").strip() or None),
+            target_claim_id=(str(arguments.get("target_claim_id") or "").strip() or None),
+            workflow_mode=str(arguments.get("workflow_mode") or "auto"),
+            register_result=bool(arguments.get("register_result", True)),
+            workflow_protocol_version=2,
             trace_id=trace_id,
         )
 
@@ -979,6 +1133,10 @@ class ToolRuntime:
             owner_id=principal.client_id,
             capability=str(arguments.get("capability") or ""),
             query=str(arguments.get("query") or ""),
+            operation=str(arguments.get("operation") or "theorem_search"),
+            author=str(arguments.get("author") or ""),
+            title=str(arguments.get("title") or ""),
+            keywords=str(arguments.get("keywords") or ""),
             search_intent=str(arguments.get("search_intent") or "theorem"),
             num_results=int(arguments.get("num_results", 10)),
             trace_id=trace_id,
@@ -1166,7 +1324,91 @@ class ToolRuntime:
                 limit=int(arguments.get("limit", 20)),
                 trace_id=trace_id,
             )
-        raise invalid_argument("operation must be status, read, or search")
+        if operation == "projects":
+            return {
+                "ok": True,
+                "projects": self.workflow.store.list_projects(
+                    principal.client_id,
+                    limit=int(arguments.get("limit", 100)),
+                ),
+            }
+        if operation == "project_status":
+            project_id = str(arguments.get("project_id") or "")
+            return {
+                "ok": True,
+                **self.workflow.store.project_dependency_graph(
+                    project_id,
+                    owner_id=principal.client_id,
+                ),
+            }
+        if operation == "claim":
+            claim_id = str(arguments.get("claim_id") or "")
+            claim = self.workflow.store.get_claim(claim_id, owner_id=principal.client_id)
+            return {
+                "ok": True,
+                "claim": claim,
+                "revisions": self.workflow.store.list_claim_revisions(
+                    claim_id,
+                    owner_id=principal.client_id,
+                ),
+            }
+        if operation == "dependency_graph":
+            return {
+                "ok": True,
+                **self.workflow.store.project_dependency_graph(
+                    str(arguments.get("project_id") or ""),
+                    owner_id=principal.client_id,
+                ),
+            }
+        if operation == "reference_audit":
+            run_id = str(arguments.get("run_id") or "")
+            self.workflow.status(owner_id=principal.client_id, run_id=run_id)
+            references = self.workflow.store.list_run_references(run_id)
+            return {
+                "ok": True,
+                "run_id": run_id,
+                "references": [
+                    {
+                        **reference,
+                        "source_snapshots": [
+                            {
+                                "source_snapshot_id": snapshot["source_snapshot_id"],
+                                "provider": snapshot["provider"],
+                                "source_uri": snapshot["source_uri"],
+                                "content_sha256": snapshot["content_sha256"],
+                                "content_type": snapshot["content_type"],
+                            }
+                            for snapshot in self.workflow.store.list_source_snapshots(
+                                reference["reference_id"]
+                            )
+                        ],
+                    }
+                    for reference in references
+                ],
+                "audits": self.workflow.store.list_reference_audits(run_id),
+            }
+        if operation == "theorem_search":
+            project_id = str(arguments.get("project_id") or "")
+            query = str(arguments.get("query") or "").strip().lower()
+            if not query:
+                raise invalid_argument("query is required for theorem_search")
+            graph = self.workflow.store.project_dependency_graph(project_id, owner_id=principal.client_id)
+            matches = []
+            for revision in graph["revisions"]:
+                claim = next((item for item in graph["claims"] if item["claim_id"] == revision["claim_id"]), {})
+                haystack = " ".join(
+                    [
+                        str(claim.get("title") or ""),
+                        str(revision.get("statement_tex") or ""),
+                        " ".join(str(item) for item in revision.get("conditions", [])),
+                    ]
+                ).lower()
+                if query in haystack:
+                    matches.append({"claim": claim, "revision": revision})
+            return {"ok": True, "project_id": project_id, "query": query, "results": matches[: int(arguments.get("limit", 20))]}
+        raise invalid_argument(
+            "operation must be status, read, search, projects, project_status, claim, theorem_search, dependency_graph, or reference_audit"
+        )
 
     def _rethlas_control(
         self,
@@ -1190,7 +1432,48 @@ class ToolRuntime:
                 reason=str(arguments.get("reason") or "user_cancelled"),
                 trace_id=trace_id,
             )
-        raise invalid_argument("action must be steer or cancel")
+        if action == "project_create":
+            project = self.workflow.store.create_project(
+                owner_id=principal.client_id,
+                title=str(arguments.get("title") or ""),
+                project_id=(str(arguments.get("project_id") or "").strip() or None),
+                metadata=(arguments.get("metadata") if isinstance(arguments.get("metadata"), Mapping) else {}),
+            )
+            return {"ok": True, "project": project}
+        if action == "claim_create":
+            claim = self.workflow.store.create_claim(
+                owner_id=principal.client_id,
+                project_id=str(arguments.get("project_id") or ""),
+                title=str(arguments.get("title") or ""),
+                claim_id=(str(arguments.get("claim_id") or "").strip() or None),
+                metadata=(arguments.get("metadata") if isinstance(arguments.get("metadata"), Mapping) else {}),
+            )
+            statement_tex = str(arguments.get("statement_tex") or "").strip()
+            revision = None
+            if statement_tex:
+                conditions = arguments.get("conditions") or []
+                if not isinstance(conditions, list):
+                    raise invalid_argument("conditions must be an array")
+                revision = self.workflow.store.create_open_claim_revision(
+                    owner_id=principal.client_id,
+                    claim_id=claim["claim_id"],
+                    statement_tex=statement_tex,
+                    conditions=[str(item) for item in conditions],
+                )
+            return {"ok": True, "claim": claim, "revision": revision}
+        if action == "claim_revise":
+            conditions = arguments.get("conditions") or []
+            if not isinstance(conditions, list):
+                raise invalid_argument("conditions must be an array")
+            revision = self.workflow.store.create_open_claim_revision(
+                owner_id=principal.client_id,
+                claim_id=str(arguments.get("claim_id") or ""),
+                statement_tex=str(arguments.get("statement_tex") or ""),
+                conditions=[str(item) for item in conditions],
+                expected_base_revision_id=(str(arguments.get("expected_base_revision_id") or "").strip() or None),
+            )
+            return {"ok": True, "revision": revision}
+        raise invalid_argument("action must be steer, cancel, project_create, claim_create, or claim_revise")
 
     def _rethlas_artifact(
         self,
@@ -1200,15 +1483,169 @@ class ToolRuntime:
     ) -> dict[str, Any]:
         action = str(arguments.get("action") or "")
         run_id = str(arguments.get("run_id") or "")
+        project_id = str(arguments.get("project_id") or "")
+        artifact_name = str(arguments.get("artifact") or "final_tex")
         if action == "get":
+            if artifact_name in {"project_manifest", "project_summary_tex"}:
+                return self._project_artifact(
+                    principal,
+                    project_id=project_id,
+                    artifact=artifact_name,
+                )
             return self.workflow.get_artifact(
                 owner_id=principal.client_id,
                 run_id=run_id,
-                artifact=str(arguments.get("artifact") or "final_tex"),
+                artifact=artifact_name,
             )
         if action == "export":
+            if artifact_name in {"project_manifest", "project_summary_tex"}:
+                artifact = self._project_artifact(
+                    principal,
+                    project_id=project_id,
+                    artifact=artifact_name,
+                )
+                path = str(arguments.get("path") or "").strip()
+                if not path:
+                    suffix = "project_manifest.json" if artifact_name == "project_manifest" else "project_summary.tex"
+                    path = f"rethlas-projects/{project_id}/{suffix}"
+                content = artifact["content"]
+                text = (
+                    json.dumps(content, ensure_ascii=False, indent=2) + "\n"
+                    if artifact_name == "project_manifest"
+                    else str(content)
+                )
+                export = self.native.export_text_artifact(
+                    path=path,
+                    content=text,
+                    expected_sha256=(str(arguments.get("expected_sha256") or "").strip() or None),
+                    trace_id=trace_id,
+                    artifact_kind=artifact_name,
+                )
+                return {"ok": True, "project_id": project_id, "artifact": artifact_name, "export": export}
             return self._rethlas_export_final(principal, arguments, trace_id)
         raise invalid_argument("action must be get or export")
+
+    def _project_artifact(
+        self,
+        principal: OAuthPrincipal,
+        *,
+        project_id: str,
+        artifact: str,
+    ) -> dict[str, Any]:
+        if not project_id:
+            raise invalid_argument("project_id is required for project artifacts")
+        graph = self.workflow.store.project_dependency_graph(
+            project_id,
+            owner_id=principal.client_id,
+        )
+        public_project = {
+            key: value
+            for key, value in graph["project"].items()
+            if key != "owner_id"
+        }
+        revision_provenance: dict[str, Any] = {}
+        for revision in graph["revisions"]:
+            source_run_id = str(revision.get("source_run_id") or "")
+            if not source_run_id:
+                continue
+            try:
+                manifest_record = self.workflow.store.read_proof_manifest(source_run_id)
+            except ReCTMError:
+                manifest_record = None
+            audits = self.workflow.store.list_reference_audits(source_run_id)
+            revision_provenance[str(revision["revision_id"])] = {
+                "source_run_id": source_run_id,
+                "proof_manifest_sha256": (
+                    manifest_record["sha256"] if isinstance(manifest_record, Mapping) else None
+                ),
+                "dependency_revision_ids": (
+                    list(manifest_record["manifest"].get("dependency_revision_ids", []))
+                    if isinstance(manifest_record, Mapping)
+                    else []
+                ),
+                "reference_ids": (
+                    list(manifest_record["manifest"].get("reference_ids", []))
+                    if isinstance(manifest_record, Mapping)
+                    else []
+                ),
+                "conditional_hypotheses": (
+                    list(manifest_record["manifest"].get("conditional_hypotheses", []))
+                    if isinstance(manifest_record, Mapping)
+                    else []
+                ),
+                "computational_evidence_count": (
+                    len(manifest_record["manifest"].get("computational_evidence", []))
+                    if isinstance(manifest_record, Mapping)
+                    else 0
+                ),
+                "reference_audits": [
+                    {
+                        key: audit.get(key)
+                        for key in (
+                            "reference_id", "disposition", "evidence_basis", "evidence_locator", "material",
+                            "assumptions_checked", "notation_checked", "source_checked",
+                            "independently_rederived", "title", "paper_id", "arxiv_id",
+                            "doi", "theorem_id", "source_uri", "source_sha256",
+                            "content_sha256",
+                        )
+                    }
+                    for audit in audits
+                ],
+            }
+        if artifact == "project_manifest":
+            content = {
+                "schema_version": "1.0",
+                "project": public_project,
+                "claims": graph["claims"],
+                "revisions": graph["revisions"],
+                "edges": graph["edges"],
+                "revision_provenance": revision_provenance,
+            }
+        elif artifact == "project_summary_tex":
+            lines = [
+                r"\documentclass{article}",
+                r"\usepackage{amsmath,amsthm}",
+                r"\begin{document}",
+                rf"\section*{{{_latex_escape(str(public_project['title']))}}}",
+            ]
+            by_claim = {item["claim_id"]: item for item in graph["claims"]}
+            for revision in graph["revisions"]:
+                if revision.get("lifecycle_status") != "ACTIVE":
+                    continue
+                claim = by_claim.get(revision["claim_id"], {})
+                lines.append(rf"\subsection*{{{_latex_escape(str(claim.get('title') or revision['claim_id']))}}}")
+                lines.append(
+                    rf"\textbf{{Status:}} {_latex_escape(str(revision.get('evidence_status') or ''))}.\\"
+                )
+                conditions = revision.get("conditions") or []
+                if conditions:
+                    lines.append(
+                        rf"\textbf{{Conditions:}} {_latex_escape(', '.join(str(item) for item in conditions))}.\\"
+                    )
+                provenance = revision_provenance.get(str(revision["revision_id"]), {})
+                if revision.get("proof_sha256"):
+                    lines.append(
+                        rf"\textbf{{Proof SHA-256:}} \texttt{{{_latex_escape(str(revision['proof_sha256']))}}}.\\"
+                    )
+                if provenance:
+                    lines.append(
+                        rf"\textbf{{Audited references:}} {len(provenance.get('reference_audits', []))}.\\"
+                    )
+                lines.append(str(revision.get("statement_tex") or ""))
+                lines.append("")
+            lines.append(r"\end{document}")
+            content = "\n".join(lines) + "\n"
+            safety_errors = static_latex_errors(content)
+            if safety_errors:
+                raise ReCTMError(
+                    "PROJECT_SUMMARY_LATEX_UNSAFE",
+                    "Project summary contains LaTeX operations that are unsafe for a portable artifact.",
+                    category="validation",
+                    details={"errors": safety_errors},
+                )
+        else:
+            raise invalid_argument("unknown project artifact", artifact=artifact)
+        return {"ok": True, "project_id": project_id, "artifact": artifact, "content": content}
 
     def _rethlas_status(self, principal: OAuthPrincipal, arguments: dict[str, Any], trace_id: str) -> dict[str, Any]:
         _ = trace_id
@@ -1430,3 +1867,16 @@ def _render_summary(name: str, payload: Mapping[str, Any]) -> str:
     if isinstance(summary, str) and summary:
         return summary
     return f"{name} completed."
+
+
+def _latex_escape(value: str) -> str:
+    return (
+        value.replace("\\", r"\textbackslash{}")
+        .replace("&", r"\&")
+        .replace("%", r"\%")
+        .replace("$", r"\$")
+        .replace("#", r"\#")
+        .replace("_", r"\_")
+        .replace("{", r"\{")
+        .replace("}", r"\}")
+    )

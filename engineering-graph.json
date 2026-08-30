@@ -45,7 +45,7 @@
   "@type": "EngineeringGraph",
   "schema_version": "1.0.0",
   "generated_for": "Re-CTM",
-  "updated_at": "2026-08-26T21:24:54-07:00",
+  "updated_at": "2026-08-30T00:45:00-07:00",
   "purpose": "A graph-theoretic engineering specification for implementing one OAuth MCP runtime that combines native CMT computer tools and a Rethlas-derived mathematical reasoning workflow without a Codex dependency.",
   "source_baselines": {
     "cmt_repository": "../coding-tools-mcp",
@@ -116,10 +116,26 @@
     {
       "id": "PC-014",
       "constraint": "Every model-active Rethlas task is a zero-guess MCP contract: the task envelope exposes exact logical-write schemas, the exact commit action, the commit-payload schema, and at least one valid submission example/template. Server-derived workflow facts are not redundantly required as model writes. Recoverable validation/conflict corrections return a fresh capability, explicit retryable/recoverable semantics, and retained-write guidance; permission/security failures remain hard."
+    },
+    {
+      "id": "PC-015",
+      "constraint": "Re-CTM v0.2 research-project state is a private workflow trust-domain resource. Projects, immutable claim revisions, frozen project snapshots, proof manifests, reference provenance, and reference audits are never native-workspace authority; Native dangerous does not grant project authority or verification authority."
+    },
+    {
+      "id": "PC-016",
+      "constraint": "Workflow protocol 2 may use a compact verified lane to reduce exploration cost, but compact never skips the LaTeX gate, independent verifier, repair loop, or mechanical finalizer. Protocol-2 proof submission includes proof_manifest, and material references require server-tracked verifier audit coverage before a correct verdict is possible."
+    },
+    {
+      "id": "PC-017",
+      "constraint": "The persistent state schema and workflow protocol are versioned independently. Supported older databases migrate additively and older in-progress runs retain their original workflow protocol contracts; a database created by a newer unsupported runtime version fails closed."
+    },
+    {
+      "id": "PC-018",
+      "constraint": "External paper-aware retrieval uses fixed validated HTTPS providers with bounded response/time semantics, revalidates the final response host after redirects, and never accepts an arbitrary caller-supplied fetch URL. Native process termination provenance is additive diagnostic metadata and does not change the preserved CTM command lifecycle."
     }
   ],
   "implementation_snapshot": {
-    "as_of": "2026-08-29T00:20:00-07:00",
+    "as_of": "2026-08-30T00:45:00-07:00",
     "authority": "This snapshot supersedes the original per-vertex planning labels without erasing the design-time history stored on each vertex.",
     "implemented_local": [
       "V02",
@@ -170,6 +186,7 @@
       "The built-in Linux Bubblewrap backend performs fail-closed startup attestation automatically; scripts/manual_native_isolation_test.py remains target-PC adversarial release evidence, and tests use arbitrary non-product-named toolchains to prove execution, read-only mounts, explicit fallback roots, and private-root exclusion.",
       "tests/ exercises OAuth, legacy and modern MCP, fixed catalogs, native path confinement, toolchain exposure policy, capability ownership, branch barriers, verifier firewall, mechanical verdict/finalization, diagnostics, LaTeX safety, and the reference bubblewrap helper.",
       "MCP server instructions and the rethlas_start tool contract route concrete mathematical work into the capability-gated workflow; every model-active Rethlas task now exposes a zero-guess write/commit contract and valid example/template, while rethlas_step combines task submission and advancement, returns explicit recoverable/retryable correction semantics with retained-write guidance, exposes stable plan/subgoal ids, accepts incremental screening, and performs idempotent workspace export when terminal done is reached.",
+      "v0.2 adds a versioned additive SQLite migration layer, private project/claim/revision registry, frozen project snapshots, proof manifests, conditional-dependency propagation, idempotent/concurrency-checked mechanical promotion, reference/source provenance, mechanical reference-audit coverage, compact verified routing with full-workflow escalation, fixed-provider paper retrieval, and native termination provenance without expanding the 24-tool public catalog.",
       "manual-validation.json remains the authority for browser, target-PC, external-retrieval, real-LaTeX, and 95-percent methodology acceptance."
     ]
   },
@@ -317,6 +334,8 @@
         "Own deterministic state transitions",
         "Issue role tasks",
         "Create branch rounds",
+        "Route protocol-2 compact versus full workflows without weakening verification",
+        "Freeze project context and enforce proof-manifest dependency/reference contracts",
         "Apply transition preconditions",
         "Resume, cancel, and steering checkpoints",
         "Never let the model label a proof verified"
@@ -342,7 +361,9 @@
       "kind": "persistent_resource",
       "trust_domain": "workflow_private",
       "responsibilities": [
-        "Persist runs, domains, capabilities, branches, transitions, and steering messages",
+        "Persist runs, domains, capabilities, branches, transitions, steering messages, schema migrations, projects, claims, immutable revisions, dependency edges, project snapshots, proof manifests, reference provenance, and reference audits",
+        "Apply additive versioned migrations and fail closed on a newer unsupported schema",
+        "Perform idempotent, optimistic-concurrency-checked project promotion downstream of finalization",
         "Survive browser disconnects and process restarts",
         "Support deterministic debug inspection"
       ],
@@ -354,7 +375,7 @@
       "kind": "persistent_resource",
       "trust_domain": "workflow_private",
       "responsibilities": [
-        "Store problem snapshots, references, memories, branch data, verifier data, draft LaTeX, and debug records",
+        "Store problem snapshots, reference bodies, memories, branch data, verifier data, draft/final LaTeX, and debug records",
         "Remain outside native-tool reach",
         "Expose data only through logical workflow resources"
       ],
@@ -367,7 +388,7 @@
       "trust_domain": "workflow_private",
       "responsibilities": [
         "Embed Rethlas generation and verification methodology",
-        "Define phase-specific tasks",
+        "Define phase-specific zero-guess tasks and protocol-1/protocol-2 overlays",
         "Preserve search, examples, counterexamples, planning, proving, failure synthesis, citation checking, and repair behavior"
       ],
       "implementation_status": "planned"
@@ -405,10 +426,11 @@
       "kind": "integration_component",
       "trust_domain": "workflow_private",
       "responsibilities": [
-        "Search mathematical results",
-        "Snapshot user references",
-        "Record complete statements and identifiers",
-        "Expose only approved references to verifier"
+        "Search mathematical results and fixed-provider bibliographic records",
+        "Assign stable reference identifiers and immutable source snapshots/hashes",
+        "Record complete statements, paper/theorem identifiers, and provenance",
+        "Expose protocol-2 candidate references to verifier and track per-proof audit dispositions",
+        "Never treat an external retrieval result as verified solely because it was returned by a provider"
       ],
       "implementation_status": "interface_planned_external_manual_validation"
     },
@@ -455,10 +477,11 @@
       "kind": "reasoning_domain",
       "trust_domain": "workflow_assembler",
       "responsibilities": [
-        "Assemble a complete self-contained proof.tex",
+        "Assemble a complete self-contained proof.tex and protocol-2 proof_manifest",
         "Put supporting statements before dependent statements",
         "Put the target theorem last",
-        "Include complete external statements and identifiers"
+        "Declare frozen dependency revisions, material reference ids, conditional hypotheses, and computational evidence",
+        "Escalate a compact route to full exploration when a direct proof is insufficient"
       ],
       "implementation_status": "planned"
     },
@@ -481,11 +504,11 @@
       "kind": "reasoning_domain",
       "trust_domain": "workflow_verifier",
       "responsibilities": [
-        "Read only statement, complete proof, approved cited references, and verifier memory",
+        "Read only statement, complete proof, proof-declared frozen verified dependencies, candidate cited references, proof manifest, and verifier memory",
         "Check statements sequentially",
-        "Check referenced results and definitions",
+        "Write structured reference-audit dispositions for every material proof reference",
         "Record every critical error and gap",
-        "Never read generation memory or branch internals"
+        "Never read generation memory, branch internals, steering, or wider project research state"
       ],
       "implementation_status": "planned"
     },
@@ -496,9 +519,10 @@
       "trust_domain": "workflow_private",
       "responsibilities": [
         "Validate verification report shape",
+        "Mechanically add gaps for missing or unresolved material-reference audits",
         "Compute correct iff critical_errors and gaps are empty",
         "Issue no finalization authority on wrong",
-        "Route wrong verdict to repair"
+        "Route wrong verdict to repair or protocol-2 compact escalation"
       ],
       "implementation_status": "planned"
     },
@@ -524,6 +548,7 @@
         "Receive authority only from gates",
         "Copy proof.tex to proof_verified.tex atomically",
         "Seal the run",
+        "Promote project-linked completed runs into immutable VERIFIED/CONDITIONAL revisions without letting promotion conflicts invalidate the mathematical run",
         "Never accept a model assertion as finalization evidence"
       ],
       "implementation_status": "planned"
@@ -537,6 +562,7 @@
         "Import problem/reference snapshots from native workspace",
         "Export only approved artifacts from private vault",
         "Automatically create the run-specific workspace proof_verified.tex when the MCP workflow reaches done",
+        "Export portable project manifests/summaries without private reasoning or capability material",
         "Treat repeated identical automatic exports as idempotent and refuse to overwrite different workspace content",
         "Hash and audit every transfer",
         "Prevent arbitrary path bridging"
@@ -1179,6 +1205,30 @@
       "statement": "Every non-system native toolchain mount is canonical, read-only, and disjoint from workspace/data/private trust domains.",
       "formal": "ExposedRoots = Validate(SystemRoots U PathRoots U SymlinkTargetRoots U ExplicitRoots); forall r in ExposedRoots_non_system: canonical(r) AND mount(r)=read_only AND disjoint(r,workspace,data_root,private_root)",
       "test": "Use arbitrary non-product-named PATH, symlink-target, Conda-style, Executables-style, and explicit roots; prove execution succeeds, writes to toolchains fail, overlapping/missing/relative/broad roots fail closed, private-target symlinks are excluded, and helper-side revalidation rejects a protected root even if the planner is bypassed."
+    },
+    {
+      "id": "INV-012",
+      "statement": "Project VERIFIED/CONDITIONAL authority originates only downstream of a mechanically finalized correct run; verified revisions are immutable, promotion failure cannot invalidate the verified proof, and Native dangerous cannot create or mutate them.",
+      "formal": "promote_verified(run) => state(run)=done AND latex_passed AND verdict=correct AND final_artifact_hash; promotion_error => run remains done/correct AND retryable_pending; model/native set_verified = deny",
+      "test": "Create OPEN claims through owner project control, deny any direct VERIFIED mutation path, complete a project-linked run, assert exactly one immutable promoted revision is created, inject a transient promotion failure and prove a later terminal call retries it without re-running or invalidating the proof, repeat terminal delivery to prove idempotence, and assert native dangerous cannot read or write registry state."
+    },
+    {
+      "id": "INV-013",
+      "statement": "A protocol-2 verifier sees only proof-declared dependency revisions from the run's frozen project snapshot, and every material reference must receive a proof-bound, evidence-bearing resolved audit disposition before correct can be computed.",
+      "formal": "verifier.project_read = manifest.dependencies intersect frozen_snapshot.verified_history; forall ref in manifest.material_refs: resolved(disposition,evidence_basis,evidence_locator,proof_hash,manifest_hash); discovery_metadata != original_source_verification",
+      "test": "Start a project run, change the project concurrently, assert the verifier still sees only frozen proof-declared revisions while historical superseded VERIFIED revisions remain eligible; omit a material reference audit and assert the server adds a verification gap; reject a LeanSearch/OpenAlex discovery snapshot as SOURCE_VERIFIED original-source evidence; accept only consistent source-inspection or independent-derivation evidence."
+    },
+    {
+      "id": "INV-014",
+      "statement": "Compact mode changes exploration cost, never correctness gates.",
+      "formal": "compact => assess->assemble allowed; every compact proof still passes latex_validate->verify; wrong_1->repair; wrong_2->explore(full)",
+      "test": "Complete a compact tautology through LaTeX/verifier/finalizer; exercise assembler escalation; return two wrong verifier reports and assert the second changes effective mode to full and enters explore."
+    },
+    {
+      "id": "INV-015",
+      "statement": "Persistent-state and retrieval boundaries fail closed under version or origin ambiguity.",
+      "formal": "db_version>supported => deny_start; retrieval_url and final_redirect_url remain on configured validated HTTPS providers; caller arbitrary_url => deny",
+      "test": "Migrate an unversioned baseline DB additively, reject a future schema version, normalize a fixed OpenAlex response under byte/time bounds, reject an arbitrary provider host or caller-supplied fetch target, and reject a cross-host redirect from an otherwise allowed provider."
     }
   ],
   "workflow_transition_graph": {
@@ -1216,6 +1266,10 @@
       [
         "assess",
         "explore"
+      ],
+      [
+        "assess",
+        "assemble"
       ],
       [
         "explore",
@@ -1266,6 +1320,10 @@
         "latex_validate"
       ],
       [
+        "assemble",
+        "explore"
+      ],
+      [
         "latex_validate",
         "verify"
       ],
@@ -1280,6 +1338,10 @@
       [
         "verify",
         "repair"
+      ],
+      [
+        "verify",
+        "explore"
       ],
       [
         "repair",

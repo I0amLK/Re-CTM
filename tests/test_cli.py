@@ -8,12 +8,20 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
+from re_ctm import __version__
 from re_ctm.cli import build_parser, main
 from re_ctm.config import Settings
 from re_ctm.errors import ReCTMError
 
 
 class CLITestCase(unittest.TestCase):
+    def test_top_level_version_flag(self) -> None:
+        output = io.StringIO()
+        with redirect_stdout(output), self.assertRaises(SystemExit) as exited:
+            build_parser().parse_args(["--version"])
+        self.assertEqual(exited.exception.code, 0)
+        self.assertEqual(output.getvalue().strip(), f"re-ctm {__version__}")
+
     def test_attest_native_accepts_repeatable_generic_allow_roots(self) -> None:
         args = build_parser().parse_args(
             [

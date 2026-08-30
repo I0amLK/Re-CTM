@@ -161,6 +161,17 @@ def _static_errors(content: str) -> list[str]:
     return errors
 
 
+def static_latex_errors(content: str) -> list[str]:
+    """Return the same content-safety errors used before isolated compilation.
+
+    This is intentionally narrower than a full LaTeX gate: callers such as
+    portable project-summary generation can reject external file/shell behavior
+    without compiling a non-proof artifact or weakening proof compilation policy.
+    """
+
+    return _static_errors(content)
+
+
 def _strip_comments(content: str) -> str:
     lines: list[str] = []
     for line in content.splitlines():

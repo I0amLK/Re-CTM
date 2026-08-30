@@ -12,6 +12,8 @@ This document is an operational guide, not evidence that a target has passed val
 
 The target does not need Codex and does not download Rethlas separately.
 
+Re-CTM v0.2.0 stores the Verified Research Workspace registry, project snapshots, proof manifests, reference provenance, and audits under the private state root. They are server-owned research metadata and must never be moved into the native workspace merely for convenience.
+
 ## 2. Directory boundary
 
 Use non-overlapping roots:
@@ -80,6 +82,12 @@ For a Cloudflare Quick Tunnel, leave it unset and bind Re-CTM to loopback. The r
 
 Do not commit the real environment file. Re-CTM materializes server signing secrets under the data root with mode `0600` when they are not explicitly supplied.
 
+### State database upgrade
+
+v0.2.0 introduces a versioned state-schema migration framework. Existing unversioned v0.1/dev6 databases are recognized as the baseline workflow schema and migrated additively to the v0.2 research-registry schema; runs, domains, branches, capabilities, transitions, and old protocol-1 workflow metadata are preserved. The state store records `PRAGMA user_version` plus migration history and fails closed if a database was created by a newer runtime version. Back up the private state directory before the first production upgrade even though the migration is additive.
+
+New MCP runs use workflow protocol 2. Existing persisted runs without a protocol marker continue as protocol 1, so an in-progress pre-v0.2 run does not suddenly acquire new proof-manifest requirements after upgrade.
+
 ## 5. Validate native isolation
 
 The built-in Bubblewrap backend attests itself every time the service starts and fails closed if the required isolation properties are not proven. For release/target evidence, also probe it explicitly:
@@ -110,6 +118,8 @@ python3 scripts/manual_native_isolation_test.py \
 Omit `--allow-root` when none are configured; repeat it for every declared root. The report includes a target-specific read-only write probe for those roots.
 
 Review the JSON before treating that target as accepted for production. `RE_CTM_NATIVE_ISOLATION_ATTESTED=1` remains required only for an operator-supplied external helper. `dangerous` still does not grant a workflow capability: it changes native-tool policy inside the attested namespace. Host-PATH discovery and explicit toolchain roots use one canonical, read-only mount plan while the configured workspace/data/private trust domains remain excluded.
+
+Long-running command results include additive `termination` provenance without changing CTM lifecycle semantics. Review `source`, `requested_timeout_ms`, `elapsed_ms`, `observed_signal`, `term_sent_by_re_ctm`, and `kill_sent_by_re_ctm` before diagnosing a killed CAS computation. A signal observed without a matching Re-CTM action is reported as `external_or_unknown`, not guessed to be an OOM event.
 
 ## 6. Start Re-CTM
 
@@ -186,6 +196,16 @@ rethlas-output/<run_id>/proof_verified.tex
 ```
 
 The automatic operation is idempotent when the existing file has the same hash and refuses to overwrite different content. `rethlas_artifact` is the public artifact façade: `action=get` returns finalized LaTeX through MCP and `action=export` re-materializes the run's default `workspace_export_path` or writes an explicit alternate workspace-relative `.tex` destination. Overwriting an existing alternate path requires its current SHA-256 baseline. The older `rethlas_get_artifact` and `rethlas_export_final` names remain hidden compatibility aliases.
+
+Protocol-2 runs may additionally expose `proof_manifest` and `reference_audit`. Project owners may retrieve/export a portable `project_manifest` or `project_summary_tex`. These project artifacts are generated from private registry facts and contain claim/revision/status/hash/dependency/condition/reference-audit information only; they must not include owner/OAuth binding data, generation memory, branch internals, verifier scratch memory, steering, or capability handles. `project_summary_tex` is subjected to the same static external-file/shell-operation checks as proof LaTeX before it can be returned/exported.
+
+Project-linked finalization is two-phase by design. The mathematical run reaches `done` only after the existing LaTeX and independent verifier gates pass. Registry promotion then creates an immutable `VERIFIED` or `CONDITIONAL` claim revision if the frozen base revision still matches. A concurrent registry conflict is recorded separately and never changes an already-correct run into a failed proof. A transient promotion error is also non-fatal: it remains pending and is retried on a later terminal `rethlas_step`. Repeated terminal retries must not create duplicate revisions for the same source run.
+
+Compact workflow mode never weakens the correctness gate. Protocol 2 can route a local self-contained lemma from `assess` directly to `assemble`, but still requires LaTeX validation, independent verification, repair, and mechanical finalization. A compact assembler may escalate to full exploration, and a second wrong compact verifier result automatically escalates to the full workflow.
+
+External reference use is also mechanically gated in protocol 2. The assembler lists material `reference_id` values in `proof_manifest`; the verifier gives each one a tracked disposition plus `evidence_basis`/`evidence_locator`. `SOURCE_VERIFIED` requires source/assumption/notation checks and must point either to a stored source-body snapshot or to the external DOI/arXiv/source location actually inspected. A theorem-search or bibliographic discovery snapshot is not original-source evidence and cannot by itself establish `SOURCE_VERIFIED`. Missing or unresolved material-reference coverage is added to the verification gaps by the server even if the verifier model does not report it itself.
+
+Paper-aware retrieval uses a fixed HTTPS OpenAlex trust domain; theorem retrieval uses the configured validated HTTPS theorem endpoint. Both initial and post-redirect response locations remain host-validated, so an external redirect cannot turn the research integration into a cross-host fetcher. `paper_search` may be driven by query, author, title, or keywords without requiring a dummy free-text query.
 
 ## 10. Claims boundary
 

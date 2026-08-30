@@ -9,12 +9,14 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
+from . import __version__
 from .app import build_application
 from .config import Settings, materialize_secrets
 from .enums import LatexPolicy, NativeMode
 from .errors import ReCTMError
 from .native import BubblewrapExecBackend, ExternalHelperExecBackend, NativeWorkspace
 from .server import run_server
+from .storage import STATE_SCHEMA_VERSION
 from .toolchains import build_toolchain_exposure_plan, parse_native_exec_allow_roots
 
 
@@ -23,6 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="re-ctm",
         description="OAuth MCP runtime with native CMT tools and a capability-gated Rethlas workflow.",
     )
+    parser.add_argument("--version", action="version", version=f"re-ctm {__version__}")
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     serve = subcommands.add_parser("serve", help="Run the OAuth-only HTTP MCP service.")
@@ -196,6 +199,15 @@ def main(argv: list[str] | None = None) -> int:
                         "oauth_only": True,
                         "theorem_search_url": settings.theorem_search_url,
                         "theorem_search_timeout_seconds": settings.theorem_search_timeout_seconds,
+                        "state_schema_version": STATE_SCHEMA_VERSION,
+                        "workflow_protocol_version": 2,
+                        "research_workspace": {
+                            "project_registry": True,
+                            "compact_verified_lane": True,
+                            "proof_manifest": True,
+                            "reference_audit": True,
+                            "paper_search_provider": "https://api.openalex.org/works",
+                        },
                         "secrets_present": True,
                         "complete_flow_locally_validated": False,
                     },

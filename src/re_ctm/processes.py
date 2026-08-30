@@ -98,6 +98,7 @@ class CommandRun:
     command_id: str
     process: subprocess.Popen[bytes]
     timeout_at: float | None = None
+    requested_timeout_ms: int | None = None
     warnings: list[str] = field(default_factory=list)
     stdout: bytearray = field(default_factory=bytearray)
     stderr: bytearray = field(default_factory=bytearray)
@@ -120,6 +121,9 @@ class CommandRun:
     signal_name: str | None = None
     timed_out: bool = False
     terminating: bool = False
+    termination_source: str | None = None
+    term_sent_by_re_ctm: bool = False
+    kill_sent_by_re_ctm: bool = False
     pty_master_fd: int | None = None
     _stdin_closed: bool = False
 
@@ -186,6 +190,8 @@ class CommandRun:
             and time.time() >= self.timeout_at
         ):
             self.timed_out = True
+            self.termination_source = self.termination_source or "command_timeout"
+            self.term_sent_by_re_ctm = True
             terminate_process_group(self.process, signal.SIGTERM)
         code = self.process.poll()
         if code is None:
@@ -198,6 +204,8 @@ class CommandRun:
                 self.signal_name = signal.Signals(-code).name
             except ValueError:
                 self.signal_name = str(-code)
+            if self.termination_source is None:
+                self.termination_source = "external_or_unknown"
         if self.completed_at is None:
             self.completed_at = time.time()
 
@@ -246,6 +254,14 @@ class CommandRun:
             "stdout_omitted_bytes": stdout_omitted,
             "stderr_omitted_bytes": stderr_omitted,
             "truncated": stdout_truncated or stderr_truncated or stdout_omitted > 0 or stderr_omitted > 0,
+            "termination": {
+                "source": self.termination_source,
+                "requested_timeout_ms": self.requested_timeout_ms,
+                "elapsed_ms": int(((self.completed_at or time.time()) - self.started_at) * 1000),
+                "observed_signal": self.signal_name,
+                "term_sent_by_re_ctm": self.term_sent_by_re_ctm,
+                "kill_sent_by_re_ctm": self.kill_sent_by_re_ctm,
+            },
         }
         if self.warnings:
             payload["warnings"] = list(self.warnings)
@@ -357,6 +373,7 @@ class CommandManager:
             command_id=secrets.token_urlsafe(18),
             process=process,
             timeout_at=time.time() + timeout_ms / 1000.0,
+            requested_timeout_ms=timeout_ms,
             pty_master_fd=pty_master_fd,
         )
         with self.lock:
@@ -430,12 +447,18 @@ class CommandManager:
         original_running = command.process.poll() is None
         if original_running:
             command.terminating = True
+            command.termination_source = "explicit_kill"
+            if signum == signal.SIGTERM:
+                command.term_sent_by_re_ctm = True
+            if signum == HARD_KILL_SIGNAL:
+                command.kill_sent_by_re_ctm = True
             terminate_process_group(command.process, signum, force=force)
             try:
                 command.process.wait(timeout=max(0, wait_ms) / 1000.0)
             except subprocess.TimeoutExpired:
                 if not force:
                     force = True
+                    command.kill_sent_by_re_ctm = True
                     terminate_process_group(command.process, HARD_KILL_SIGNAL, force=True)
                     try:
                         command.process.wait(timeout=max(0, kill_wait_ms) / 1000.0)
@@ -542,6 +565,8 @@ class CommandManager:
             active = list(self.active.values())
         for command in active:
             if command.process.poll() is None:
+                command.termination_source = command.termination_source or "parent_shutdown"
+                command.term_sent_by_re_ctm = True
                 terminate_process_group(command.process, signal.SIGTERM)
 
     def _get(self, command_id: str, *, stdin: bool) -> CommandRun:
@@ -630,6 +655,8 @@ class CommandManager:
             except subprocess.TimeoutExpired:
                 if command.process.poll() is None:
                     command.timed_out = True
+                    command.termination_source = command.termination_source or "command_timeout"
+                    command.term_sent_by_re_ctm = True
                     terminate_process_group(command.process, signal.SIGTERM)
             command.refresh_status()
 

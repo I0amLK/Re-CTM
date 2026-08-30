@@ -1087,6 +1087,57 @@ class NativeRuntime:
         )
         return {"ok": True, **result, "status": "created"}
 
+    def export_text_artifact(
+        self,
+        *,
+        path: str,
+        content: str,
+        expected_sha256: str | None = None,
+        trace_id: str | None = None,
+        artifact_kind: str = "research_artifact",
+    ) -> dict[str, Any]:
+        """Controlled private-to-workspace bridge for non-secret research artifacts.
+
+        This does not confer workflow authority on native execution. It only writes
+        caller-supplied finalized/public artifact bytes through the same atomic editor
+        boundary used by verified LaTeX delivery.
+        """
+
+        resolved = self.workspace.resolve_for_write(path)
+        existing_sha256 = _sha256_file(resolved.path) if resolved.existed else None
+        if resolved.existed and not expected_sha256:
+            raise ReCTMError(
+                "EXPORT_BASELINE_REQUIRED",
+                "Overwriting an existing research artifact requires expected_sha256.",
+                category="conflict",
+                retryable=True,
+                details={"path": resolved.display, "actual_sha256": existing_sha256},
+            )
+        operation: dict[str, Any] = {
+            "op": "update" if resolved.existed else "add",
+            "path": resolved.display,
+            "content": content,
+        }
+        if expected_sha256 is not None:
+            operation["expected_sha256"] = expected_sha256
+        result = self.editor.apply([operation])
+        digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        self.debug.emit(
+            "native.research_artifact_exported",
+            "native_runtime",
+            trace_id=trace_id or new_trace_id(),
+            decision="allow",
+            reason="controlled_research_artifact_bridge",
+            details={
+                "path": resolved.display,
+                "artifact_kind": artifact_kind,
+                "content_sha256": digest,
+                "content_bytes": len(content.encode("utf-8")),
+                "workflow_authority_inherited": False,
+            },
+        )
+        return {**result, "path": resolved.display, "sha256": digest, "bytes": len(content.encode("utf-8"))}
+
     def exec_command(self, **arguments: Any) -> dict[str, Any]:
         trace_id = str(arguments.get("trace_id") or new_trace_id())
         cmd = str(arguments.get("cmd") or "")

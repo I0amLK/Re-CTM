@@ -16,7 +16,7 @@ from .native import (
     NativeWorkspace,
 )
 from .oauth import OAuthService, OAuthStore
-from .research import TheoremSearchClient
+from .research import PaperSearchClient, ResearchHub, TheoremSearchClient
 from .storage import StateStore
 from .tools import ToolRuntime
 from .toolchains import build_toolchain_exposure_plan
@@ -66,9 +66,12 @@ def build_application(settings: Settings) -> ReCTMApplication:
         capability,
         debug,
         LatexGate(settings.latex_policy),
-        TheoremSearchClient(
-            settings.theorem_search_url,
-            timeout_seconds=settings.theorem_search_timeout_seconds,
+        ResearchHub(
+            TheoremSearchClient(
+                settings.theorem_search_url,
+                timeout_seconds=settings.theorem_search_timeout_seconds,
+            ),
+            PaperSearchClient(timeout_seconds=settings.theorem_search_timeout_seconds),
         ),
     )
     workspace = NativeWorkspace(settings.workspace, private_root=settings.private_root)

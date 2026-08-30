@@ -1,9 +1,9 @@
 {
   "project": {
     "name": "Re-CTM",
-    "status": "zero_guess_rethlas_contract_local_validated_pending_push",
-    "target": "A single installable OAuth MCP runtime combining streamlined CMT computer tools with a Rethlas-derived mathematical reasoning workflow.",
-    "updated_at": "2026-08-29T00:26:00-07:00",
+    "status": "v0_2_checkpoint_committed_remote_manual_pending",
+    "target": "A single installable OAuth MCP runtime combining exact CTM computer tools, a Rethlas-derived verified mathematical workflow, and a private cross-run Verified Research Workspace.",
+    "updated_at": "2026-08-30T05:44:00-07:00",
     "source_references": {
       "cmt_local_repo": "../coding-tools-mcp",
       "rethlas_local_repo": "../Rethlas",
@@ -141,6 +141,46 @@
       "id": "AD-023",
       "decision": "Make every model-active Rethlas task a zero-guess self-describing contract. The task envelope exposes write_contract, exact commit_action, commit_payload_schema, and a schema-valid minimal/template/example submission. Do not require model writes for server-derived canonical records such as decomposition plans, failure synthesis, or replanning decisions. Strictly validate plan list fields instead of coercing strings into character arrays. Any validation/conflict correction handled by rethlas_step returns recoverable=true, retryable=true, a fresh capability, retained-write information, and guidance not to replay retained records; permission/security failures stay hard.",
       "status": "accepted"
+    },
+    {
+      "id": "AD-024",
+      "decision": "Make Re-CTM v0.2.0 a Verified Research Workspace rather than only a per-run proof engine. Persist private owner-scoped projects, claims, immutable claim revisions, dependency/supersession edges, project-run links, and portable project manifests. OPEN claims may be owner-created, but VERIFIED/CONDITIONAL revisions originate only from mechanically finalized correct runs; Native dangerous has no project verification authority.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-025",
+      "decision": "Add a Compact Verified Lane without adding new workflow roles/states: protocol-2 assess may route a direct self-contained task to assemble, but compact still traverses LaTeX validation, independent verifier, repair, and finalizer. Compact assembly can escalate to full exploration and a second wrong compact verifier result automatically escalates to full explore.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-026",
+      "decision": "Freeze project knowledge at run start and require protocol-2 proof_manifest alongside proof.tex. The manifest declares target statement, proof-used dependency revision ids, material reference ids, conditional hypotheses, and computational evidence; dependencies must come from the frozen verified project snapshot and conditions propagate mechanically through promoted revisions.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-027",
+      "decision": "Replace the earlier references:approved alias semantics with explicit reference provenance and per-proof verifier audit. Inline/retrieved references receive stable ids and source snapshots/hashes; every material proof reference needs a SOURCE_VERIFIED, INDEPENDENTLY_REDERIVED, UNRESOLVED, or NOT_MATERIAL disposition, and unresolved/missing coverage is mechanically inserted into verification gaps before verdict computation.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-028",
+      "decision": "Extend the existing rethlas_retrieve façade with typed theorem_search, paper_search, paper_lookup, and theorem_context operations. Keep theorem search bounded and use a fixed validated HTTPS bibliographic provider for paper operations; never accept an arbitrary caller-supplied URL fetch target or treat retrieved material as verified by default.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-029",
+      "decision": "Version the persistent StateStore schema and workflow protocol independently. Migrate supported older SQLite schemas additively with recorded migration history, fail closed on newer unsupported schemas, create new MCP runs with workflow protocol 2, and let persisted protocol-1 runs continue with their original contracts after upgrade.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-030",
+      "decision": "Add native command termination provenance as diagnostics only. Report requested timeout, elapsed time, observed signal, and whether Re-CTM sent TERM/KILL, classifying unmatched signals as external_or_unknown; do not change the original CTM command timeout/TERM/KILL lifecycle in v0.2.0.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-031",
+      "decision": "Keep the public catalog exactly 24 tools in v0.2.0: the exact 18 CTM prefix plus the same six Rethlas façade tools. Add project, compact, provenance, retrieval, and artifact capabilities through typed additive arguments/operations rather than multiplying public protocol tools.",
+      "status": "accepted"
     }
   ],
   "authorization_model": {
@@ -170,10 +210,16 @@
           "finalizer"
         ],
         "purpose": "Authorize private reasoning resources and workflow transitions."
+      },
+      "L2P": {
+        "name": "Research project authority",
+        "purpose": "Authorize owner-scoped project/claim inspection and OPEN-claim administration. It never grants mechanical verification/finalization authority."
       }
     },
     "native_tool_rule": "allow = L0 AND L1",
     "rethlas_tool_rule": "allow = L0 AND run_capability AND role_acl AND workflow_state",
+    "project_owner_rule": "allow_project_read_or_open_admin = L0 AND project_owner",
+    "project_verified_promotion_rule": "allow_verified_promotion = mechanically_finalized_correct_run AND project_link AND optimistic_base_match; never model/native controlled",
     "non_inheritance_axiom": "L1 dangerous does not imply any L2 capability.",
     "private_store_rule": "Rethlas private state must not be directly readable through native CMT tools, including dangerous mode."
   },
@@ -350,15 +396,17 @@
         "Generation, branch, join, assembler, verifier, and repair methodology tasks are embedded in the package",
         "MCP initialization instructions and the rethlas_start tool description direct concrete proof/derivation/repair/verification requests into the workflow by default, while preserving an explicit informal-answer opt-out",
         "Every model-active task now returns a zero-guess write/commit contract with a schema-valid example/template; server-derived decomposition-plan, failure-summary, and replanning records are no longer redundantly presented as required model writes",
+        "Embedded methodology schema 2.0 documents workflow-protocol-1 compatibility plus protocol-2 compact/full, proof-manifest, reference-audit, verifier-project-firewall, and compact escalation overlays",
         "Generation, verifier, and branch-local memory channels are persisted in the private vault",
         "Multiple decomposition plans, complete per-plan/per-subgoal direct screening, one-branch-per-plan rounds, explicit all-branch join, failure synthesis, replanning, verification audit records, changed-proof repair, and strict stopping rules are server-enforced",
-        "Capability-gated rethlas_retrieve provides bounded HTTPS theorem search and persists results as external_unverified evidence in generation, branch, verifier, or repair memory",
+        "Capability-gated rethlas_retrieve preserves theorem_search and adds fixed-provider paper_search/paper_lookup/theorem_context operations; every retrieved result receives stable reference/source provenance and remains external_unverified until audited",
+        "Protocol-2 assembler/repair writes a proof_manifest whose frozen dependency revisions, material references, conditions, and computational evidence are server-validated before workflow transition",
         "A live LeanSearch-compatible endpoint smoke returned a normalized theorem with arXiv and theorem identifiers",
         "Final delivery contract is proof.tex to proof_verified.tex"
       ],
       "remaining": [
-        "Validate real web-model use of theorem retrieval, source download/context reading, and general web-search fallback",
-        "Validate citation context expansion and applicability checks on representative problems",
+        "Validate real web-model use of theorem and fixed-provider paper retrieval on target network connectivity",
+        "Validate reference source/context expansion, reference_audit dispositions, and applicability checks on representative citation-heavy problems",
         "Manually assess whether sequential reasoning domains retain the target 95-percent methodology behavior"
       ]
     },
@@ -378,10 +426,14 @@
         "Resume, cancel, and steering checkpoints"
       ],
       "completed_evidence": [
-        "SQLite WAL store persists runs, domains, capabilities, branches, steering, and transitions",
+        "SQLite WAL store persists runs, domains, capabilities, branches, steering, transitions, migration history, projects, claims, immutable revisions, dependency/supersession edges, project-run links, frozen project snapshots, proof manifests, references/source snapshots, and reference audits",
+        "State schema migration recognizes unversioned baseline databases, migrates additively to v0.2 schema version 2, preserves old runs, and fails closed on a newer unsupported database version",
         "HMAC capabilities bind OAuth owner, run, domain, role, epoch, state, permissions, expiry, and revocation",
         "Frozen snapshots, branch-local ACL, sealing, capability revocation, and join barriers are implemented",
-        "Verifier firewall and server-computed verdict are implemented",
+        "Protocol-2 project runs freeze verified project revisions at run start; proof dependencies must come from that snapshot, while the verifier receives only proof-declared frozen dependencies and not wider project research state",
+        "Verifier firewall, server-computed verdict, and mechanical missing/unresolved material-reference gaps are implemented",
+        "Compact verified routing reuses existing roles/states, keeps LaTeX/verifier/finalizer mandatory, supports assembler escalation, and automatically enters full explore after a second wrong compact verifier result",
+        "Mechanical project promotion is downstream of finalization, immutable/idempotent by source run, propagates dependency conditions, and records optimistic-concurrency conflicts without invalidating the verified mathematical run",
         "Browser-independent status, resume, cancel, and checkpoint steering are implemented"
       ],
       "remaining": [
@@ -405,9 +457,11 @@
         "Required-policy compilation executes in a network-isolated bubblewrap scratch workspace; the original private run directory is absent from the compiler namespace",
         "A regression proves that an absolute host-only document class cannot be loaded by model-generated TeX",
         "Only the mechanical finalizer can create proof_verified.tex",
+        "Protocol-2 finalization also preserves structured proof_manifest and reference_audit artifacts without using either as a substitute for mathematical verification",
         "Final LaTeX can be returned through owner-authorized rethlas_artifact(action=get), with the old rethlas_get_artifact name retained as a hidden compatibility alias",
         "The controlled private-to-native artifact bridge automatically writes final_tex when MCP rethlas_step reaches done, defaulting to rethlas-output/<run_id>/proof_verified.tex; identical retries are idempotent and different content is never overwritten automatically",
-        "rethlas_artifact(action=export) handles alternate workspace-relative .tex destinations; overwrites require an expected SHA-256 baseline, and the old rethlas_export_final name remains a hidden compatibility alias"
+        "rethlas_artifact(action=export) handles alternate workspace-relative .tex destinations; overwrites require an expected SHA-256 baseline, and the old rethlas_export_final name remains a hidden compatibility alias",
+        "Project owners can retrieve/export portable project_manifest JSON and project_summary_tex generated from registry facts while excluding private generation/branch/verifier reasoning, OAuth material, and capabilities"
       ],
       "remaining": [
         "Validate required latexmk policy with every intended target LaTeX distribution",
@@ -430,15 +484,16 @@
         "95-percent Rethlas behavior acceptance suite"
       ],
       "completed_evidence": [
-        "70 deterministic and local integration tests pass",
+        "88 deterministic and local integration tests pass",
         "Loopback DCR to OAuth authorization to PKCE token to MCP tools/list passes",
         "Modern mirror-header and result-shaping tests pass",
         "Zero-guess methodology contract tests cover every model-active state, validate every documented submission example against its declared schema, reject string-to-character-array coercion in plan fields, preserve plan dependencies, recover from write-time and commit-time validation errors with explicit retryable/fresh-capability semantics, retain accepted writes without requiring replay, keep stale-capability permission failures hard, and drive a complete easy rethlas_start -> rethlas_step -> done run with automatic proof_verified.tex export without any schema-correction turn",
+        "v0.2 regression coverage exercises additive state migration/newer-schema fail-closed behavior, owner-scoped project controls, compact verified completion and escalation, immutable/idempotent conditional project promotion, concurrent promotion conflict isolation, portable project artifacts, proof-manifest frozen dependencies, mechanical reference-audit gaps, fixed-provider paper normalization/provider denial, schema const/oneOf/anyOf support, and native termination provenance",
         "Dangerous path confinement, native fail-closed execution, packaged bubblewrap attestation/private-canary denial, generic PATH/symlink/explicit-root toolchain discovery, canonical overlap denials, helper-side revalidation, read-only mount enforcement, branch barrier, complete screening/join contracts, verifier denial/audit prerequisites, owner-bound capability, wrong-verdict, finalization, automatic run-specific workspace export, idempotent terminal retry, isolated LaTeX, external retrieval normalization, and debug redaction tests pass",
         "scripts/run_local_checks.py writes local-validation.json"
       ],
       "remaining": [
-        "All nine checks in manual-validation.json remain pending after push",
+        "All ten checks in manual-validation.json remain pending after push",
         "No local result is accepted as complete browser/target-PC/95-percent validation"
       ]
     },
@@ -446,7 +501,7 @@
       "id": "P8",
       "name": "Packaging and local deployment",
       "weight_percent": 5,
-      "status": "local_release_ready_remote_pending",
+      "status": "v0_2_local_release_ready_remote_manual_pending",
       "tasks": [
         "Single-package installation",
         "No Codex dependency verification",
@@ -465,18 +520,21 @@
         "re_ctm-0.1.0.dev4 built as sdist and wheel and installed into a clean virtual environment; with only native_mode=dangerous and no backend/attestation environment flags, the installed runtime automatically selected Bubblewrap, passed startup hard-isolation attestation, and executed the host-installed SageMath, Magma, and ordinary shell commands successfully while retaining private-vault isolation",
         "re_ctm-0.1.0.dev5 built as sdist and wheel and installed into a clean virtual environment; an arbitrary non-PATH Executables-style toolchain supplied through RE_CTM_NATIVE_EXEC_ALLOW_ROOTS executed by name, host PATH SageMath and Magma still executed, ordinary shell execution passed, the effective plan was reported, and writes to the exposed toolchain were denied",
         "re_ctm-0.1.0.dev6 built as sdist and wheel and installed into a clean virtual environment; the installed package retained exactly 24 public tools, the rethlas_step public description advertised zero-guess task contracts, and embedded assess/propose_plans/verify/repair tasks all exposed write_contract, commit_payload_schema, step_protocol, and the corrected planning payload/write semantics",
+        "v0.2 deployment documentation records state-schema migration/protocol compatibility, private project-registry boundaries, compact verification invariants, proof/reference artifacts, registry promotion semantics, fixed-provider retrieval, and termination provenance",
+        "re_ctm-0.2.0 was built as sdist and wheel and installed into a clean virtual environment; the installed CLI reports re-ctm 0.2.0, exposes exactly 24 public tools, preserves CTM contract SHA-256 17896146c5c024a2f81174b5869e9861b452419066500ac4e0a0c1b32d442ab4, opens state schema 2, completes a compact project-linked proof to done, promotes one VERIFIED revision, and returns a portable project manifest",
+        "A clean installed 0.2.0 HTTP service passed the redacted DCR/PKCE OAuth-MCP smoke (9/9 checks) and a separate authenticated MCP tools/call smoke created a project/claim, completed a protocol-2 compact proof, mechanically promoted the claim to VERIFIED, returned a private-reasoning-free project manifest, and wrote proof_verified.tex to the workspace",
         "The earlier installed-service smoke started without RE_CTM_SERVER_URL or RE_CTM_OAUTH_PASSWORD on loopback, generated a 43-character local-terminal OAuth authorization key with no structured-state leak, and resolved Cloudflare-style forwarded metadata to the matching public trycloudflare.com origin"
       ],
       "remaining": [
         "Push the repository and observe first remote CI on GitHub",
-        "Complete target-PC setup documentation from the actual manual-validation results"
+        "Complete MV-010 target/browser Verified Research Workspace acceptance and remaining target-PC checks"
       ]
     }
   ],
   "progress": {
-    "overall_percent": 84,
-    "implementation_percent": 93,
-    "deterministic_local_validation_percent": 83,
+    "overall_percent": 90,
+    "implementation_percent": 98,
+    "deterministic_local_validation_percent": 95,
     "post_push_manual_acceptance_percent": 0,
     "target_95_percent_equivalence_verified": false,
     "completed_phase_ids": [
@@ -486,21 +544,16 @@
       "P5"
     ],
     "current_phase_id": "P3/P4/P6/P7/P8",
-    "current_focus": "CTM native compatibility remains exact at 18 native tools and the Rethlas surface remains six façade tools. Native CLI compatibility is application-agnostic, while every model-active Rethlas task now exposes a zero-guess write/commit schema plus a valid submission example/template. Server-derived workflow facts are no longer redundantly echoed as required writes, and recoverable validation/conflict corrections explicitly return a fresh capability, retryability, failed-write/retained-write information, and no-replay guidance. Nine real webpage/target-PC/compatibility/methodology acceptance checks remain post-push.",
+    "current_focus": "Re-CTM v0.2.0 Verified Research Workspace is locally release-validated and checkpoint-committed: source tests, engineering graph, JSON audits, canonical CTM contract, clean wheel installation, OAuth/MCP installed-service smoke, and authenticated HTTP project/compact/finalization smoke pass while the exact 18-tool CTM prefix and six-tool Rethlas façade remain unchanged. The remaining boundary is a normal fast-forward push followed by ten post-push browser/target-PC/manual acceptance checks.",
     "next_actions": [
-      "Push the latest compatibility checkpoint to origin/main using the authenticated GitHub credential",
-      "Observe the first GitHub Actions run after the push",
-      "Run all checks in manual-validation.json and attach redacted evidence",
-      "Run the packaged Bubblewrap isolation harness with representative --allow-root values on each target PC and attach redacted evidence",
-      "Run ordinary natural-language mathematical problems through the real webpage client and confirm it selects rethlas_start without tool-name prompting",
-      "In a fresh webpage/model context with no prior protocol knowledge, complete an easy Rethlas run by following only the returned zero-guess task contracts and confirm there are no JSON/schema correction turns",
-      "Validate automatic workspace export plus rethlas_artifact alternate-path behavior from the real webpage host"
+      "Push the v0.2.0 checkpoint with a normal fast-forward push and observe remote CI",
+      "After push, observe CI and execute all checks in manual-validation.json including MV-010"
     ]
   },
   "local_validation": {
     "report": "local-validation.json",
     "last_result": "passed",
-    "test_count": 70,
+    "test_count": 88,
     "graph_metrics": {
       "vertices": 31,
       "edges": 60,
@@ -530,6 +583,16 @@
       "24-tool public catalog exposes the exact 18 CTM native prefix plus six Rethlas façade tools, while hidden legacy Rethlas aliases remain callable through MCP tools/call",
       "Direct screening uses server-issued plan/subgoal ids, retains partial progress, reports exact missing ids, derives plan/outcome/branch-set fields server-side, and treats validation/conflict corrections as recoverable rethlas_step submissions",
       "Zero-guess Rethlas task contracts across assess/explore/propose_plans/direct_proving/branch/join/failure/replan/assemble/verify/repair, including exact logical-write content schemas, exact commit payload schemas, schema-valid examples/templates, strict plan list typing with dependencies, server-derived-record non-duplication, write-time retained-progress recovery, explicit retryable/recoverable semantics, and hard stale-capability failures",
+      "Versioned additive StateStore migration to schema 2, migration-history recording, preservation of unversioned baseline runs, and fail-closed handling of newer unsupported databases",
+      "Owner-scoped private project/claim registry with immutable revisions, frozen project snapshots, proof-manifest dependency validation, mechanical VERIFIED/CONDITIONAL promotion, conditional-hypothesis propagation, idempotent source-run promotion, optimistic concurrency conflict isolation, and portable project artifacts without private reasoning",
+      "Protocol-2 compact verified routing: server-owned compact/full selection, assess-to-assemble fast path, mandatory LaTeX/verifier/finalizer gates, assembler escalation, and automatic full explore after a second wrong compact verifier result",
+      "Protocol-2 reference provenance: stable reference ids, immutable source snapshots/hashes, proof_manifest material-reference declarations, proof-bound structured verifier dispositions with explicit evidence_basis/evidence_locator, evidence-consistency checks, and server-inserted gaps for missing/unresolved material reference audits",
+      "Stored discovery metadata cannot masquerade as original-paper inspection: stored_source_snapshot SOURCE_VERIFIED is limited to inline/source-body snapshots, while theorem/paper discovery references require a separately identified external source inspection or an independent derivation",
+      "Typed rethlas_retrieve theorem/paper operations with fixed-provider OpenAlex normalization, arbitrary-provider rejection, cross-host redirect rejection, author/title/keywords-only paper search, and source-trust external_unverified semantics",
+      "Tool-schema const/oneOf/anyOf validation required by typed v0.2 façade operations",
+      "Superseded VERIFIED/CONDITIONAL revisions remain available in frozen project snapshots as historical mathematical dependencies even when a newer OPEN revision is active",
+      "Project manifest export removes owner/OAuth binding data and includes content-minimized revision provenance; project_summary_tex is blocked by the same static LaTeX external-file/shell safety rules when an OPEN statement is unsafe",
+      "Registry promotion is a non-fatal second phase after mathematical DONE: promotion errors are recorded and retried idempotently on later terminal rethlas_step calls without re-running or invalidating the verified proof",
       "Native workspace boundary and fail-closed execution",
       "Reference Linux bubblewrap helper attestation and private-vault canary denial",
       "Application-agnostic Native Toolchain Exposure Policy: arbitrary Conda-style, bin/Executables-style, PATH-symlink, and explicit roots; safe-mode explicit PATH extension; canonical de-duplication; ancestor collapse; relative/missing/broad/workspace/data/private overlap denial; private-target symlink exclusion; helper-side defense-in-depth; read-only mutation denial; content-minimized and operator-detailed diagnostics",
@@ -545,7 +608,10 @@
       "Wheel build, clean installation, installed helper version, and installed helper attestation",
       "Installed dev3 service smoke covering redacted OAuth DCR/PKCE, legacy MCP, modern mirror headers, exactly 24 public tools, hidden legacy Rethlas alias call compatibility, and dangerous non-inheritance",
       "Installed dev5 wheel smoke covering automatic Bubblewrap attestation, generic explicit non-PATH tool execution, host PATH SageMath and Magma, ordinary shell execution, exposure-plan diagnostics, and read-only toolchain enforcement",
-      "Installed dev6 wheel smoke covering exactly 24 public tools plus packaged zero-guess Rethlas write/commit contracts and corrected planning semantics"
+      "Installed dev6 wheel smoke covering exactly 24 public tools plus packaged zero-guess Rethlas write/commit contracts and corrected planning semantics",
+      "Native command termination provenance distinguishes Re-CTM timeout/explicit kill/parent shutdown from externally observed signals without changing the CTM lifecycle",
+      "Installed v0.2.0 wheel smoke covers re-ctm --version, state schema 2, exactly 24 public tools, unchanged CTM contract digest, compact project completion, VERIFIED promotion, project manifest retrieval, and automatic proof_verified.tex export",
+      "Installed v0.2.0 HTTP service smoke covers DCR/PKCE OAuth, legacy and modern MCP, authenticated project/claim tools/call, protocol-2 compact proof completion, mechanical project promotion, project manifest retrieval, and workspace final-artifact delivery"
     ],
     "explicitly_not_validated": [
       "Final webpage MCP host compatibility",
@@ -553,6 +619,8 @@
       "Every proprietary/site-local toolchain packaging layout and license/runtime-data arrangement on every target PC",
       "Full target-PC behavior parity for every edge case of the reference Coding Tools MCP 18-tool implementation (MV-009)",
       "Target-client external theorem/web retrieval quality and source-context review",
+      "Real target-network OpenAlex paper-search/lookup quality and source-context usefulness beyond deterministic fixed-provider normalization tests",
+      "Production-copy database migration and real browser Verified Research Workspace behavior in MV-010",
       "Long multi-turn mathematical quality",
       "Fresh-context-equivalent cognitive independence",
       "Every intended target LaTeX distribution",
@@ -571,19 +639,19 @@
       "basis": "Identity confirmed from public commits owned by GitHub account I0amLK; configured only in this repository."
     },
     "remote": "https://github.com/I0amLK/Re-CTM.git",
-    "push_status": "zero_guess_contract_committed_fast_forward_ready",
+    "push_status": "v0_2_checkpoint_committed_remote_pending",
     "latest_local_commit": "Resolve with `git rev-parse HEAD`; the ledger intentionally avoids a self-referential commit hash.",
     "push_attempt": {
       "transport": "https",
-      "remote_observed_head": "825d05b893f23cbdff80a77803db0b4118ca523f",
-      "result": "zero_guess_contract_committed_fast_forward_ready",
-      "reason": "A fresh ls-remote on 2026-08-29 confirms GitHub main is 825d05b (dev5 generic toolchain exposure). The dev6 zero-guess Rethlas contract checkpoint is a linear continuation, so the remaining action after the local commit is an authenticated normal push with no pull, merge, rebase, or force.",
+      "remote_observed_head": "2ac0f5956f4c0946270a7f962496231939dbfeb5",
+      "result": "v0_2_checkpoint_committed_remote_pending",
+      "reason": "A fresh ls-remote on 2026-08-30 confirmed GitHub main and origin/main at 2ac0f59 before the v0.2.0 checkpoint. The locally committed v0.2.0 release is a linear continuation, so the remaining remote action is a normal fast-forward push with no pull/merge/rebase/force operation required.",
       "ssh_fallback": "not_needed_for_current_remote_state"
     },
     "initial_files": [
       "All current source, tests, graph, debug, validation, and planning files are intended for the initial commit."
     ],
-    "working_tree_note": "After the dev6 zero-guess contract checkpoint is committed, the only intended remaining worktree entry is the intentionally untouched untracked user artifact pushout_abelianization_exact_sequence.tex, which is not part of the Re-CTM source commit."
+    "working_tree_note": "After the v0.2.0 checkpoint commit, the intentionally untouched untracked user artifact pushout_abelianization_exact_sequence.tex remains outside the Re-CTM source commit and must remain unstaged."
   },
   "engineering_debug_notes": [
     {

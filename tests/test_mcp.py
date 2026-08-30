@@ -446,7 +446,7 @@ class MCPDispatcherTestCase(unittest.TestCase):
         assess = self.tools.call("rethlas_step", {"run_id": run_id}, self.principal)["structuredContent"]
         self.assertEqual(assess["state"], "assess")
         self.assertEqual(assess["task"]["minimal_submission"]["action"], "assessment_complete")
-        explore = self.tools.call(
+        assembled = self.tools.call(
             "rethlas_step",
             {
                 "run_id": run_id,
@@ -455,65 +455,13 @@ class MCPDispatcherTestCase(unittest.TestCase):
             },
             self.principal,
         )["structuredContent"]
-        self.assertNotIn("error", explore.get("submission", {}))
-        self.assertEqual(explore["state"], "explore")
-
-        planning = self.tools.call(
-            "rethlas_step",
-            {
-                "run_id": run_id,
-                "capability": explore["capability"],
-                **explore["task"]["minimal_submission"],
-            },
-            self.principal,
-        )["structuredContent"]
-        self.assertNotIn("error", planning.get("submission", {}))
-        self.assertEqual(planning["state"], "propose_plans")
-
-        direct = self.tools.call(
-            "rethlas_step",
-            {
-                "run_id": run_id,
-                "capability": planning["capability"],
-                **planning["task"]["minimal_submission"],
-            },
-            self.principal,
-        )["structuredContent"]
-        self.assertNotIn("error", direct.get("submission", {}))
-        self.assertEqual(direct["state"], "direct_proving")
-        active = direct["context"]["active_plans"]
-        screening = {
-            plan["plan_id"]: {
-                subgoal["subgoal_id"]: {
-                    "status": "solved",
-                    "summary": "For this tautological test problem, the stated subgoal is immediate.",
-                }
-                for subgoal in plan["subgoals"]
-            }
-            for plan in active
-        }
-        assembled = self.tools.call(
-            "rethlas_step",
-            {
-                "run_id": run_id,
-                "capability": direct["capability"],
-                "writes": [
-                    {
-                        "resource": "memory:generation:proof_steps",
-                        "content": {"summary": "Reflexivity proves the target equality."},
-                    }
-                ],
-                "action": direct["task"]["commit_action"],
-                "payload": {
-                    "screening": screening,
-                    "selected_plan_id": active[0]["plan_id"],
-                    "proof_route": "Use reflexivity of equality: every object equals itself, hence $1=1$.",
-                },
-            },
-            self.principal,
-        )["structuredContent"]
         self.assertNotIn("error", assembled.get("submission", {}))
         self.assertEqual(assembled["state"], "assemble")
+        self.assertEqual(assembled["context"].get("project_context"), None)
+        self.assertIn(
+            "proof_manifest",
+            assembled["task"]["required_records_for_outcome"]["proof"],
+        )
 
         proof = (
             "\\documentclass{article}\n"
@@ -529,9 +477,21 @@ class MCPDispatcherTestCase(unittest.TestCase):
             {
                 "run_id": run_id,
                 "capability": assembled["capability"],
-                "writes": [{"resource": "proof", "content": proof}],
+                "writes": [
+                    {"resource": "proof", "content": proof},
+                    {
+                        "resource": "proof_manifest",
+                        "content": {
+                            "target_statement_tex": r"$1=1$.",
+                            "dependency_revision_ids": [],
+                            "reference_ids": [],
+                            "conditional_hypotheses": [],
+                            "computational_evidence": [],
+                        },
+                    },
+                ],
                 "action": assembled["task"]["commit_action"],
-                "payload": {},
+                "payload": {"outcome": "proof"},
             },
             self.principal,
         )["structuredContent"]
