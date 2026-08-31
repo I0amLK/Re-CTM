@@ -1,0 +1,283 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2026-08-30T16:32:00.923325Z",
+  "backend": "bubblewrap",
+  "workspace": "/home/lk/桌面/tempcoding/Re-CTM",
+  "data_root": "/tmp/coding-tools-mcp/22f4588e2aced8a8/8I6Mw8ALQWXQvPSR/home/.re-ctm",
+  "private_root": "/tmp/coding-tools-mcp/22f4588e2aced8a8/8I6Mw8ALQWXQvPSR/home/.re-ctm/private",
+  "toolchain_exposure": {
+    "policy": "system_plus_path_discovery_plus_explicit_roots",
+    "mount_mode": "read_only",
+    "host_path_inherited": true,
+    "auto_discovery_enabled": true,
+    "explicit_root_count": 0,
+    "discovered_root_count": 5,
+    "resolved_read_only_root_count": 5,
+    "root_fingerprints": [
+      "c99a4fa49a2f03e1",
+      "5de3da610d6fd958",
+      "fc54966ce73683a1",
+      "b392ae9e62cc6ec0",
+      "5391f686ba53178c"
+    ],
+    "explicit_roots": [],
+    "discovered_roots": [
+      "/home/lk/.cache/uv/archive-v0/COfW5iT-ThlLKAgs",
+      "/home/lk/.codex/packages/standalone/releases/0.149.0-x86_64-unknown-linux-musl",
+      "/home/lk/.local",
+      "/home/lk/magma",
+      "/home/lk/miniconda3"
+    ],
+    "resolved_read_only_roots": [
+      "/home/lk/.cache/uv/archive-v0/COfW5iT-ThlLKAgs",
+      "/home/lk/.codex/packages/standalone/releases/0.149.0-x86_64-unknown-linux-musl",
+      "/home/lk/.local",
+      "/home/lk/magma",
+      "/home/lk/miniconda3"
+    ],
+    "sandbox_path": "/home/lk/.cache/uv/archive-v0/COfW5iT-ThlLKAgs/bin:/home/lk/.local/bin:/home/lk/miniconda3/bin:/home/lk/miniconda3/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/usr/games:/usr/local/games"
+  },
+  "checks": [
+    {
+      "name": "helper_attestation",
+      "passed": true,
+      "details": {
+        "attestation": {
+          "backend": "bubblewrap",
+          "backend_version": "bubblewrap 0.9.0",
+          "capabilities_dropped": true,
+          "forbidden_paths_hidden": true,
+          "hard_isolation": true,
+          "ipc_namespace": true,
+          "mount_namespace": true,
+          "nested_user_namespaces_disabled": true,
+          "network_isolated": true,
+          "no_privilege_escalation": true,
+          "parent_environment_cleared": true,
+          "pid_namespace": true,
+          "private_vault_mounted": false,
+          "toolchain_read_only_root_count": 5,
+          "toolchain_roots_validated": true,
+          "user_namespace": true,
+          "uts_namespace": true,
+          "workspace_mount": "/workspace",
+          "workspace_mounted": true,
+          "toolchain_host_path_inherited": true
+        }
+      }
+    },
+    {
+      "name": "workspace_is_mounted",
+      "passed": true,
+      "details": {
+        "result": {
+          "status": "exited",
+          "exit_code": 0,
+          "signal": null,
+          "timed_out": false,
+          "stdout": "True\n",
+          "stderr": "",
+          "attestation": {
+            "backend": "bubblewrap",
+            "backend_version": "bubblewrap 0.9.0",
+            "capabilities_dropped": true,
+            "forbidden_paths_hidden": true,
+            "hard_isolation": true,
+            "ipc_namespace": true,
+            "mount_namespace": true,
+            "nested_user_namespaces_disabled": true,
+            "network_isolated": true,
+            "no_privilege_escalation": true,
+            "parent_environment_cleared": true,
+            "pid_namespace": true,
+            "private_vault_mounted": false,
+            "toolchain_read_only_root_count": 5,
+            "toolchain_roots_validated": true,
+            "user_namespace": true,
+            "uts_namespace": true,
+            "workspace_mount": "/workspace",
+            "workspace_mounted": true
+          }
+        }
+      }
+    },
+    {
+      "name": "dangerous_cannot_read_private_canary",
+      "passed": true,
+      "details": {
+        "result": {
+          "status": "exited",
+          "exit_code": 0,
+          "signal": null,
+          "timed_out": false,
+          "stdout": "False\nHIDDEN\n",
+          "stderr": "",
+          "attestation": {
+            "backend": "bubblewrap",
+            "backend_version": "bubblewrap 0.9.0",
+            "capabilities_dropped": true,
+            "forbidden_paths_hidden": true,
+            "hard_isolation": true,
+            "ipc_namespace": true,
+            "mount_namespace": true,
+            "nested_user_namespaces_disabled": true,
+            "network_isolated": false,
+            "no_privilege_escalation": true,
+            "parent_environment_cleared": true,
+            "pid_namespace": true,
+            "private_vault_mounted": false,
+            "toolchain_read_only_root_count": 5,
+            "toolchain_roots_validated": true,
+            "user_namespace": true,
+            "uts_namespace": true,
+            "workspace_mount": "/workspace",
+            "workspace_mounted": true
+          }
+        },
+        "canary_sha256": "ea85410eeb6f0d791a37a42f932519bdca9ff18a02490ebdc10481b2bc3e3d2a"
+      }
+    },
+    {
+      "name": "parent_secret_environment_is_cleared",
+      "passed": true,
+      "details": {
+        "result": {
+          "status": "exited",
+          "exit_code": 0,
+          "signal": null,
+          "timed_out": false,
+          "stdout": "CLEARED\n",
+          "stderr": "",
+          "attestation": {
+            "backend": "bubblewrap",
+            "backend_version": "bubblewrap 0.9.0",
+            "capabilities_dropped": true,
+            "forbidden_paths_hidden": true,
+            "hard_isolation": true,
+            "ipc_namespace": true,
+            "mount_namespace": true,
+            "nested_user_namespaces_disabled": true,
+            "network_isolated": false,
+            "no_privilege_escalation": true,
+            "parent_environment_cleared": true,
+            "pid_namespace": true,
+            "private_vault_mounted": false,
+            "toolchain_read_only_root_count": 5,
+            "toolchain_roots_validated": true,
+            "user_namespace": true,
+            "uts_namespace": true,
+            "workspace_mount": "/workspace",
+            "workspace_mounted": true
+          }
+        }
+      }
+    },
+    {
+      "name": "dangerous_can_write_only_the_native_workspace",
+      "passed": true,
+      "details": {
+        "result": {
+          "status": "exited",
+          "exit_code": 0,
+          "signal": null,
+          "timed_out": false,
+          "stdout": "",
+          "stderr": "",
+          "attestation": {
+            "backend": "bubblewrap",
+            "backend_version": "bubblewrap 0.9.0",
+            "capabilities_dropped": true,
+            "forbidden_paths_hidden": true,
+            "hard_isolation": true,
+            "ipc_namespace": true,
+            "mount_namespace": true,
+            "nested_user_namespaces_disabled": true,
+            "network_isolated": false,
+            "no_privilege_escalation": true,
+            "parent_environment_cleared": true,
+            "pid_namespace": true,
+            "private_vault_mounted": false,
+            "toolchain_read_only_root_count": 5,
+            "toolchain_roots_validated": true,
+            "user_namespace": true,
+            "uts_namespace": true,
+            "workspace_mount": "/workspace",
+            "workspace_mounted": true
+          }
+        }
+      }
+    },
+    {
+      "name": "safe_mode_has_isolated_network_namespace",
+      "passed": true,
+      "details": {
+        "result": {
+          "status": "exited",
+          "exit_code": 0,
+          "signal": null,
+          "timed_out": false,
+          "stdout": "['lo']\n",
+          "stderr": "",
+          "attestation": {
+            "backend": "bubblewrap",
+            "backend_version": "bubblewrap 0.9.0",
+            "capabilities_dropped": true,
+            "forbidden_paths_hidden": true,
+            "hard_isolation": true,
+            "ipc_namespace": true,
+            "mount_namespace": true,
+            "nested_user_namespaces_disabled": true,
+            "network_isolated": true,
+            "no_privilege_escalation": true,
+            "parent_environment_cleared": true,
+            "pid_namespace": true,
+            "private_vault_mounted": false,
+            "toolchain_read_only_root_count": 5,
+            "toolchain_roots_validated": true,
+            "user_namespace": true,
+            "uts_namespace": true,
+            "workspace_mount": "/workspace",
+            "workspace_mounted": true
+          }
+        }
+      }
+    },
+    {
+      "name": "command_timeout_is_enforced",
+      "passed": true,
+      "details": {
+        "result": {
+          "status": "timeout",
+          "exit_code": null,
+          "signal": "SIGTERM",
+          "timed_out": true,
+          "stdout": "",
+          "stderr": "",
+          "attestation": {
+            "backend": "bubblewrap",
+            "backend_version": "bubblewrap 0.9.0",
+            "capabilities_dropped": true,
+            "forbidden_paths_hidden": true,
+            "hard_isolation": true,
+            "ipc_namespace": true,
+            "mount_namespace": true,
+            "nested_user_namespaces_disabled": true,
+            "network_isolated": true,
+            "no_privilege_escalation": true,
+            "parent_environment_cleared": true,
+            "pid_namespace": true,
+            "private_vault_mounted": false,
+            "toolchain_read_only_root_count": 5,
+            "toolchain_roots_validated": true,
+            "user_namespace": true,
+            "uts_namespace": true,
+            "workspace_mount": "/workspace",
+            "workspace_mounted": true
+          }
+        }
+      }
+    }
+  ],
+  "passed": true,
+  "operator_acknowledgement": "A passing result is target-specific release evidence. The built-in Bubblewrap backend still performs mandatory fail-closed attestation at every startup."
+}

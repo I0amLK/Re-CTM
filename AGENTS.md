@@ -27,6 +27,8 @@ Re-CTM combines a native CMT plane and a Rethlas workflow plane in one OAuth MCP
 - Do not make the model duplicate server-derived workflow facts. If commit payload is authoritative and the server creates the canonical memory record (for example decomposition plans, failure synthesis, or replanning decisions), expose an empty `write_contract` for that fact instead of also requiring a logical write.
 - Direct-plan screening must use server-issued plan/subgoal identifiers. Coverage remains mandatory, but partial screening submissions are retained and report missing ids; plan status, overall branch-vs-solved outcome, and the all-active-plan branch set are server-derived rather than echoed by the model.
 - When `rethlas_step` returns a fresh task capability after a recoverable validation/conflict correction, set `recoverable=true` and retryable semantics explicitly, revoke the superseded capability, identify whether successful writes were retained, and instruct the client not to replay retained records. Permission/security failures remain hard failures.
+- Treat every workflow capability as an opaque, immutable server-issued handle. Clients must copy `run_id` and `capability` verbatim from the same current task envelope; they must never decode, edit, normalize, concatenate, synthesize, or pair a capability with another run id. The server must reject an envelope mismatch before any logical write, recovery action, or next-task issuance.
+- Signed capability claims and the persisted capability registry are two independent integrity sources. Validation must fail closed if run/domain/role/epoch/state/permissions/issued-at/expiry facts in the signed handle disagree with the registered nonce record, even when the HMAC itself is valid.
 - Branch domains read one frozen snapshot and their own branch only until every branch is sealed and the join barrier opens.
 - Sealing a domain revokes its capabilities.
 - Verifier domains cannot read generation memory, branch internals, steering history, join internals, or generator confidence.
@@ -42,6 +44,16 @@ Re-CTM combines a native CMT plane and a Rethlas workflow plane in one OAuth MCP
 - On terminal MCP `rethlas_next`, export the mechanically finalized bytes through the controlled bridge to the run's workspace-relative path. The default is `rethlas-output/<run_id>/proof_verified.tex`; identical retries are idempotent and different content must never be overwritten automatically.
 - The final artifact is self-contained LaTeX; Zola and Markdown delivery are out of scope.
 - Portable project manifests must omit owner/OAuth/capability/private-reasoning material. Generated project-summary LaTeX must pass the same static external-file/shell-safety checks before export.
+
+## Code quality and optimization governance
+
+- Read and follow `docs/CODE_QUALITY.md` before cleanup, refactoring, deduplication, modularization, performance work, or broad naming/format changes.
+- The governing sentence is: make only the smallest code improvement whose value can be demonstrated through functional correctness, security boundaries, reliability, maintainability, or measured performance.
+- Do not optimize for aesthetics, line count, abstraction count, or novelty. A large function/module is a review signal, not an automatic command to split it.
+- Every optimization must be represented in `code-optimization-graph.json` before implementation with evidence, functional outcome, scope, non-goals, acceptance criteria, validation commands, dependencies, risk, stop condition, and rollback.
+- `approved` work changes to `in_progress` before code modification. `completed`, `rejected`, and `superseded` nodes require an append-only matching receipt; failed checks may leave work `in_progress` or `blocked`, never `completed`.
+- Preserve unrelated history: do not mix a functional change with repository-wide formatting, mass renaming, or speculative cleanup.
+- Run `python3 scripts/validate_code_optimization_graph.py` whenever the optimization graph or receipt ledger changes. The full local check also runs this validator.
 
 ## Debugging and evidence
 

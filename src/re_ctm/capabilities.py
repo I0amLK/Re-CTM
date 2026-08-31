@@ -5,6 +5,7 @@ import fnmatch
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import time
 from dataclasses import dataclass
@@ -14,6 +15,11 @@ from .debug import DebugEventBus, token_fingerprint
 from .enums import DomainStatus, WorkflowRole, WorkflowState
 from .errors import ReCTMError
 from .storage import StateStore
+
+
+CAPABILITY_TOKEN_PATTERN = r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$"
+CAPABILITY_TOKEN_MIN_LENGTH = 80
+CAPABILITY_TOKEN_MAX_LENGTH = 8192
 
 
 @dataclass(frozen=True)
@@ -151,14 +157,27 @@ class CapabilityAuthority:
         action: str,
         resource: str,
         trace_id: str,
+        expected_run_id: str | None = None,
     ) -> CapabilityClaims:
         fingerprint = token_fingerprint(token)
         try:
             payload = self._decode(token)
             claims = _claims_from_payload(payload)
+            if expected_run_id is not None and claims.run_id != expected_run_id:
+                raise _denied(
+                    "CAPABILITY_RUN_MISMATCH",
+                    "Capability and run_id must come from the same server-issued task envelope.",
+                    expected_run_id=expected_run_id,
+                    capability_run_id=claims.run_id,
+                )
             record = self.store.get_capability(claims.nonce)
             if record is None:
                 raise _denied("CAPABILITY_UNKNOWN", "Capability is not registered.")
+            if not _record_matches_claims(record, claims):
+                raise _denied(
+                    "CAPABILITY_REGISTRY_MISMATCH",
+                    "Persisted capability facts do not match the signed capability claims.",
+                )
             if record["revoked"]:
                 raise _denied(
                     "CAPABILITY_REVOKED",
@@ -270,6 +289,16 @@ class CapabilityAuthority:
         return body + "." + signature
 
     def _decode(self, token: str) -> dict[str, Any]:
+        if (
+            not isinstance(token, str)
+            or len(token) < CAPABILITY_TOKEN_MIN_LENGTH
+            or len(token) > CAPABILITY_TOKEN_MAX_LENGTH
+            or re.fullmatch(CAPABILITY_TOKEN_PATTERN, token) is None
+        ):
+            raise _denied(
+                "CAPABILITY_INVALID",
+                "Capability is malformed or has an invalid signature.",
+            )
         try:
             body, signature = token.split(".", 1)
             expected = _b64url(
@@ -431,20 +460,45 @@ def authorize_role_resource(
 
 def _claims_from_payload(payload: Mapping[str, Any]) -> CapabilityClaims:
     try:
+        required_keys = {
+            "v",
+            "nonce",
+            "run_id",
+            "owner_id",
+            "domain_id",
+            "role",
+            "epoch",
+            "state",
+            "permissions",
+            "iat",
+            "exp",
+        }
+        if set(payload) != required_keys:
+            raise ValueError("claim keys")
+        for key in ("nonce", "run_id", "owner_id", "domain_id", "role", "state"):
+            if not isinstance(payload[key], str) or not payload[key]:
+                raise ValueError(key)
+        for key in ("epoch", "iat", "exp"):
+            if not isinstance(payload[key], int) or isinstance(payload[key], bool):
+                raise ValueError(key)
         permissions = payload["permissions"]
         if not isinstance(permissions, list) or not all(isinstance(item, str) for item in permissions):
             raise ValueError("permissions")
+        if not permissions or any(not item for item in permissions):
+            raise ValueError("permissions")
+        if int(payload["epoch"]) < 0 or int(payload["iat"]) < 0 or int(payload["exp"]) <= int(payload["iat"]):
+            raise ValueError("time or epoch")
         return CapabilityClaims(
-            nonce=str(payload["nonce"]),
-            run_id=str(payload["run_id"]),
-            owner_id=str(payload["owner_id"]),
-            domain_id=str(payload["domain_id"]),
-            role=WorkflowRole(str(payload["role"])),
-            epoch=int(payload["epoch"]),
-            issued_state=WorkflowState(str(payload["state"])),
+            nonce=payload["nonce"],
+            run_id=payload["run_id"],
+            owner_id=payload["owner_id"],
+            domain_id=payload["domain_id"],
+            role=WorkflowRole(payload["role"]),
+            epoch=payload["epoch"],
+            issued_state=WorkflowState(payload["state"]),
             permissions=tuple(permissions),
-            issued_at=int(payload["iat"]),
-            expires_at=int(payload["exp"]),
+            issued_at=payload["iat"],
+            expires_at=payload["exp"],
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise _denied("CAPABILITY_INVALID", "Capability payload is incomplete.") from exc
@@ -452,6 +506,30 @@ def _claims_from_payload(payload: Mapping[str, Any]) -> CapabilityClaims:
 
 def _denied(code: str, message: str, **details: Any) -> ReCTMError:
     return ReCTMError(code, message, category="permission", details=details)
+
+
+def _record_matches_claims(record: Mapping[str, Any], claims: CapabilityClaims) -> bool:
+    permissions = record.get("permissions")
+    epoch = record.get("epoch")
+    issued_at = record.get("issued_at")
+    expires_at = record.get("expires_at")
+    return (
+        str(record.get("run_id") or "") == claims.run_id
+        and str(record.get("domain_id") or "") == claims.domain_id
+        and str(record.get("role") or "") == claims.role.value
+        and isinstance(epoch, int)
+        and not isinstance(epoch, bool)
+        and epoch == claims.epoch
+        and str(record.get("issued_state") or "") == claims.issued_state.value
+        and isinstance(permissions, list)
+        and tuple(permissions) == claims.permissions
+        and isinstance(issued_at, int)
+        and not isinstance(issued_at, bool)
+        and issued_at == claims.issued_at
+        and isinstance(expires_at, int)
+        and not isinstance(expires_at, bool)
+        and expires_at == claims.expires_at
+    )
 
 
 def _b64url(data: bytes) -> str:

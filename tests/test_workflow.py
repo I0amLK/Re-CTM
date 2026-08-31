@@ -414,6 +414,23 @@ class WorkflowTestCase(unittest.TestCase):
             )
         self.assertEqual(denied.exception.code, "CAPABILITY_OWNER_MISMATCH")
 
+    def test_signed_capability_must_match_persisted_registry_facts(self) -> None:
+        run_id = self._start()
+        task = self._next(run_id)
+        claims = self.capabilities._decode(task["capability"])
+        with self.store.transaction() as connection:
+            connection.execute(
+                "UPDATE capabilities SET permissions_json = ? WHERE nonce = ?",
+                ('["read:problem"]', claims["nonce"]),
+            )
+        with self.assertRaises(ReCTMError) as denied:
+            self.engine.read(
+                owner_id=self.owner,
+                capability=task["capability"],
+                resource="problem",
+            )
+        self.assertEqual(denied.exception.code, "CAPABILITY_REGISTRY_MISMATCH")
+
     def test_native_mode_is_not_a_workflow_capability_claim(self) -> None:
         self.assertNotIn("native_mode", CapabilityClaims.__dataclass_fields__)
 

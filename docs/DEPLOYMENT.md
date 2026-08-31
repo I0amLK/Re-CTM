@@ -2,6 +2,8 @@
 
 This document is an operational guide, not evidence that a target has passed validation. The authoritative acceptance state remains in `manual-validation.json`.
 
+Current release: **Re-CTM v0.2.1**.
+
 ## 1. Required software
 
 - Python 3.11 or newer.

@@ -1,9 +1,9 @@
 {
   "project": {
     "name": "Re-CTM",
-    "status": "v0_2_checkpoint_committed_remote_manual_pending",
+    "status": "v0_2_1_release_candidate_local_validated_uncommitted",
     "target": "A single installable OAuth MCP runtime combining exact CTM computer tools, a Rethlas-derived verified mathematical workflow, and a private cross-run Verified Research Workspace.",
-    "updated_at": "2026-08-30T05:44:00-07:00",
+    "updated_at": "2026-08-30T23:24:00-07:00",
     "source_references": {
       "cmt_local_repo": "../coding-tools-mcp",
       "rethlas_local_repo": "../Rethlas",
@@ -180,6 +180,46 @@
     {
       "id": "AD-031",
       "decision": "Keep the public catalog exactly 24 tools in v0.2.0: the exact 18 CTM prefix plus the same six Rethlas façade tools. Add project, compact, provenance, retrieval, and artifact capabilities through typed additive arguments/operations rather than multiplying public protocol tools.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-032",
+      "decision": "Govern cleanup and refactoring through a functionality-first code standard plus a machine-validated optimization graph. Every executable optimization must record evidence, functional outcome, scope, non-goals, dependencies, acceptance commands, stop/rollback conditions, and an append-only terminal receipt; reject speculative performance work, mass formatting, and line-count-driven abstraction without demonstrated product value.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-033",
+      "decision": "Make src/re_ctm/rethlas_contracts.py the authoritative source for the six public Rethlas façade names, operation/action constants, handler defaults, hidden-alias semantic mapping, and input schemas. ToolRuntime direct calls must pass the same TOOL_SPECS validation boundary as MCP calls; preserve the exported legacy catalog and exact 24-tool public order.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-034",
+      "decision": "Freeze the current Rethlas workflow authorization policy with an explicit seven-role permission/resource regression matrix before decomposing workflow or storage internals. Unknown resources remain fail-closed, verifier/branch/join/finalizer boundaries are negative-tested, and project-linked verifier visibility is limited to proof-declared frozen dependency revisions. This is a test baseline, not a permission expansion.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-035",
+      "decision": "Keep source code as the single source of truth for ReCTMError codes while mechanically auditing literal code/category/retryable semantics and a small explicit set of dynamic/variant exceptions. Permission and security errors are non-retryable hard failures; rethlas_step recovery remains limited to validation/conflict. Split provider-feature absence from retryable paper-service outages and classify cross-run reference mismatch as permission.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-036",
+      "decision": "Keep WorkflowEngine._commit_action as the single mechanical commit dispatcher but move state-specific work into named _commit_* helpers after authorization baselines are frozen. Preserve specialized branch/verifier sealing paths and intentionally keep _task_for_run centralized because it is the single protocol-2 runtime-overlay point over methodology task contracts.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-037",
+      "decision": "Separate pure SQLite migration DDL from StateStore transaction methods while preserving StateStore as the public persistence facade. Migration rollback, promotion rollback and source-run promotion idempotency are explicit regression requirements; do not split promotion/transition atomic writes merely to reduce file size.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-038",
+      "decision": "Keep documentation human-authored and audience-specific, but mechanically validate only stable cross-document facts that can cause user/operator mistakes: package version, 18+6=24 public tool contract, hidden alias count, validation entry points, and local Markdown links. Historical progress entries remain historical and are not rewritten as current facts.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-039",
+      "decision": "Release the accumulated compatibility, safety, contract, workflow, storage and documentation cleanup as patch version 0.2.1 rather than introducing a new minor feature line. Require source gates, sdist/wheel build, clean-wheel installation, packaged methodology/config checks, installed Bubblewrap attestation, and installed Sage/Magma execution before marking the patch release candidate locally validated.",
       "status": "accepted"
     }
   ],
@@ -544,16 +584,16 @@
       "P5"
     ],
     "current_phase_id": "P3/P4/P6/P7/P8",
-    "current_focus": "Re-CTM v0.2.0 Verified Research Workspace is locally release-validated and checkpoint-committed: source tests, engineering graph, JSON audits, canonical CTM contract, clean wheel installation, OAuth/MCP installed-service smoke, and authenticated HTTP project/compact/finalization smoke pass while the exact 18-tool CTM prefix and six-tool Rethlas façade remain unchanged. The remaining boundary is a normal fast-forward push followed by ten post-push browser/target-PC/manual acceptance checks.",
+    "current_focus": "Re-CTM v0.2.1 is locally release-candidate validated after the functionality-first cleanup: source gates pass, sdist/wheel build succeeds, a clean wheel reports 0.2.1 with the exact 18-tool CTM prefix plus six Rethlas façade tools and 11 hidden aliases, packaged methodology/config loading succeeds, installed Bubblewrap attestation passes, and installed SageMath/Magma execution succeeds. The release candidate is not yet committed or pushed; post-push browser/target-PC/manual acceptance remains separate.",
     "next_actions": [
-      "Push the v0.2.0 checkpoint with a normal fast-forward push and observe remote CI",
+      "Review and commit the v0.2.1 release-candidate working tree, then push with a normal fast-forward push and observe remote CI",
       "After push, observe CI and execute all checks in manual-validation.json including MV-010"
     ]
   },
   "local_validation": {
     "report": "local-validation.json",
     "last_result": "passed",
-    "test_count": 88,
+    "test_count": 117,
     "graph_metrics": {
       "vertices": 31,
       "edges": 60,
@@ -611,7 +651,8 @@
       "Installed dev6 wheel smoke covering exactly 24 public tools plus packaged zero-guess Rethlas write/commit contracts and corrected planning semantics",
       "Native command termination provenance distinguishes Re-CTM timeout/explicit kill/parent shutdown from externally observed signals without changing the CTM lifecycle",
       "Installed v0.2.0 wheel smoke covers re-ctm --version, state schema 2, exactly 24 public tools, unchanged CTM contract digest, compact project completion, VERIFIED promotion, project manifest retrieval, and automatic proof_verified.tex export",
-      "Installed v0.2.0 HTTP service smoke covers DCR/PKCE OAuth, legacy and modern MCP, authenticated project/claim tools/call, protocol-2 compact proof completion, mechanical project promotion, project manifest retrieval, and workspace final-artifact delivery"
+      "Installed v0.2.0 HTTP service smoke covers DCR/PKCE OAuth, legacy and modern MCP, authenticated project/claim tools/call, protocol-2 compact proof completion, mechanical project promotion, project manifest retrieval, and workspace final-artifact delivery",
+      "Installed v0.2.1 wheel release-candidate smoke covers re-ctm --version, exact 18+6=24 public catalog with 11 hidden aliases, packaged assess/assemble/verify/repair methodology contracts, check-config state/workflow schema 2, installed Bubblewrap hard-isolation attestation, and SageMath/Magma execution through the installed NativeRuntime"
     ],
     "explicitly_not_validated": [
       "Final webpage MCP host compatibility",
@@ -639,7 +680,7 @@
       "basis": "Identity confirmed from public commits owned by GitHub account I0amLK; configured only in this repository."
     },
     "remote": "https://github.com/I0amLK/Re-CTM.git",
-    "push_status": "v0_2_checkpoint_committed_remote_pending",
+    "push_status": "v0_2_1_release_candidate_uncommitted",
     "latest_local_commit": "Resolve with `git rev-parse HEAD`; the ledger intentionally avoids a self-referential commit hash.",
     "push_attempt": {
       "transport": "https",
@@ -651,7 +692,7 @@
     "initial_files": [
       "All current source, tests, graph, debug, validation, and planning files are intended for the initial commit."
     ],
-    "working_tree_note": "After the v0.2.0 checkpoint commit, the intentionally untouched untracked user artifact pushout_abelianization_exact_sequence.tex remains outside the Re-CTM source commit and must remain unstaged."
+    "working_tree_note": "The v0.2.1 release candidate is locally validated but not yet committed. The intentionally untouched untracked user artifact pushout_abelianization_exact_sequence.tex remains outside Re-CTM source changes and must remain unstaged."
   },
   "engineering_debug_notes": [
     {
@@ -767,6 +808,11 @@
       "id": "R-014",
       "risk": "PATH discovery cannot infer every hidden runtime/library/database directory of arbitrarily packaged scientific software, while overly broad roots could expose unrelated host data.",
       "mitigation": "Use application-agnostic prefix and symlink discovery for the common case, RE_CTM_NATIVE_EXEC_ALLOW_ROOTS for operator-declared split installations, one canonical overlap gate for every source, strict existence/absolute/broad-root checks, ancestor collapse, read-only mounts, helper-side revalidation, diagnostic plans, and MV-003 target evidence."
+    },
+    {
+      "id": "R-015",
+      "risk": "A client could accidentally or adversarially mix a valid workflow capability from one task/run with another run_id, or rely on permissive façade schemas that silently ignore operation-irrelevant fields, creating response confusion even when individual resource ACL checks remain sound.",
+      "mitigation": "Treat capability as an opaque immutable handle, bind run_id and capability before any rethlas_step write/recovery/advancement, compare signed claims against persisted registry facts, validate capability lexical shape, close operation/action-specific JSON schema variants, and retain cross-run/schema regressions plus MV-008 real-client evidence."
     }
   ],
   "change_log": [
@@ -889,6 +935,42 @@
     {
       "timestamp": "2026-08-29T00:26:00-07:00",
       "event": "Converted every model-active Rethlas task into a zero-guess self-describing contract after two live workflow exercises exposed hidden JSON assumptions. Added exact write_contract and commit_payload_schema data, schema-valid submissions/templates, server-derived-record non-duplication for planning/failure/replan, strict plan-array typing with dependency preservation, write-time as well as commit-time recoverable corrections with retryable/fresh-capability/retained-write guidance, hard permission-error preservation, startup methodology-contract validation, a no-schema-correction end-to-end façade regression through automatic proof_verified.tex export, 70 passing deterministic tests, PC-014/AD-023/MV-008 acceptance criteria, and a clean dev6 wheel smoke confirming the packaged contracts and 24-tool catalog."
+    },
+    {
+      "timestamp": "2026-08-30T21:26:00-07:00",
+      "event": "Hardened the Rethlas capability/JSON trust boundary after live stress testing: capability handles are now documented and schema-constrained as opaque immutable values; rethlas_step mechanically binds run_id to the signed capability before writes/recovery/advancement; validation cross-checks signed run/domain/role/epoch/state/permissions/time claims against the persisted nonce registry; typed façade oneOf branches reject irrelevant known fields; and regressions cover cross-run envelope mixing, malformed capability shapes, and registry tampering."
+    },
+    {
+      "timestamp": "2026-08-30T22:17:08-07:00",
+      "event": "Established functionality-first code-cleanup governance: added docs/CODE_QUALITY.md, a dependency-ordered code-optimization-graph.json with detailed TODOs and append-only execution receipts, a mechanical graph validator integrated into run_local_checks.py, validator regressions, and explicit rejection records for speculative micro-optimization and repository-wide cosmetic churn. No runtime protocol, database, authorization, or mathematical workflow behavior was intentionally changed."
+    },
+    {
+      "timestamp": "2026-08-30T22:33:30-07:00",
+      "event": "Completed optimization OPT-001 by extracting the six public Rethlas façade contracts into src/re_ctm/rethlas_contracts.py, centralizing operation/action/default and hidden-alias semantics, applying TOOL_SPECS validation inside ToolRuntime.call as well as MCP dispatch, and adding exhaustive façade variant/default/hidden-alias tests. The public catalog remains exactly 24 tools; an initial full-suite failure caught removal of the exported LEGACY_RETHLAS_TOOL_NAMES compatibility constant, which was restored from the centralized contract source. The final deterministic suite passed 100 tests."
+    },
+    {
+      "timestamp": "2026-08-30T22:41:30-07:00",
+      "event": "Completed optimization OPT-003 without changing production authorization: added a seven-role permission/resource matrix covering exact permission patterns, positive/negative samples, unknown-resource fail-closed behavior, role/state mismatch, verifier firewall, branch isolation, join-only sealed results, and finalizer commit-only behavior. Added a project-linked integration test proving the generator sees the frozen verified dependency set while the verifier sees only proof_manifest-declared dependency revisions; 35 targeted authorization/workflow/v0.2 tests passed."
+    },
+    {
+      "timestamp": "2026-08-30T22:51:30-07:00",
+      "event": "Completed optimization OPT-006 with a source-derived ReCTMError audit rather than a second hand-maintained code list. The auditor currently covers 151 codes and 402 static semantic points, rejects unapproved category/retryable drift, locks five intentional variants, and requires permission/security errors to remain non-retryable. Split PAPER_SEARCH_UNSUPPORTED from retryable PAPER_SEARCH_UNAVAILABLE and made REFERENCE_RUN_MISMATCH consistently permission-classified; 36 targeted error/MCP/research/v0.2 tests passed."
+    },
+    {
+      "timestamp": "2026-08-30T23:01:00-07:00",
+      "event": "Completed optimization OPT-002 by reducing WorkflowEngine._commit_action from about 404 lines to a 55-line mechanical dispatcher and extracting named state-family handlers for assessment/exploration/planning, direct screening, join/failure/replan, proof submission, verifier verdict handling, and repair. Specialized branch/verifier sealing semantics were preserved, the full local gate passed, and _task_for_run was intentionally left centralized because splitting its protocol-2 overlays would increase contract dispersion without functional benefit."
+    },
+    {
+      "timestamp": "2026-08-30T23:10:07-07:00",
+      "event": "Completed optimization OPT-004 by adding explicit migration/promotion transaction-boundary regressions and moving only pure migration DDL into src/re_ctm/storage_schema.py. StateStore remains the persistence facade, migration version 2 and schema semantics are unchanged, failed migration/promotion operations are proven to roll back, repeated source-run promotion remains idempotent, and storage.py was reduced from about 1437 to 1195 lines without splitting atomic promotion or transition writes."
+    },
+    {
+      "timestamp": "2026-08-30T23:14:00-07:00",
+      "event": "Completed optimization OPT-007 with a lightweight documentation-consistency gate rather than generated documentation. The validator derives version/tool counts from runtime contracts, checks the 0.2.0 and 18+6=24/11-hidden-alias facts across audience-appropriate documents and ledgers, validates repository-local Markdown links, and records explicit document audience boundaries in CODE_QUALITY. The full local gate passed."
+    },
+    {
+      "timestamp": "2026-08-30T23:24:00-07:00",
+      "event": "Prepared Re-CTM v0.2.1 as a patch release candidate after the functionality-first cleanup. Source local gates pass; sdist and wheel build successfully; a clean wheel reports 0.2.1 with exactly 24 public tools and 11 hidden aliases; packaged methodology and check-config load correctly; installed Bubblewrap attestation passes; and SageMath plus Magma both execute 2+3=5 through the installed NativeRuntime. The release candidate remains uncommitted/unpushed and manual post-push acceptance remains pending."
     }
   ]
 }

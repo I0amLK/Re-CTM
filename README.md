@@ -2,6 +2,8 @@
 
 Re-CTM 是一个通过网页 MCP 客户端使用的本地服务。安装后只需要运行一个 Re-CTM，不需要另外安装 Rethlas，也不需要目标电脑安装 Codex。
 
+当前发布版本：**Re-CTM v0.2.1**。
+
 最终数学任务的正式交付物是：
 
 ```text
@@ -260,6 +262,12 @@ rethlas_artifact
 `rethlas_step` 返回的当前任务现在是 **zero-guess contract**：模型不需要猜内部 JSON 结构。每个模型参与的 workflow state 都会明确给出 `write_contract`、`commit_action`、`commit_payload_schema`，以及一个最小合法 submission/template/example。Memory write 默认是一条 JSON object 记录；如果某一步由服务器从 commit payload 自动生成 canonical memory（例如 decomposition plans、failure summary、replan decision），task 会把 `write_contract` 明确设为空，避免客户端重复写同一流程事实。
 
 如果某次 `rethlas_step` 的 write 或 commit 因 validation/conflict 需要修正，服务器会返回 `submission.recoverable=true`、`retryable=true` 和新的 capability。已经成功的逻辑 writes 会明确标记为 retained，客户端应继续使用新 capability，并且**不要重放 retained writes**。权限/安全错误仍然是 hard failure，不会被这个修正机制吞掉。
+
+`capability` 是服务器签发的**不透明句柄**，不是客户端可编辑的 JSON/JWT 字段。每次提交都应从同一个当前 task envelope 原样复制 `run_id` 与 `capability`；不要解码、改写、规范化、拼接或自行构造 capability，也不要把某个 run 的 capability 与另一个 run 的 `run_id` 混用。服务器会在任何 logical write 发生前机械检查这两个 envelope 字段的绑定关系，并同时核对签名 claims 与持久化 capability registry 中的 run/domain/role/epoch/state/permissions/time facts。
+
+六个 façade 的 typed JSON schema 也按 operation/action 分支收紧：无关但“已知”的字段不再被静默忽略，必需字段必须显式存在。例如 `rethlas_artifact` 的 run artifact 读取现在必须显式给出 `artifact`，避免依赖处理器内部默认值产生 schema 与运行语义漂移。
+
+客户端处理结构化错误时以 `category` 和 `retryable` 为主，不要只猜错误字符串：`validation` 应修正请求；`conflict` 根据 `retryable` 选择协调状态或刷新后重试；`permission` / `security` 是 hard failure，不应拿同一 authority 自动重试；`not_found` 应刷新标识；`runtime` 仅在 `retryable=true` 时自动稍后重试；`internal` 应停止并报告。`rethlas_step` 只把当前 submission 内的 `validation` / `conflict` 转成带 fresh capability 的 recoverable correction，权限与安全错误不会进入该恢复路径。源码错误契约可用 `python3 scripts/audit_error_contract.py` 机械审计，避免手工维护第二份错误码表。
 
 从 **Re-CTM v0.2.0** 开始，这六个 façade 还共同提供 Verified Research Workspace：跨 run 的 project/claim registry、冻结的 project snapshot、`proof_manifest`、reference provenance/audit、paper-aware retrieval，以及不削弱 verifier 的 compact verified lane。public tool 数量仍保持 24；这些能力通过现有六个 Rethlas façade 的 typed operations 暴露，而不是继续增加协议工具。
 
@@ -551,6 +559,14 @@ re-ctm check-config
 
 ```bash
 python3 scripts/run_local_checks.py
+```
+
+代码清理和重构遵循 [docs/CODE_QUALITY.md](docs/CODE_QUALITY.md) 的功能优先规范。所有优化项目、依赖、详细 TODO、状态和执行回执记录在 `code-optimization-graph.json`；没有具体功能收益、验证标准和回滚方案的“优化”不得进入实施。
+
+单独检查优化图：
+
+```bash
+python3 scripts/validate_code_optimization_graph.py
 ```
 
 ## 19. OAuth / MCP 独立烟测

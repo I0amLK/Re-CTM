@@ -11,6 +11,42 @@ from .latex import static_latex_errors
 from .native import NativeRuntime
 from .oauth import OAuthPrincipal
 from .processes import COMMAND_BUFFER_BYTES, COMMAND_HEAD_BUFFER_DIVISOR
+from .rethlas_contracts import (
+    ARTIFACT_EXPORT,
+    ARTIFACT_GET,
+    CAPABILITY_INPUT_SCHEMA,
+    CONTROL_ACTIONS,
+    CONTROL_CANCEL,
+    CONTROL_CLAIM_CREATE,
+    CONTROL_CLAIM_REVISE,
+    CONTROL_DEFAULT_CANCEL_REASON,
+    CONTROL_PROJECT_CREATE,
+    CONTROL_STEER,
+    HIDDEN_LEGACY_ALIAS_SEMANTICS,
+    INSPECT_CLAIM,
+    INSPECT_DEPENDENCY_GRAPH,
+    INSPECT_DEFAULT_PROJECTS_LIMIT,
+    INSPECT_DEFAULT_SEARCH_LIMIT,
+    INSPECT_DEFAULT_THEOREM_SEARCH_LIMIT,
+    INSPECT_OPERATIONS,
+    INSPECT_PROJECTS,
+    INSPECT_PROJECT_STATUS,
+    INSPECT_READ,
+    INSPECT_REFERENCE_AUDIT,
+    INSPECT_SEARCH,
+    INSPECT_STATUS,
+    INSPECT_THEOREM_SEARCH,
+    LEGACY_RETHLAS_TOOL_NAMES,
+    PROJECT_ARTIFACTS,
+    RETRIEVE_DEFAULT_NUM_RESULTS,
+    RETRIEVE_DEFAULT_OPERATION,
+    RETRIEVE_DEFAULT_SEARCH_INTENT,
+    RETHLAS_TOOL_NAMES,
+    START_DEFAULT_PROBLEM_ID,
+    START_DEFAULT_REGISTER_RESULT,
+    START_DEFAULT_WORKFLOW_MODE,
+    facade_schema,
+)
 from .workflow import WorkflowEngine
 
 
@@ -85,31 +121,6 @@ CTM_NATIVE_TOOL_NAMES = (
     "git_blame",
     "request_permissions",
     "view_image",
-)
-
-LEGACY_RETHLAS_TOOL_NAMES = (
-    "rethlas_start",
-    "rethlas_next",
-    "rethlas_read",
-    "rethlas_write",
-    "rethlas_search",
-    "rethlas_retrieve",
-    "rethlas_commit",
-    "rethlas_status",
-    "rethlas_steer",
-    "rethlas_resume",
-    "rethlas_cancel",
-    "rethlas_get_artifact",
-    "rethlas_export_final",
-)
-
-RETHLAS_TOOL_NAMES = (
-    "rethlas_start",
-    "rethlas_step",
-    "rethlas_inspect",
-    "rethlas_retrieve",
-    "rethlas_control",
-    "rethlas_artifact",
 )
 
 PUBLIC_TOOL_NAMES = CTM_NATIVE_TOOL_NAMES + RETHLAS_TOOL_NAMES
@@ -332,44 +343,7 @@ TOOL_SPECS: dict[str, ToolSpec] = {
     "rethlas_start": ToolSpec(
         "Start verified mathematical workflow",
         "Call this first for every concrete mathematical proof, derivation, or verification task unless the user explicitly asks for a direct informal answer. Create a private Rethlas reasoning run; continue with rethlas_step until verification and automatic proof_verified.tex workspace delivery complete.",
-        {
-            **OBJECT,
-            "required": ["problem_tex"],
-            "properties": {
-                "problem_tex": {"type": "string", "minLength": 1},
-                "problem_id": {"type": "string"},
-                "project_id": {
-                    "type": "string",
-                    "description": "Optional owner project to snapshot and link to this run.",
-                },
-                "target_claim_id": {
-                    "type": "string",
-                    "description": "Optional claim in project_id to receive a mechanically promoted revision after finalization.",
-                },
-                "workflow_mode": {
-                    "type": "string",
-                    "enum": ["auto", "compact", "full"],
-                    "default": "auto",
-                },
-                "register_result": {"type": "boolean", "default": True},
-                "export_path": {
-                    "type": "string",
-                    "description": "Optional workspace-relative .tex destination. Defaults to rethlas-output/<run_id>/proof_verified.tex.",
-                },
-                "references": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "required": ["name", "content"],
-                        "properties": {
-                            "name": {"type": "string"},
-                            "content": {"type": "string"},
-                            "source": {"type": "string"},
-                        },
-                    },
-                },
-            },
-        },
+        facade_schema("rethlas_start"),
     ),
     "rethlas_next": ToolSpec(
         "Get next Rethlas task",
@@ -384,7 +358,7 @@ TOOL_SPECS: dict[str, ToolSpec] = {
             **OBJECT,
             "required": ["capability", "resource"],
             "properties": {
-                "capability": {"type": "string"},
+                "capability": CAPABILITY_INPUT_SCHEMA,
                 "resource": {"type": "string"},
             },
         },
@@ -397,7 +371,7 @@ TOOL_SPECS: dict[str, ToolSpec] = {
             **OBJECT,
             "required": ["capability", "resource", "content"],
             "properties": {
-                "capability": {"type": "string"},
+                "capability": CAPABILITY_INPUT_SCHEMA,
                 "resource": {"type": "string"},
                 "content": {},
             },
@@ -411,7 +385,7 @@ TOOL_SPECS: dict[str, ToolSpec] = {
             **OBJECT,
             "required": ["capability", "resource", "query"],
             "properties": {
-                "capability": {"type": "string"},
+                "capability": CAPABILITY_INPUT_SCHEMA,
                 "resource": {"type": "string"},
                 "query": {"type": "string"},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 100},
@@ -422,49 +396,7 @@ TOOL_SPECS: dict[str, ToolSpec] = {
     "rethlas_retrieve": ToolSpec(
         "Retrieve external mathematical research",
         "Use one capability-gated research façade for theorem search, paper discovery/lookup, or stored theorem context. External providers are fixed HTTPS trust domains with bounded responses; returned references remain unverified until verifier audit.",
-        {
-            **OBJECT,
-            "required": ["capability"],
-            "oneOf": [
-                {"type": "object", "required": ["query"], "properties": {"operation": {"const": "theorem_search"}}},
-                {
-                    "type": "object",
-                    "required": ["operation"],
-                    "properties": {"operation": {"const": "paper_search"}},
-                    "anyOf": [
-                        {"type": "object", "required": ["query"]},
-                        {"type": "object", "required": ["author"]},
-                        {"type": "object", "required": ["title"]},
-                        {"type": "object", "required": ["keywords"]}
-                    ]
-                },
-                {"type": "object", "required": ["operation", "query"], "properties": {"operation": {"const": "paper_lookup"}}},
-                {"type": "object", "required": ["operation", "query"], "properties": {"operation": {"const": "theorem_context"}}}
-            ],
-            "properties": {
-                "capability": {"type": "string"},
-                "query": {"type": "string", "minLength": 1},
-                "operation": {
-                    "type": "string",
-                    "enum": ["theorem_search", "paper_search", "paper_lookup", "theorem_context"],
-                    "default": "theorem_search",
-                },
-                "author": {"type": "string", "minLength": 1},
-                "title": {"type": "string", "minLength": 1},
-                "keywords": {"type": "string", "minLength": 1},
-                "search_intent": {
-                    "type": "string",
-                    "enum": [
-                        "theorem",
-                        "construction",
-                        "example",
-                        "counterexample",
-                        "background"
-                    ]
-                },
-                "num_results": {"type": "integer", "minimum": 1, "maximum": 50}
-            }
-        },
+        facade_schema("rethlas_retrieve"),
         read_only=False,
         destructive=False,
         open_world=True,
@@ -476,7 +408,7 @@ TOOL_SPECS: dict[str, ToolSpec] = {
             **OBJECT,
             "required": ["capability", "action"],
             "properties": {
-                "capability": {"type": "string"},
+                "capability": CAPABILITY_INPUT_SCHEMA,
                 "action": {"type": "string"},
                 "payload": {"type": "object"},
             },
@@ -563,155 +495,26 @@ TOOL_SPECS: dict[str, ToolSpec] = {
     ),
     "rethlas_step": ToolSpec(
         "Advance Rethlas workflow",
-        "Issue the current Rethlas task, or submit its logical writes plus commit payload and immediately return the next task. Always follow the returned task.write_contract, task.commit_payload_schema, and task minimal/example submission instead of guessing JSON shapes. Each memory write is one JSON object unless the current write_contract explicitly says otherwise. Recoverable validation/conflict corrections return a fresh capability and identify whether earlier writes were retained. Incomplete screening is accepted in place and returns exact missing plan/subgoal ids instead of failing the run.",
-        {
-            **OBJECT,
-            "required": ["run_id"],
-            "properties": {
-                "run_id": {"type": "string", "minLength": 1},
-                "capability": {"type": "string"},
-                "writes": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "required": ["resource", "content"],
-                        "properties": {
-                            "resource": {"type": "string", "minLength": 1},
-                            "content": {"description": "Match the current task.write_contract entry for this resource. Memory resources accept one JSON object per write; do not batch records as an array unless explicitly allowed by that contract."},
-                        },
-                        "additionalProperties": False,
-                    },
-                },
-                "action": {"type": "string", "description": "Use the current task.commit_action exactly."},
-                "payload": {"type": "object", "description": "Match the current task.commit_payload_schema exactly; use an empty object when the schema has no required fields."},
-            },
-        },
+        "Issue the current Rethlas task, or submit its logical writes plus commit payload and immediately return the next task. Always copy run_id and capability verbatim from the same current task envelope; capability is opaque and must never be decoded, edited, normalized, concatenated, or synthesized. Always follow the returned task.write_contract, task.commit_payload_schema, and task minimal/example submission instead of guessing JSON shapes. Each memory write is one JSON object unless the current write_contract explicitly says otherwise. Recoverable validation/conflict corrections return a fresh capability and identify whether earlier writes were retained. Incomplete screening is accepted in place and returns exact missing plan/subgoal ids instead of failing the run.",
+        facade_schema("rethlas_step"),
         destructive=True,
     ),
     "rethlas_inspect": ToolSpec(
         "Inspect Rethlas run",
         "Inspect public run status or capability-authorized logical resources/memory without changing workflow state.",
-        {
-            **OBJECT,
-            "required": ["operation"],
-            "oneOf": [
-                {"type": "object", "required": ["run_id"], "properties": {"operation": {"const": "status"}}},
-                {"type": "object", "required": ["capability", "resource"], "properties": {"operation": {"const": "read"}}},
-                {"type": "object", "required": ["capability", "resource", "query"], "properties": {"operation": {"const": "search"}}},
-                {"type": "object", "properties": {"operation": {"const": "projects"}}},
-                {"type": "object", "required": ["project_id"], "properties": {"operation": {"const": "project_status"}}},
-                {"type": "object", "required": ["claim_id"], "properties": {"operation": {"const": "claim"}}},
-                {"type": "object", "required": ["project_id", "query"], "properties": {"operation": {"const": "theorem_search"}}},
-                {"type": "object", "required": ["project_id"], "properties": {"operation": {"const": "dependency_graph"}}},
-                {"type": "object", "required": ["run_id"], "properties": {"operation": {"const": "reference_audit"}}}
-            ],
-            "properties": {
-                "operation": {
-                    "type": "string",
-                    "enum": [
-                        "status", "read", "search", "projects", "project_status", "claim",
-                        "theorem_search", "dependency_graph", "reference_audit"
-                    ],
-                },
-                "run_id": {"type": "string"},
-                "project_id": {"type": "string"},
-                "claim_id": {"type": "string"},
-                "capability": {"type": "string"},
-                "resource": {"type": "string"},
-                "query": {"type": "string"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 100},
-            },
-        },
+        facade_schema("rethlas_inspect"),
         read_only=True,
     ),
     "rethlas_control": ToolSpec(
         "Control Rethlas run or project",
         "Queue owner steering/cancellation for a run, or create owner-scoped research projects and claims. Verified claim revisions remain finalizer-only and cannot be minted through this tool.",
-        {
-            **OBJECT,
-            "required": ["action"],
-            "oneOf": [
-                {"type": "object", "required": ["run_id", "message"], "properties": {"action": {"const": "steer"}}},
-                {"type": "object", "required": ["run_id"], "properties": {"action": {"const": "cancel"}}},
-                {"type": "object", "required": ["title"], "properties": {"action": {"const": "project_create"}}},
-                {"type": "object", "required": ["project_id", "title"], "properties": {"action": {"const": "claim_create"}}},
-                {"type": "object", "required": ["claim_id", "statement_tex"], "properties": {"action": {"const": "claim_revise"}}}
-            ],
-            "properties": {
-                "run_id": {"type": "string"},
-                "action": {"type": "string", "enum": ["steer", "cancel", "project_create", "claim_create", "claim_revise"]},
-                "message": {"type": "string"},
-                "reason": {"type": "string"},
-                "project_id": {"type": "string"},
-                "claim_id": {"type": "string"},
-                "title": {"type": "string"},
-                "statement_tex": {"type": "string"},
-                "conditions": {"type": "array", "items": {"type": "string"}},
-                "expected_base_revision_id": {"type": "string"},
-                "metadata": {"type": "object", "additionalProperties": True},
-            },
-        },
+        facade_schema("rethlas_control"),
         destructive=True,
     ),
     "rethlas_artifact": ToolSpec(
         "Read or export Rethlas artifact",
         "Return/export run artifacts or portable owner project manifests/summaries. Final proof export never bypasses the mechanical verification gate, and project artifacts never expose private reasoning memory.",
-        {
-            **OBJECT,
-            "required": ["action"],
-            "oneOf": [
-                {
-                    "type": "object",
-                    "required": ["run_id"],
-                    "properties": {
-                        "action": {"const": "get"},
-                        "artifact": {
-                            "type": "string",
-                            "enum": ["draft_tex", "final_tex", "proof_manifest", "verification_report", "reference_audit", "transition_log", "debug_manifest"]
-                        }
-                    }
-                },
-                {
-                    "type": "object",
-                    "required": ["project_id", "artifact"],
-                    "properties": {
-                        "action": {"const": "get"},
-                        "artifact": {"type": "string", "enum": ["project_manifest", "project_summary_tex"]}
-                    }
-                },
-                {
-                    "type": "object",
-                    "required": ["run_id"],
-                    "properties": {
-                        "action": {"const": "export"},
-                        "artifact": {"type": "string", "enum": ["final_tex"]}
-                    }
-                },
-                {
-                    "type": "object",
-                    "required": ["project_id", "artifact"],
-                    "properties": {
-                        "action": {"const": "export"},
-                        "artifact": {"type": "string", "enum": ["project_manifest", "project_summary_tex"]}
-                    }
-                }
-            ],
-            "properties": {
-                "run_id": {"type": "string"},
-                "project_id": {"type": "string"},
-                "action": {"type": "string", "enum": ["get", "export"]},
-                "artifact": {
-                    "type": "string",
-                    "enum": [
-                        "draft_tex", "final_tex", "proof_manifest", "verification_report",
-                        "reference_audit", "transition_log", "debug_manifest",
-                        "project_manifest", "project_summary_tex"
-                    ],
-                },
-                "path": {"type": "string", "minLength": 1},
-                "expected_sha256": {"type": "string"},
-            },
-        },
+        facade_schema("rethlas_artifact"),
         destructive=True,
     ),
 }
@@ -753,6 +556,15 @@ def _validate_schema_value(value: Any, schema: Mapping[str, Any], *, path: str) 
         minimum = schema.get("minLength")
         if isinstance(minimum, int) and len(value) < minimum:
             raise invalid_argument(f"{path} is shorter than {minimum}")
+        maximum = schema.get("maxLength")
+        if isinstance(maximum, int) and len(value) > maximum:
+            raise invalid_argument(f"{path} is longer than {maximum}")
+        pattern = schema.get("pattern")
+        if isinstance(pattern, str):
+            import re
+
+            if re.fullmatch(pattern, value) is None:
+                raise invalid_argument(f"{path} does not match the required pattern")
         if "enum" in schema and value not in schema["enum"]:
             raise invalid_argument(f"{path} must be one of {schema['enum']!r}")
     if isinstance(value, int) and not isinstance(value, bool):
@@ -906,6 +718,10 @@ class ToolRuntime:
             },
         )
         try:
+            # ToolRuntime is also used directly by tests and embedding callers. Keep
+            # the same schema boundary here as MCPDispatcher so no caller can reach
+            # a handler with arguments that tools/list says are invalid.
+            validate_tool_arguments(name, args)
             payload = handler(principal, args, trace)
             payload.setdefault("ok", True)
         except ReCTMError as exc:
@@ -1029,9 +845,7 @@ class ToolRuntime:
             "rethlas_tool_count": len(RETHLAS_TOOL_NAMES),
             "ctm_native_tools": list(CTM_NATIVE_TOOL_NAMES),
             "rethlas_tools": list(RETHLAS_TOOL_NAMES),
-            "hidden_legacy_rethlas_aliases": [
-                name for name in LEGACY_RETHLAS_TOOL_NAMES if name not in RETHLAS_TOOL_NAMES
-            ],
+            "hidden_legacy_rethlas_aliases": list(HIDDEN_LEGACY_ALIAS_SEMANTICS),
             "tool_catalog_stable": True,
             "mathematical_task_routing": (
                 "Concrete proof, derivation, proof-repair, and rigorous verification tasks should start with rethlas_start unless the user explicitly requests a direct informal answer."
@@ -1073,14 +887,14 @@ class ToolRuntime:
         return self.workflow.start(
             owner_id=principal.client_id,
             problem_tex=str(arguments.get("problem_tex") or ""),
-            problem_id=str(arguments.get("problem_id") or "problem"),
+            problem_id=str(arguments.get("problem_id") or START_DEFAULT_PROBLEM_ID),
             references=[item for item in references if isinstance(item, Mapping)],
             native_mode=self.native.mode.value,
             workspace_export_path=export_path or None,
             project_id=(str(arguments.get("project_id") or "").strip() or None),
             target_claim_id=(str(arguments.get("target_claim_id") or "").strip() or None),
-            workflow_mode=str(arguments.get("workflow_mode") or "auto"),
-            register_result=bool(arguments.get("register_result", True)),
+            workflow_mode=str(arguments.get("workflow_mode") or START_DEFAULT_WORKFLOW_MODE),
+            register_result=bool(arguments.get("register_result", START_DEFAULT_REGISTER_RESULT)),
             workflow_protocol_version=2,
             trace_id=trace_id,
         )
@@ -1133,12 +947,14 @@ class ToolRuntime:
             owner_id=principal.client_id,
             capability=str(arguments.get("capability") or ""),
             query=str(arguments.get("query") or ""),
-            operation=str(arguments.get("operation") or "theorem_search"),
+            operation=str(arguments.get("operation") or RETRIEVE_DEFAULT_OPERATION),
             author=str(arguments.get("author") or ""),
             title=str(arguments.get("title") or ""),
             keywords=str(arguments.get("keywords") or ""),
-            search_intent=str(arguments.get("search_intent") or "theorem"),
-            num_results=int(arguments.get("num_results", 10)),
+            search_intent=str(
+                arguments.get("search_intent") or RETRIEVE_DEFAULT_SEARCH_INTENT
+            ),
+            num_results=int(arguments.get("num_results", RETRIEVE_DEFAULT_NUM_RESULTS)),
             trace_id=trace_id,
         )
 
@@ -1224,6 +1040,18 @@ class ToolRuntime:
             )
         if not capability:
             raise invalid_argument("capability is required when submitting a Rethlas step")
+        # Bind the two client-supplied envelope fields before any write, recovery,
+        # or next-task issuance. A capability from run A must never be usable with
+        # a run_id from run B, even when the later resource operation would itself
+        # reject or succeed independently.
+        self.workflow.capabilities.validate(
+            capability,
+            owner_id=principal.client_id,
+            action="commit",
+            resource="workflow",
+            trace_id=trace_id,
+            expected_run_id=run_id,
+        )
         if writes and not action:
             raise invalid_argument("action is required when writes are submitted")
         write_results: list[dict[str, Any]] = []
@@ -1301,38 +1129,38 @@ class ToolRuntime:
         trace_id: str,
     ) -> dict[str, Any]:
         operation = str(arguments.get("operation") or "")
-        if operation == "status":
+        if operation == INSPECT_STATUS:
             return self.workflow.status(
                 owner_id=principal.client_id,
                 run_id=str(arguments.get("run_id") or ""),
             )
         capability = str(arguments.get("capability") or "")
         resource = str(arguments.get("resource") or "")
-        if operation == "read":
+        if operation == INSPECT_READ:
             return self.workflow.read(
                 owner_id=principal.client_id,
                 capability=capability,
                 resource=resource,
                 trace_id=trace_id,
             )
-        if operation == "search":
+        if operation == INSPECT_SEARCH:
             return self.workflow.search(
                 owner_id=principal.client_id,
                 capability=capability,
                 resource=resource,
                 query=str(arguments.get("query") or ""),
-                limit=int(arguments.get("limit", 20)),
+                limit=int(arguments.get("limit", INSPECT_DEFAULT_SEARCH_LIMIT)),
                 trace_id=trace_id,
             )
-        if operation == "projects":
+        if operation == INSPECT_PROJECTS:
             return {
                 "ok": True,
                 "projects": self.workflow.store.list_projects(
                     principal.client_id,
-                    limit=int(arguments.get("limit", 100)),
+                    limit=int(arguments.get("limit", INSPECT_DEFAULT_PROJECTS_LIMIT)),
                 ),
             }
-        if operation == "project_status":
+        if operation == INSPECT_PROJECT_STATUS:
             project_id = str(arguments.get("project_id") or "")
             return {
                 "ok": True,
@@ -1341,7 +1169,7 @@ class ToolRuntime:
                     owner_id=principal.client_id,
                 ),
             }
-        if operation == "claim":
+        if operation == INSPECT_CLAIM:
             claim_id = str(arguments.get("claim_id") or "")
             claim = self.workflow.store.get_claim(claim_id, owner_id=principal.client_id)
             return {
@@ -1352,7 +1180,7 @@ class ToolRuntime:
                     owner_id=principal.client_id,
                 ),
             }
-        if operation == "dependency_graph":
+        if operation == INSPECT_DEPENDENCY_GRAPH:
             return {
                 "ok": True,
                 **self.workflow.store.project_dependency_graph(
@@ -1360,7 +1188,7 @@ class ToolRuntime:
                     owner_id=principal.client_id,
                 ),
             }
-        if operation == "reference_audit":
+        if operation == INSPECT_REFERENCE_AUDIT:
             run_id = str(arguments.get("run_id") or "")
             self.workflow.status(owner_id=principal.client_id, run_id=run_id)
             references = self.workflow.store.list_run_references(run_id)
@@ -1387,7 +1215,7 @@ class ToolRuntime:
                 ],
                 "audits": self.workflow.store.list_reference_audits(run_id),
             }
-        if operation == "theorem_search":
+        if operation == INSPECT_THEOREM_SEARCH:
             project_id = str(arguments.get("project_id") or "")
             query = str(arguments.get("query") or "").strip().lower()
             if not query:
@@ -1405,9 +1233,16 @@ class ToolRuntime:
                 ).lower()
                 if query in haystack:
                     matches.append({"claim": claim, "revision": revision})
-            return {"ok": True, "project_id": project_id, "query": query, "results": matches[: int(arguments.get("limit", 20))]}
+            return {
+                "ok": True,
+                "project_id": project_id,
+                "query": query,
+                "results": matches[
+                    : int(arguments.get("limit", INSPECT_DEFAULT_THEOREM_SEARCH_LIMIT))
+                ],
+            }
         raise invalid_argument(
-            "operation must be status, read, search, projects, project_status, claim, theorem_search, dependency_graph, or reference_audit"
+            f"operation must be one of {', '.join(INSPECT_OPERATIONS)}"
         )
 
     def _rethlas_control(
@@ -1418,21 +1253,21 @@ class ToolRuntime:
     ) -> dict[str, Any]:
         action = str(arguments.get("action") or "")
         run_id = str(arguments.get("run_id") or "")
-        if action == "steer":
+        if action == CONTROL_STEER:
             return self.workflow.steer(
                 owner_id=principal.client_id,
                 run_id=run_id,
                 message=str(arguments.get("message") or ""),
                 trace_id=trace_id,
             )
-        if action == "cancel":
+        if action == CONTROL_CANCEL:
             return self.workflow.cancel(
                 owner_id=principal.client_id,
                 run_id=run_id,
-                reason=str(arguments.get("reason") or "user_cancelled"),
+                reason=str(arguments.get("reason") or CONTROL_DEFAULT_CANCEL_REASON),
                 trace_id=trace_id,
             )
-        if action == "project_create":
+        if action == CONTROL_PROJECT_CREATE:
             project = self.workflow.store.create_project(
                 owner_id=principal.client_id,
                 title=str(arguments.get("title") or ""),
@@ -1440,7 +1275,7 @@ class ToolRuntime:
                 metadata=(arguments.get("metadata") if isinstance(arguments.get("metadata"), Mapping) else {}),
             )
             return {"ok": True, "project": project}
-        if action == "claim_create":
+        if action == CONTROL_CLAIM_CREATE:
             claim = self.workflow.store.create_claim(
                 owner_id=principal.client_id,
                 project_id=str(arguments.get("project_id") or ""),
@@ -1461,7 +1296,7 @@ class ToolRuntime:
                     conditions=[str(item) for item in conditions],
                 )
             return {"ok": True, "claim": claim, "revision": revision}
-        if action == "claim_revise":
+        if action == CONTROL_CLAIM_REVISE:
             conditions = arguments.get("conditions") or []
             if not isinstance(conditions, list):
                 raise invalid_argument("conditions must be an array")
@@ -1473,7 +1308,7 @@ class ToolRuntime:
                 expected_base_revision_id=(str(arguments.get("expected_base_revision_id") or "").strip() or None),
             )
             return {"ok": True, "revision": revision}
-        raise invalid_argument("action must be steer, cancel, project_create, claim_create, or claim_revise")
+        raise invalid_argument(f"action must be one of {', '.join(CONTROL_ACTIONS)}")
 
     def _rethlas_artifact(
         self,
@@ -1484,9 +1319,9 @@ class ToolRuntime:
         action = str(arguments.get("action") or "")
         run_id = str(arguments.get("run_id") or "")
         project_id = str(arguments.get("project_id") or "")
-        artifact_name = str(arguments.get("artifact") or "final_tex")
-        if action == "get":
-            if artifact_name in {"project_manifest", "project_summary_tex"}:
+        artifact_name = str(arguments.get("artifact") or "")
+        if action == ARTIFACT_GET:
+            if artifact_name in PROJECT_ARTIFACTS:
                 return self._project_artifact(
                     principal,
                     project_id=project_id,
@@ -1497,8 +1332,8 @@ class ToolRuntime:
                 run_id=run_id,
                 artifact=artifact_name,
             )
-        if action == "export":
-            if artifact_name in {"project_manifest", "project_summary_tex"}:
+        if action == ARTIFACT_EXPORT:
+            if artifact_name in PROJECT_ARTIFACTS:
                 artifact = self._project_artifact(
                     principal,
                     project_id=project_id,
@@ -1673,7 +1508,7 @@ class ToolRuntime:
         return self.workflow.cancel(
             owner_id=principal.client_id,
             run_id=str(arguments.get("run_id") or ""),
-            reason=str(arguments.get("reason") or "user_cancelled"),
+            reason=str(arguments.get("reason") or CONTROL_DEFAULT_CANCEL_REASON),
             trace_id=trace_id,
         )
 

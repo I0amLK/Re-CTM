@@ -164,6 +164,7 @@
         "Inspect memory channels, multiple plan generation, server-issued plan/subgoal ids, incremental direct screening, one-branch-per-plan work, all-branch join, failure synthesis, replanning, verification audits, and changed-proof repair.",
         "During direct screening intentionally submit only a subset of plan/subgoal results; confirm the server stays in direct_proving, returns exact missing ids, retains accepted progress, and advances only after coverage is complete without requiring plan status or branch_plans to be echoed.",
         "Trigger one recoverable rethlas_step validation error during a later write after an earlier write succeeded; confirm recoverable=true, retryable=true, writes_retained=true, failed_write identifies the rejected record, the fresh capability can continue without replaying the retained record, and the superseded capability is revoked. Separately confirm a stale/foreign capability remains a hard permission failure.",
+        "Create two active runs, intentionally pair run A's capability with run B's run_id in rethlas_step, and confirm CAPABILITY_RUN_MISMATCH is returned before either run receives a logical write or a fresh task. Confirm the original capability remains usable with its original run. Also verify façade schemas reject malformed/edited capability strings and operation-specific irrelevant fields rather than silently ignoring them.",
         "Use rethlas_retrieve for nontrivial claims; for useful results, inspect the source paper context/proof and persist definitions, applicability checks, and identifiers before relying on them."
       ],
       "expected": [
@@ -201,7 +202,7 @@
       "name": "v0.2 Verified Research Workspace acceptance",
       "status": "pending",
       "steps": [
-        "On a disposable copy of a dev6/v0.1 private state directory containing at least one terminal run and one in-progress run, start v0.2.0, confirm the state schema migrates additively, and resume the old in-progress run under workflow protocol 1 without acquiring proof_manifest requirements.",
+        "On a disposable copy of a dev6/v0.1 private state directory containing at least one terminal run and one in-progress run, start v0.2.1, confirm the state schema migrates additively, and resume the old in-progress run under workflow protocol 1 without acquiring proof_manifest requirements.",
         "Create a research project and OPEN claims through the public Rethlas façade, then start a project-linked protocol-2 run with workflow_mode=auto or compact. Confirm the run receives a frozen project snapshot hash and Native dangerous cannot read the private registry directly.",
         "Complete a direct local lemma through the compact lane and confirm it still traverses LaTeX validation, independent verifier, and finalizer before one immutable VERIFIED revision is promoted. Repeat terminal delivery and confirm no duplicate revision is created.",
         "Create a CONDITIONAL dependency carrying an explicit condition such as GRH, use its frozen revision in a later proof_manifest, and confirm the downstream promoted revision mechanically inherits the condition rather than relying on a model-supplied status label.",

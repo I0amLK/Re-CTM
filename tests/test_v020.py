@@ -264,6 +264,112 @@ class V020MCPTestCase(unittest.TestCase):
         self.assertTrue(denied["isError"])
         self.assertEqual(denied["structuredContent"]["error"]["code"], "PROJECT_OWNER_MISMATCH")
 
+    def test_project_verifier_sees_only_proof_declared_frozen_dependencies(self) -> None:
+        project_id, first_claim, _ = self.create_project_claim(
+            "First dependency",
+            r"$1=1$.",
+        )
+        self.finish_compact(project_id=project_id, claim_id=first_claim)
+        first_revision = self.store.current_claim_revision(first_claim, owner_id="owner")
+        assert first_revision is not None
+
+        second = self.call(
+            "rethlas_control",
+            {
+                "action": "claim_create",
+                "project_id": project_id,
+                "title": "Second dependency",
+                "statement_tex": r"$2=2$.",
+            },
+        )
+        second_claim = second["claim"]["claim_id"]
+        self.finish_compact(project_id=project_id, claim_id=second_claim)
+        second_revision = self.store.current_claim_revision(second_claim, owner_id="owner")
+        assert second_revision is not None
+
+        target = self.call(
+            "rethlas_control",
+            {
+                "action": "claim_create",
+                "project_id": project_id,
+                "title": "Target theorem",
+                "statement_tex": r"$1=1$.",
+            },
+        )
+        target_claim = target["claim"]["claim_id"]
+        started = self.call(
+            "rethlas_start",
+            {
+                "problem_tex": r"\textbf{Problem.} Prove $1=1$.",
+                "project_id": project_id,
+                "target_claim_id": target_claim,
+                "workflow_mode": "compact",
+            },
+        )
+        run_id = started["run_id"]
+        assess = self.call("rethlas_step", {"run_id": run_id})
+
+        generator_view = self.call(
+            "rethlas_inspect",
+            {
+                "operation": "read",
+                "capability": assess["capability"],
+                "resource": "project:verified_dependencies",
+            },
+        )
+        generator_ids = {
+            item["revision_id"] for item in generator_view["content"]["revisions"]
+        }
+        self.assertIn(first_revision["revision_id"], generator_ids)
+        self.assertIn(second_revision["revision_id"], generator_ids)
+
+        assembled = self.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": assess["capability"],
+                **assess["task"]["minimal_submission"],
+            },
+        )
+        self.assertEqual(assembled["state"], "assemble")
+        verify = self.call(
+            "rethlas_step",
+            {
+                "run_id": run_id,
+                "capability": assembled["capability"],
+                "writes": [
+                    {"resource": "proof", "content": PROOF},
+                    {
+                        "resource": "proof_manifest",
+                        "content": {
+                            "target_statement_tex": r"$1=1$.",
+                            "dependency_revision_ids": [first_revision["revision_id"]],
+                            "reference_ids": [],
+                            "conditional_hypotheses": [],
+                            "computational_evidence": [],
+                        },
+                    },
+                ],
+                "action": "proof_submitted",
+                "payload": {"outcome": "proof"},
+            },
+        )
+        self.assertEqual(verify["state"], "verify")
+
+        verifier_view = self.call(
+            "rethlas_inspect",
+            {
+                "operation": "read",
+                "capability": verify["capability"],
+                "resource": "project:verified_dependencies",
+            },
+        )
+        verifier_ids = {
+            item["revision_id"] for item in verifier_view["content"]["revisions"]
+        }
+        self.assertEqual(verifier_ids, {first_revision["revision_id"]})
+        self.assertNotIn(second_revision["revision_id"], verifier_ids)
+
     def test_registry_promotion_conflict_does_not_invalidate_verified_run(self) -> None:
         project_id, claim_id, base = self.create_project_claim("Concurrent theorem", r"$1=1$.")
         started = self.call(
@@ -755,22 +861,33 @@ class SchemaAndProcessTestCase(unittest.TestCase):
             _validate_schema_value({"operation": "wrong", "query": "x"}, schema, path="value")
 
     def test_typed_facade_operations_are_zero_guess_at_schema_layer(self) -> None:
+        opaque_capability = "a" * 96 + "." + "b" * 43
         validate_tool_arguments(
             "rethlas_retrieve",
-            {"capability": "cap", "query": "finite groups"},
+            {"capability": opaque_capability, "query": "finite groups"},
         )
         validate_tool_arguments(
             "rethlas_retrieve",
-            {"capability": "cap", "query": "class field theory", "operation": "paper_search"},
+            {"capability": opaque_capability, "query": "class field theory", "operation": "paper_search"},
         )
         validate_tool_arguments(
             "rethlas_retrieve",
-            {"capability": "cap", "operation": "paper_search", "author": "Schmidt"},
+            {"capability": opaque_capability, "operation": "paper_search", "author": "Schmidt"},
         )
         with self.assertRaises(ReCTMError):
             validate_tool_arguments(
                 "rethlas_retrieve",
-                {"capability": "cap", "operation": "paper_search"},
+                {"capability": opaque_capability, "operation": "paper_search"},
+            )
+        with self.assertRaises(ReCTMError):
+            validate_tool_arguments(
+                "rethlas_retrieve",
+                {"capability": "cap", "query": "finite groups"},
+            )
+        with self.assertRaises(ReCTMError):
+            validate_tool_arguments(
+                "rethlas_retrieve",
+                {"capability": opaque_capability, "operation": "paper_lookup", "query": "id", "author": "ignored"},
             )
         with self.assertRaises(ReCTMError):
             validate_tool_arguments(

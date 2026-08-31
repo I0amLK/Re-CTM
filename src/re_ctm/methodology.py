@@ -59,6 +59,10 @@ def task_for_state(state: WorkflowState) -> dict[str, Any]:
     result["step_protocol"] = {
         "tool": "rethlas_step",
         "use_current_envelope_fields": ["run_id", "capability"],
+        "envelope_binding": (
+            "Copy run_id and capability verbatim from the same current task envelope. "
+            "Capability is opaque: never decode, edit, normalize, concatenate, or synthesize it."
+        ),
         "writes": (
             "Follow write_contract exactly. Each writes[] entry is one logical record; "
             "memory records are JSON objects unless that resource's content_schema says otherwise. "
@@ -70,7 +74,7 @@ def task_for_state(state: WorkflowState) -> dict[str, Any]:
             "do not echo logical-write content into commit payload unless the schema explicitly asks for it."
         ),
         "recoverable_correction": (
-            "If submission.recoverable is true, continue with the fresh capability returned in the same response. "
+            "If submission.recoverable is true, continue with the fresh run_id/capability pair returned in the same response. "
             "Successful writes listed as retained must not be replayed unless the current task explicitly requires a new record."
         ),
     }

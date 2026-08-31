@@ -700,7 +700,11 @@ class WorkflowEngine:
         elif operation == "paper_search":
             search_papers = getattr(self.research, "search_papers", None)
             if not callable(search_papers):
-                raise ReCTMError("PAPER_SEARCH_UNAVAILABLE", "The configured research provider has no paper search.", category="runtime")
+                raise ReCTMError(
+                    "PAPER_SEARCH_UNSUPPORTED",
+                    "The configured research provider has no paper search.",
+                    category="runtime",
+                )
             result = search_papers(
                 query=query,
                 author=author,
@@ -711,7 +715,11 @@ class WorkflowEngine:
         elif operation == "paper_lookup":
             lookup_paper = getattr(self.research, "lookup_paper", None)
             if not callable(lookup_paper):
-                raise ReCTMError("PAPER_SEARCH_UNAVAILABLE", "The configured research provider has no paper lookup.", category="runtime")
+                raise ReCTMError(
+                    "PAPER_SEARCH_UNSUPPORTED",
+                    "The configured research provider has no paper lookup.",
+                    category="runtime",
+                )
             result = lookup_paper(identifier=query)
         else:
             reference = self.store.get_reference(query.strip())
@@ -1575,382 +1583,33 @@ class WorkflowEngine:
             )
 
         if action == "assessment_complete":
-            self._require_records(claims.run_id, "immediate_conclusions")
-            protocol_version = int(run.get("metadata", {}).get("workflow_protocol_version") or 1)
-            if protocol_version < 2:
-                after = WorkflowState.EXPLORE
-            else:
-                requested = str(run.get("metadata", {}).get("requested_workflow_mode") or "auto")
-                route = str(payload.get("route") or "full")
-                needs_retrieval = bool(payload.get("requires_external_retrieval"))
-                needs_plans = bool(payload.get("requires_multiple_plans"))
-                has_registered_refs = bool(self.store.list_run_references(claims.run_id))
-                compact_allowed = not needs_retrieval and not needs_plans and not has_registered_refs
-                if requested == "full":
-                    effective_mode = "full"
-                elif requested == "compact":
-                    effective_mode = "compact" if compact_allowed else "full"
-                else:
-                    effective_mode = "compact" if route == "compact" and compact_allowed else "full"
-                self.store.update_run_metadata(
-                    claims.run_id,
-                    {
-                        "effective_workflow_mode": effective_mode,
-                        "workflow_route_reason": str(payload.get("route_reason") or ""),
-                        "compact_route_allowed": compact_allowed,
-                    },
-                )
-                project_run = self.store.get_project_run(claims.run_id, owner_id=claims.owner_id)
-                if project_run is not None:
-                    self.store.set_project_run_mode(claims.run_id, effective_mode)
-                after = WorkflowState.ASSEMBLE if effective_mode == "compact" else WorkflowState.EXPLORE
+            after = self._commit_assessment_complete(run, claims, payload)
         elif action == "exploration_complete":
-            self._require_records(claims.run_id, "events")
-            after = WorkflowState.PROPOSE_PLANS
+            after = self._commit_exploration_complete(claims)
         elif action == "plans_proposed":
-            plans = _validate_plans(
-                payload.get("plans"),
-                plan_round=int(run.get("round_index") or 0) + 1,
-            )
-            for plan in plans:
-                self.vault.append_generation_memory(
-                    claims.run_id,
-                    "subgoals",
-                    {**plan, "record_type": "decomposition_plan", "status": "proposed"},
-                )
-            self.store.update_run_metadata(
-                claims.run_id,
-                {"active_plans": plans, "direct_screening_progress": {}},
-            )
-            after = WorkflowState.DIRECT_PROVING
+            after = self._commit_plans_proposed(run, claims, payload)
         elif action == "direct_proving_complete":
-            self._require_records(claims.run_id, "proof_steps")
-            active_plans = run.get("metadata", {}).get("active_plans", [])
-            screening, progress, missing = _merge_direct_screening(
-                payload.get("screening"),
-                active_plans,
-                run.get("metadata", {}).get("direct_screening_progress"),
-            )
-            self.store.update_run_metadata(
-                claims.run_id,
-                {"direct_screening_progress": progress},
-            )
-            if missing:
-                return {
-                    "run_id": claims.run_id,
-                    "state": WorkflowState.DIRECT_PROVING.value,
-                    "complete": False,
-                    "screening_complete": False,
-                    "missing_screening": missing,
-                    "accepted_progress": screening,
-                    "verdict": run.get("verdict"),
-                }
-            self.vault.append_generation_memory(
-                claims.run_id,
-                "proof_steps",
-                {
-                    "record_type": "direct_screening_round",
-                    "plans": screening,
-                    "created_at": utc_now(),
-                },
-            )
-            solved_plan_ids = [
-                item["plan_id"] for item in screening if item["status"] == "solved"
-            ]
-            outcome = "solved" if solved_plan_ids else "needs_branches"
-            if outcome == "solved":
-                if not str(payload.get("proof_route") or "").strip():
-                    raise invalid_argument("solved outcome requires proof_route")
-                selected_plan_id = str(payload.get("selected_plan_id") or "")
-                source_to_plan = {
-                    str(plan.get("source_plan_id")): str(plan.get("plan_id"))
-                    for plan in active_plans
-                    if isinstance(plan, Mapping) and str(plan.get("source_plan_id") or "")
-                }
-                selected_plan_id = source_to_plan.get(selected_plan_id, selected_plan_id)
-                if not selected_plan_id and len(solved_plan_ids) == 1:
-                    selected_plan_id = solved_plan_ids[0]
-                if selected_plan_id not in solved_plan_ids:
-                    raise invalid_argument(
-                        "selected_plan_id must identify a completely solved plan",
-                        solved_plan_ids=solved_plan_ids,
-                    )
-                self.vault.write_join_result(
-                    claims.run_id,
-                    {
-                        "source": "direct_proving",
-                        "status": "solved",
-                        "selected_plan_id": selected_plan_id,
-                        "proof_route": payload["proof_route"],
-                        "screening": screening,
-                    },
-                )
-                after = WorkflowState.ASSEMBLE
-            else:
-                branch_plans = [dict(plan) for plan in active_plans if isinstance(plan, Mapping)]
-                self.store.update_run_metadata(
-                    claims.run_id,
-                    {"branch_requests": branch_plans, "last_direct_screening": screening},
-                )
-                after = WorkflowState.BRANCH_PREPARE
+            direct_result = self._commit_direct_proving_complete(run, claims, payload)
+            if isinstance(direct_result, dict):
+                return direct_result
+            after = direct_result
         elif action == "branch_complete":
             return self._commit_branch(run, claims, payload, trace_id)
         elif action == "join_complete":
-            branches = self.store.list_branches(claims.run_id)
-            sealed_ids = {str(item["branch_id"]) for item in branches if item["status"] == "sealed"}
-            considered = payload.get("considered_branch_ids")
-            if considered is not None:
-                considered_ids = _string_array(
-                    considered,
-                    label="considered_branch_ids",
-                )
-                if any(item not in sealed_ids for item in considered_ids):
-                    raise invalid_argument(
-                        "considered_branch_ids may contain only sealed branch ids; complete coverage is server-derived",
-                        sealed_branch_ids=sorted(sealed_ids),
-                    )
-            branch_results = {
-                branch_id: self.vault.read_branch_result(claims.run_id, branch_id)
-                for branch_id in sealed_ids
-            }
-            solved_branch_ids = sorted(
-                branch_id
-                for branch_id, result in branch_results.items()
-                if isinstance(result, Mapping) and result.get("status") == "solved"
-            )
-            raw_selected = payload.get("selected_branch_id")
-            if raw_selected is not None and not isinstance(raw_selected, str):
-                raise invalid_argument("selected_branch_id must be a string when supplied")
-            selected = (raw_selected or "").strip()
-            raw_synthesis_route = payload.get("synthesis_proof_route")
-            if raw_synthesis_route is not None and not isinstance(raw_synthesis_route, str):
-                raise invalid_argument("synthesis_proof_route must be a string when supplied")
-            synthesis_route = (raw_synthesis_route or "").strip()
-            if not selected and not synthesis_route and len(solved_branch_ids) == 1:
-                selected = solved_branch_ids[0]
-            if selected and selected not in solved_branch_ids:
-                raise invalid_argument(
-                    "selected_branch_id must identify a solved sealed branch",
-                    selected_branch_id=selected,
-                    solved_branch_ids=solved_branch_ids,
-                )
-            if not selected and not synthesis_route and len(solved_branch_ids) > 1:
-                raise invalid_argument(
-                    "multiple solved branches require selected_branch_id or synthesis_proof_route",
-                    solved_branch_ids=solved_branch_ids,
-                )
-            outcome = "solved" if synthesis_route or selected else "failed"
-            common_failures: list[str] | None = None
-            if outcome == "failed":
-                common_failures = _string_array(
-                    payload.get("common_failures"),
-                    label="common_failures",
-                    required=True,
-                )
-            normalized_join = {
-                **payload,
-                "outcome": outcome,
-                "selected_branch_id": selected or None,
-                "considered_branch_ids": sorted(sealed_ids),
-                "joined_at": utc_now(),
-            }
-            if common_failures is not None:
-                normalized_join["common_failures"] = common_failures
-            self.vault.write_join_result(claims.run_id, normalized_join)
-            self.vault.append_generation_memory(
-                claims.run_id,
-                "branch_states",
-                {
-                    "record_type": "branch_join",
-                    "outcome": outcome,
-                    "considered_branch_ids": sorted(sealed_ids),
-                },
-            )
-            after = WorkflowState.ASSEMBLE if outcome == "solved" else WorkflowState.IDENTIFY_FAILURES
+            after = self._commit_join_complete(claims, payload)
         elif action == "failures_identified":
-            if not isinstance(payload.get("summary"), Mapping):
-                raise invalid_argument("failures_identified requires summary object")
-            self.vault.append_generation_memory(
-                claims.run_id,
-                "failed_paths",
-                {"record_type": "key_failures_summary", **dict(payload["summary"])},
-            )
-            after = WorkflowState.REPLAN
+            after = self._commit_failures_identified(claims, payload)
         elif action == "replan_complete":
-            if not isinstance(payload.get("decision"), Mapping):
-                raise invalid_argument("replan_complete requires decision object")
-            self.vault.append_generation_memory(
-                claims.run_id,
-                "big_decisions",
-                dict(payload["decision"]),
-            )
-            after = WorkflowState.PROPOSE_PLANS
+            after = self._commit_replan_complete(claims, payload)
         elif action == "proof_submitted":
-            protocol_version = int(run.get("metadata", {}).get("workflow_protocol_version") or 1)
-            if protocol_version >= 2 and str(payload.get("outcome") or "proof") == "escalate":
-                if str(run.get("metadata", {}).get("effective_workflow_mode") or "") != "compact":
-                    raise invalid_argument("Only a compact assembly may escalate to full exploration")
-                self.store.update_run_metadata(
-                    claims.run_id,
-                    {
-                        "effective_workflow_mode": "full",
-                        "compact_escalation_reason": str(payload.get("escalation_reason") or "assembly requested full exploration"),
-                    },
-                )
-                project_run = self.store.get_project_run(claims.run_id, owner_id=claims.owner_id)
-                if project_run is not None:
-                    self.store.set_project_run_mode(claims.run_id, "full")
-                after = WorkflowState.EXPLORE
-                return self._seal_and_transition(
-                    run,
-                    claims,
-                    after,
-                    trace_id,
-                    reason="compact_assembly_escalated_to_full",
-                )
-            proof = self.vault.read_proof(claims.run_id)
-            if protocol_version >= 2:
-                self.store.read_proof_manifest(claims.run_id)
-            self.store.update_run_metadata(
-                claims.run_id,
-                {"last_submitted_proof_sha256": hashlib.sha256(proof.encode("utf-8")).hexdigest()},
-            )
-            after = WorkflowState.LATEX_VALIDATE
+            proof_result = self._commit_proof_submitted(run, claims, payload, trace_id)
+            if isinstance(proof_result, dict):
+                return proof_result
+            after = proof_result
         elif action == "verification_submitted":
-            self._require_verifier_records(claims.run_id, "statement_checks")
-            self._require_verifier_records(claims.run_id, "events")
-            proof = self.vault.read_proof(claims.run_id)
-            protocol_version = int(run.get("metadata", {}).get("workflow_protocol_version") or 1)
-            if protocol_version < 2 and _proof_declares_external_references(proof):
-                self._require_verifier_records(claims.run_id, "reference_checks")
-            report = self.vault.read_verification_report(claims.run_id)
-            normalized = _normalize_verification_report(report)
-            critical = normalized["verification_report"]["critical_errors"]
-            gaps = normalized["verification_report"]["gaps"]
-            server_reference_gaps: list[dict[str, str]] = []
-            if protocol_version >= 2:
-                manifest_record = self.store.read_proof_manifest(claims.run_id)
-                manifest = manifest_record["manifest"]
-                audit_by_reference = {
-                    item["reference_id"]: item
-                    for item in self.store.list_reference_audits(claims.run_id)
-                }
-                for reference_id in manifest.get("reference_ids", []):
-                    audit = audit_by_reference.get(reference_id)
-                    if audit is None:
-                        finding = {
-                            "location": f"reference:{reference_id}",
-                            "issue": "Material reference has no verifier audit disposition.",
-                        }
-                        gaps.append(finding)
-                        server_reference_gaps.append(finding)
-                        continue
-                    if audit.get("disposition") not in {"SOURCE_VERIFIED", "INDEPENDENTLY_REDERIVED", "NOT_MATERIAL"}:
-                        finding = {
-                            "location": f"reference:{reference_id}",
-                            "issue": "Material reference remains unresolved after verifier audit.",
-                        }
-                        gaps.append(finding)
-                        server_reference_gaps.append(finding)
-            verdict = "correct" if not critical and not gaps else "wrong"
-            normalized["verdict"] = verdict
-            if verdict == "correct":
-                normalized["repair_hints"] = ""
-            elif not str(normalized.get("repair_hints") or "").strip():
-                if server_reference_gaps:
-                    normalized["repair_hints"] = (
-                        "Resolve the server-detected reference audit gaps before resubmission: "
-                        + "; ".join(
-                            f"{item['location']}: {item['issue']}"
-                            for item in server_reference_gaps
-                        )
-                    )
-                else:
-                    raise invalid_argument("wrong verification requires non-empty repair_hints")
-            self.vault.write_verification_report(claims.run_id, normalized)
-            self.vault.append_verifier_memory(
-                claims.run_id,
-                "verification_reports",
-                normalized,
-            )
-            self.vault.append_generation_memory(
-                claims.run_id,
-                "verification_reports",
-                normalized,
-            )
-            self.store.update_run_metadata(
-                claims.run_id,
-                {
-                    "last_verified_proof_sha256": hashlib.sha256(proof.encode("utf-8")).hexdigest(),
-                    "last_verifier_audit": {
-                        "statement_checks": len(
-                            self.vault.read_verifier_memory(claims.run_id, "statement_checks")
-                        ),
-                        "legacy_reference_checks": len(
-                            self.vault.read_verifier_memory(claims.run_id, "reference_checks")
-                        ),
-                        "structured_reference_audits": len(
-                            self.store.list_reference_audits(claims.run_id)
-                        ),
-                    },
-                },
-            )
-            if verdict == "correct" and not run["latex_passed"]:
-                raise ReCTMError(
-                    "LATEX_GATE_NOT_PASSED",
-                    "A mathematically correct report cannot finalize before the LaTeX gate passes.",
-                    category="conflict",
-                )
-            if verdict == "correct":
-                after = WorkflowState.FINALIZE
-            else:
-                compact = str(run.get("metadata", {}).get("effective_workflow_mode") or "") == "compact"
-                failures = int(run.get("metadata", {}).get("compact_verifier_failures") or 0) + (1 if compact else 0)
-                if compact:
-                    self.store.update_run_metadata(claims.run_id, {"compact_verifier_failures": failures})
-                if compact and failures >= 2:
-                    self.store.update_run_metadata(
-                        claims.run_id,
-                        {"effective_workflow_mode": "full", "compact_escalated_after_verifier": True},
-                    )
-                    project_run = self.store.get_project_run(claims.run_id, owner_id=claims.owner_id)
-                    if project_run is not None:
-                        self.store.set_project_run_mode(claims.run_id, "full")
-                    after = WorkflowState.EXPLORE
-                else:
-                    after = WorkflowState.REPAIR
-            return self._seal_and_transition(
-                run,
-                claims,
-                after,
-                trace_id,
-                reason=(
-                    "compact_verifier_escalated_to_full"
-                    if verdict == "wrong" and after == WorkflowState.EXPLORE
-                    else f"server_computed_verdict_{verdict}"
-                ),
-                verdict=verdict,
-            )
+            return self._commit_verification_submitted(run, claims, trace_id)
         elif action == "repair_submitted":
-            proof = self.vault.read_proof(claims.run_id)
-            protocol_version = int(run.get("metadata", {}).get("workflow_protocol_version") or 1)
-            if protocol_version >= 2:
-                self.store.read_proof_manifest(claims.run_id)
-            proof_sha256 = hashlib.sha256(proof.encode("utf-8")).hexdigest()
-            prior_sha256 = str(
-                run.get("metadata", {}).get("last_verified_proof_sha256") or ""
-            )
-            if prior_sha256 and proof_sha256 == prior_sha256:
-                raise ReCTMError(
-                    "REPAIR_DID_NOT_CHANGE_PROOF",
-                    "A failed verification cannot be resubmitted unchanged.",
-                    category="validation",
-                )
-            self.store.update_run_metadata(
-                claims.run_id,
-                {"last_submitted_proof_sha256": proof_sha256},
-            )
-            after = WorkflowState.LATEX_VALIDATE
+            after = self._commit_repair_submitted(run, claims)
         else:
             raise invalid_argument("unsupported commit action", action=action)
         return self._seal_and_transition(
@@ -1960,6 +1619,456 @@ class WorkflowEngine:
             trace_id,
             reason=action,
         )
+
+    def _commit_assessment_complete(
+        self,
+        run: Mapping[str, Any],
+        claims: CapabilityClaims,
+        payload: Mapping[str, Any],
+    ) -> WorkflowState:
+        self._require_records(claims.run_id, "immediate_conclusions")
+        protocol_version = int(run.get("metadata", {}).get("workflow_protocol_version") or 1)
+        if protocol_version < 2:
+            return WorkflowState.EXPLORE
+
+        requested = str(run.get("metadata", {}).get("requested_workflow_mode") or "auto")
+        route = str(payload.get("route") or "full")
+        needs_retrieval = bool(payload.get("requires_external_retrieval"))
+        needs_plans = bool(payload.get("requires_multiple_plans"))
+        has_registered_refs = bool(self.store.list_run_references(claims.run_id))
+        compact_allowed = not needs_retrieval and not needs_plans and not has_registered_refs
+        if requested == "full":
+            effective_mode = "full"
+        elif requested == "compact":
+            effective_mode = "compact" if compact_allowed else "full"
+        else:
+            effective_mode = "compact" if route == "compact" and compact_allowed else "full"
+        self.store.update_run_metadata(
+            claims.run_id,
+            {
+                "effective_workflow_mode": effective_mode,
+                "workflow_route_reason": str(payload.get("route_reason") or ""),
+                "compact_route_allowed": compact_allowed,
+            },
+        )
+        project_run = self.store.get_project_run(claims.run_id, owner_id=claims.owner_id)
+        if project_run is not None:
+            self.store.set_project_run_mode(claims.run_id, effective_mode)
+        return WorkflowState.ASSEMBLE if effective_mode == "compact" else WorkflowState.EXPLORE
+
+    def _commit_exploration_complete(self, claims: CapabilityClaims) -> WorkflowState:
+        self._require_records(claims.run_id, "events")
+        return WorkflowState.PROPOSE_PLANS
+
+    def _commit_plans_proposed(
+        self,
+        run: Mapping[str, Any],
+        claims: CapabilityClaims,
+        payload: Mapping[str, Any],
+    ) -> WorkflowState:
+        plans = _validate_plans(
+            payload.get("plans"),
+            plan_round=int(run.get("round_index") or 0) + 1,
+        )
+        for plan in plans:
+            self.vault.append_generation_memory(
+                claims.run_id,
+                "subgoals",
+                {**plan, "record_type": "decomposition_plan", "status": "proposed"},
+            )
+        self.store.update_run_metadata(
+            claims.run_id,
+            {"active_plans": plans, "direct_screening_progress": {}},
+        )
+        return WorkflowState.DIRECT_PROVING
+
+    def _commit_direct_proving_complete(
+        self,
+        run: Mapping[str, Any],
+        claims: CapabilityClaims,
+        payload: Mapping[str, Any],
+    ) -> WorkflowState | dict[str, Any]:
+        self._require_records(claims.run_id, "proof_steps")
+        active_plans = run.get("metadata", {}).get("active_plans", [])
+        screening, progress, missing = _merge_direct_screening(
+            payload.get("screening"),
+            active_plans,
+            run.get("metadata", {}).get("direct_screening_progress"),
+        )
+        self.store.update_run_metadata(
+            claims.run_id,
+            {"direct_screening_progress": progress},
+        )
+        if missing:
+            return {
+                "run_id": claims.run_id,
+                "state": WorkflowState.DIRECT_PROVING.value,
+                "complete": False,
+                "screening_complete": False,
+                "missing_screening": missing,
+                "accepted_progress": screening,
+                "verdict": run.get("verdict"),
+            }
+        self.vault.append_generation_memory(
+            claims.run_id,
+            "proof_steps",
+            {
+                "record_type": "direct_screening_round",
+                "plans": screening,
+                "created_at": utc_now(),
+            },
+        )
+        solved_plan_ids = [
+            item["plan_id"] for item in screening if item["status"] == "solved"
+        ]
+        if solved_plan_ids:
+            if not str(payload.get("proof_route") or "").strip():
+                raise invalid_argument("solved outcome requires proof_route")
+            selected_plan_id = str(payload.get("selected_plan_id") or "")
+            source_to_plan = {
+                str(plan.get("source_plan_id")): str(plan.get("plan_id"))
+                for plan in active_plans
+                if isinstance(plan, Mapping) and str(plan.get("source_plan_id") or "")
+            }
+            selected_plan_id = source_to_plan.get(selected_plan_id, selected_plan_id)
+            if not selected_plan_id and len(solved_plan_ids) == 1:
+                selected_plan_id = solved_plan_ids[0]
+            if selected_plan_id not in solved_plan_ids:
+                raise invalid_argument(
+                    "selected_plan_id must identify a completely solved plan",
+                    solved_plan_ids=solved_plan_ids,
+                )
+            self.vault.write_join_result(
+                claims.run_id,
+                {
+                    "source": "direct_proving",
+                    "status": "solved",
+                    "selected_plan_id": selected_plan_id,
+                    "proof_route": payload["proof_route"],
+                    "screening": screening,
+                },
+            )
+            return WorkflowState.ASSEMBLE
+
+        branch_plans = [dict(plan) for plan in active_plans if isinstance(plan, Mapping)]
+        self.store.update_run_metadata(
+            claims.run_id,
+            {"branch_requests": branch_plans, "last_direct_screening": screening},
+        )
+        return WorkflowState.BRANCH_PREPARE
+
+    def _commit_join_complete(
+        self,
+        claims: CapabilityClaims,
+        payload: Mapping[str, Any],
+    ) -> WorkflowState:
+        branches = self.store.list_branches(claims.run_id)
+        sealed_ids = {
+            str(item["branch_id"]) for item in branches if item["status"] == "sealed"
+        }
+        considered = payload.get("considered_branch_ids")
+        if considered is not None:
+            considered_ids = _string_array(
+                considered,
+                label="considered_branch_ids",
+            )
+            if any(item not in sealed_ids for item in considered_ids):
+                raise invalid_argument(
+                    "considered_branch_ids may contain only sealed branch ids; complete coverage is server-derived",
+                    sealed_branch_ids=sorted(sealed_ids),
+                )
+        branch_results = {
+            branch_id: self.vault.read_branch_result(claims.run_id, branch_id)
+            for branch_id in sealed_ids
+        }
+        solved_branch_ids = sorted(
+            branch_id
+            for branch_id, result in branch_results.items()
+            if isinstance(result, Mapping) and result.get("status") == "solved"
+        )
+        raw_selected = payload.get("selected_branch_id")
+        if raw_selected is not None and not isinstance(raw_selected, str):
+            raise invalid_argument("selected_branch_id must be a string when supplied")
+        selected = (raw_selected or "").strip()
+        raw_synthesis_route = payload.get("synthesis_proof_route")
+        if raw_synthesis_route is not None and not isinstance(raw_synthesis_route, str):
+            raise invalid_argument("synthesis_proof_route must be a string when supplied")
+        synthesis_route = (raw_synthesis_route or "").strip()
+        if not selected and not synthesis_route and len(solved_branch_ids) == 1:
+            selected = solved_branch_ids[0]
+        if selected and selected not in solved_branch_ids:
+            raise invalid_argument(
+                "selected_branch_id must identify a solved sealed branch",
+                selected_branch_id=selected,
+                solved_branch_ids=solved_branch_ids,
+            )
+        if not selected and not synthesis_route and len(solved_branch_ids) > 1:
+            raise invalid_argument(
+                "multiple solved branches require selected_branch_id or synthesis_proof_route",
+                solved_branch_ids=solved_branch_ids,
+            )
+        outcome = "solved" if synthesis_route or selected else "failed"
+        common_failures: list[str] | None = None
+        if outcome == "failed":
+            common_failures = _string_array(
+                payload.get("common_failures"),
+                label="common_failures",
+                required=True,
+            )
+        normalized_join = {
+            **payload,
+            "outcome": outcome,
+            "selected_branch_id": selected or None,
+            "considered_branch_ids": sorted(sealed_ids),
+            "joined_at": utc_now(),
+        }
+        if common_failures is not None:
+            normalized_join["common_failures"] = common_failures
+        self.vault.write_join_result(claims.run_id, normalized_join)
+        self.vault.append_generation_memory(
+            claims.run_id,
+            "branch_states",
+            {
+                "record_type": "branch_join",
+                "outcome": outcome,
+                "considered_branch_ids": sorted(sealed_ids),
+            },
+        )
+        return (
+            WorkflowState.ASSEMBLE
+            if outcome == "solved"
+            else WorkflowState.IDENTIFY_FAILURES
+        )
+
+    def _commit_failures_identified(
+        self,
+        claims: CapabilityClaims,
+        payload: Mapping[str, Any],
+    ) -> WorkflowState:
+        if not isinstance(payload.get("summary"), Mapping):
+            raise invalid_argument("failures_identified requires summary object")
+        self.vault.append_generation_memory(
+            claims.run_id,
+            "failed_paths",
+            {"record_type": "key_failures_summary", **dict(payload["summary"])},
+        )
+        return WorkflowState.REPLAN
+
+    def _commit_replan_complete(
+        self,
+        claims: CapabilityClaims,
+        payload: Mapping[str, Any],
+    ) -> WorkflowState:
+        if not isinstance(payload.get("decision"), Mapping):
+            raise invalid_argument("replan_complete requires decision object")
+        self.vault.append_generation_memory(
+            claims.run_id,
+            "big_decisions",
+            dict(payload["decision"]),
+        )
+        return WorkflowState.PROPOSE_PLANS
+
+    def _commit_proof_submitted(
+        self,
+        run: Mapping[str, Any],
+        claims: CapabilityClaims,
+        payload: Mapping[str, Any],
+        trace_id: str,
+    ) -> WorkflowState | dict[str, Any]:
+        protocol_version = int(run.get("metadata", {}).get("workflow_protocol_version") or 1)
+        if protocol_version >= 2 and str(payload.get("outcome") or "proof") == "escalate":
+            if str(run.get("metadata", {}).get("effective_workflow_mode") or "") != "compact":
+                raise invalid_argument("Only a compact assembly may escalate to full exploration")
+            self.store.update_run_metadata(
+                claims.run_id,
+                {
+                    "effective_workflow_mode": "full",
+                    "compact_escalation_reason": str(
+                        payload.get("escalation_reason")
+                        or "assembly requested full exploration"
+                    ),
+                },
+            )
+            project_run = self.store.get_project_run(claims.run_id, owner_id=claims.owner_id)
+            if project_run is not None:
+                self.store.set_project_run_mode(claims.run_id, "full")
+            return self._seal_and_transition(
+                run,
+                claims,
+                WorkflowState.EXPLORE,
+                trace_id,
+                reason="compact_assembly_escalated_to_full",
+            )
+        proof = self.vault.read_proof(claims.run_id)
+        if protocol_version >= 2:
+            self.store.read_proof_manifest(claims.run_id)
+        self.store.update_run_metadata(
+            claims.run_id,
+            {"last_submitted_proof_sha256": hashlib.sha256(proof.encode("utf-8")).hexdigest()},
+        )
+        return WorkflowState.LATEX_VALIDATE
+
+    def _commit_verification_submitted(
+        self,
+        run: Mapping[str, Any],
+        claims: CapabilityClaims,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        self._require_verifier_records(claims.run_id, "statement_checks")
+        self._require_verifier_records(claims.run_id, "events")
+        proof = self.vault.read_proof(claims.run_id)
+        protocol_version = int(run.get("metadata", {}).get("workflow_protocol_version") or 1)
+        if protocol_version < 2 and _proof_declares_external_references(proof):
+            self._require_verifier_records(claims.run_id, "reference_checks")
+        report = self.vault.read_verification_report(claims.run_id)
+        normalized = _normalize_verification_report(report)
+        critical = normalized["verification_report"]["critical_errors"]
+        gaps = normalized["verification_report"]["gaps"]
+        server_reference_gaps: list[dict[str, str]] = []
+        if protocol_version >= 2:
+            manifest_record = self.store.read_proof_manifest(claims.run_id)
+            manifest = manifest_record["manifest"]
+            audit_by_reference = {
+                item["reference_id"]: item
+                for item in self.store.list_reference_audits(claims.run_id)
+            }
+            for reference_id in manifest.get("reference_ids", []):
+                audit = audit_by_reference.get(reference_id)
+                if audit is None:
+                    finding = {
+                        "location": f"reference:{reference_id}",
+                        "issue": "Material reference has no verifier audit disposition.",
+                    }
+                    gaps.append(finding)
+                    server_reference_gaps.append(finding)
+                    continue
+                if audit.get("disposition") not in {
+                    "SOURCE_VERIFIED",
+                    "INDEPENDENTLY_REDERIVED",
+                    "NOT_MATERIAL",
+                }:
+                    finding = {
+                        "location": f"reference:{reference_id}",
+                        "issue": "Material reference remains unresolved after verifier audit.",
+                    }
+                    gaps.append(finding)
+                    server_reference_gaps.append(finding)
+        verdict = "correct" if not critical and not gaps else "wrong"
+        normalized["verdict"] = verdict
+        if verdict == "correct":
+            normalized["repair_hints"] = ""
+        elif not str(normalized.get("repair_hints") or "").strip():
+            if server_reference_gaps:
+                normalized["repair_hints"] = (
+                    "Resolve the server-detected reference audit gaps before resubmission: "
+                    + "; ".join(
+                        f"{item['location']}: {item['issue']}"
+                        for item in server_reference_gaps
+                    )
+                )
+            else:
+                raise invalid_argument("wrong verification requires non-empty repair_hints")
+        self.vault.write_verification_report(claims.run_id, normalized)
+        self.vault.append_verifier_memory(
+            claims.run_id,
+            "verification_reports",
+            normalized,
+        )
+        self.vault.append_generation_memory(
+            claims.run_id,
+            "verification_reports",
+            normalized,
+        )
+        self.store.update_run_metadata(
+            claims.run_id,
+            {
+                "last_verified_proof_sha256": hashlib.sha256(proof.encode("utf-8")).hexdigest(),
+                "last_verifier_audit": {
+                    "statement_checks": len(
+                        self.vault.read_verifier_memory(claims.run_id, "statement_checks")
+                    ),
+                    "legacy_reference_checks": len(
+                        self.vault.read_verifier_memory(claims.run_id, "reference_checks")
+                    ),
+                    "structured_reference_audits": len(
+                        self.store.list_reference_audits(claims.run_id)
+                    ),
+                },
+            },
+        )
+        if verdict == "correct" and not run["latex_passed"]:
+            raise ReCTMError(
+                "LATEX_GATE_NOT_PASSED",
+                "A mathematically correct report cannot finalize before the LaTeX gate passes.",
+                category="conflict",
+            )
+        if verdict == "correct":
+            after = WorkflowState.FINALIZE
+        else:
+            compact = (
+                str(run.get("metadata", {}).get("effective_workflow_mode") or "")
+                == "compact"
+            )
+            failures = int(run.get("metadata", {}).get("compact_verifier_failures") or 0) + (
+                1 if compact else 0
+            )
+            if compact:
+                self.store.update_run_metadata(
+                    claims.run_id,
+                    {"compact_verifier_failures": failures},
+                )
+            if compact and failures >= 2:
+                self.store.update_run_metadata(
+                    claims.run_id,
+                    {
+                        "effective_workflow_mode": "full",
+                        "compact_escalated_after_verifier": True,
+                    },
+                )
+                project_run = self.store.get_project_run(
+                    claims.run_id,
+                    owner_id=claims.owner_id,
+                )
+                if project_run is not None:
+                    self.store.set_project_run_mode(claims.run_id, "full")
+                after = WorkflowState.EXPLORE
+            else:
+                after = WorkflowState.REPAIR
+        return self._seal_and_transition(
+            run,
+            claims,
+            after,
+            trace_id,
+            reason=(
+                "compact_verifier_escalated_to_full"
+                if verdict == "wrong" and after == WorkflowState.EXPLORE
+                else f"server_computed_verdict_{verdict}"
+            ),
+            verdict=verdict,
+        )
+
+    def _commit_repair_submitted(
+        self,
+        run: Mapping[str, Any],
+        claims: CapabilityClaims,
+    ) -> WorkflowState:
+        proof = self.vault.read_proof(claims.run_id)
+        protocol_version = int(run.get("metadata", {}).get("workflow_protocol_version") or 1)
+        if protocol_version >= 2:
+            self.store.read_proof_manifest(claims.run_id)
+        proof_sha256 = hashlib.sha256(proof.encode("utf-8")).hexdigest()
+        prior_sha256 = str(run.get("metadata", {}).get("last_verified_proof_sha256") or "")
+        if prior_sha256 and proof_sha256 == prior_sha256:
+            raise ReCTMError(
+                "REPAIR_DID_NOT_CHANGE_PROOF",
+                "A failed verification cannot be resubmitted unchanged.",
+                category="validation",
+            )
+        self.store.update_run_metadata(
+            claims.run_id,
+            {"last_submitted_proof_sha256": proof_sha256},
+        )
+        return WorkflowState.LATEX_VALIDATE
 
     def _commit_branch(
         self,

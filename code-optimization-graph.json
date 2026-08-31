@@ -1,0 +1,1328 @@
+{
+  "schema_version": "1.0.0",
+  "graph_id": "re-ctm-code-optimization",
+  "title": "Re-CTM 功能优先代码优化图",
+  "updated_at": "2026-08-30T23:24:00-07:00",
+  "one_sentence_rule": "只做能够以功能正确性、安全边界、可靠性、可维护性或可验证性能收益证明价值的最小代码改进。",
+  "purpose": "记录代码清理与重构的原因、功能收益、依赖、执行顺序、验收条件和不可覆盖的执行回执，防止为了优化而优化。",
+  "governance": {
+    "source_of_truth": "docs/CODE_QUALITY.md",
+    "statuses": [
+      "proposed",
+      "approved",
+      "in_progress",
+      "blocked",
+      "completed",
+      "rejected",
+      "superseded"
+    ],
+    "allowed_transitions": {
+      "proposed": [
+        "approved",
+        "rejected",
+        "superseded"
+      ],
+      "approved": [
+        "in_progress",
+        "rejected",
+        "superseded"
+      ],
+      "in_progress": [
+        "blocked",
+        "completed",
+        "rejected",
+        "superseded"
+      ],
+      "blocked": [
+        "in_progress",
+        "rejected",
+        "superseded"
+      ],
+      "completed": [
+        "superseded"
+      ],
+      "rejected": [],
+      "superseded": []
+    },
+    "priority_order": [
+      "P0 correctness/security/user-visible contract",
+      "P1 reliability/testability/maintainability",
+      "P2 documented debt with bounded benefit",
+      "P3 cosmetic work only after higher priorities"
+    ],
+    "entry_gate": [
+      "A concrete problem or risk is recorded.",
+      "The functional outcome is observable or testable.",
+      "Evidence and current baseline are recorded.",
+      "Scope, non-goals, acceptance criteria, risk, rollback and validation commands are explicit.",
+      "Dependencies and execution order are known.",
+      "Purely cosmetic motivation is insufficient."
+    ],
+    "completion_gate": [
+      "All acceptance criteria pass.",
+      "The functional outcome is demonstrated without weakening a higher-priority invariant.",
+      "Specialized checks and scripts/run_local_checks.py pass.",
+      "Documentation and graph status are synchronized.",
+      "An append-only accepted receipt records commands, exit codes, risks and rollback.",
+      "Manual target/browser/CAS/LaTeX validation remains explicitly pending when not actually performed."
+    ],
+    "non_goals": [
+      "No repository-wide formatting or renaming campaign.",
+      "No public API, 24-tool catalog, persisted schema or workflow behavior change merely to reduce file size.",
+      "No speculative performance tuning without a reproducible baseline.",
+      "No abstraction whose only benefit is fewer lines.",
+      "No weakening of authorization, isolation, transaction or finalization boundaries."
+    ]
+  },
+  "nodes": [
+    {
+      "id": "OPT-013",
+      "kind": "release_readiness",
+      "title": "Re-CTM v0.2.1 发布候选复核与 patch 版本更新",
+      "status": "completed",
+      "priority": "P0",
+      "problem": "多轮功能修复与代码清理已经完成，需要在不扩大功能范围的前提下重新验证源码、协议、打包和干净安装边界，并在全部通过后发布一个 patch 版本。",
+      "functional_outcome": "确认清理后的 v0.2 系列仍保持既有功能、安全和兼容契约；通过发布门禁后将包版本更新为 0.2.1。",
+      "evidence": [
+        "当前优化图中的本地可执行清理项目已完成，仅 OPT-005 因 external helper 真实等价生命周期证据不足而保持 blocked。",
+        "最近一次完整本地检查通过 117 个测试以及 engineering/error/documentation/optimization gates。"
+      ],
+      "scope": [
+        "运行完整本地检查和关键安全/协议回归。",
+        "审查当前版本引用与发布文档的一致性。",
+        "构建 sdist/wheel 并在临时干净环境验证安装包版本和公共工具目录。",
+        "全部通过后仅将当前版本从 0.2.0 升至 0.2.1，并同步当前版本文档事实。"
+      ],
+      "non_goals": [
+        "不在发布复核中继续重构 Native critical trust boundary。",
+        "不增加公开工具、workflow state、数据库 schema 或新用户功能。",
+        "不把历史记录中的 0.2.0/dev 版本字符串改写成 0.2.1。"
+      ],
+      "acceptance_criteria": [
+        "scripts/run_local_checks.py 通过。",
+        "公开工具仍为精确 18 CTM Native + 6 Rethlas façade，hidden aliases 保持 11。",
+        "error/authorization/storage/workflow/Native 关键回归通过。",
+        "sdist 与 wheel 构建成功，干净安装后 re-ctm --version 为 0.2.1。",
+        "当前版本文档与源码/pyproject 一致，历史日志保持原样。"
+      ],
+      "validation_commands": [
+        "python3 scripts/run_local_checks.py",
+        "uv build",
+        "clean-environment installed package smoke"
+      ],
+      "rollback": "若任一发布门禁失败，保持或恢复 0.2.0，并将本节点留在 in_progress/blocked；版本更新不包含持久化 schema 迁移。",
+      "risk": "medium",
+      "dependencies": [
+        "OPT-001",
+        "OPT-002",
+        "OPT-003",
+        "OPT-004",
+        "OPT-006",
+        "OPT-007"
+      ],
+      "receipt_required": true
+    },
+    {
+      "id": "OPT-000",
+      "kind": "governance",
+      "title": "建立功能优先代码质量规范、优化图与执行回执制度",
+      "status": "completed",
+      "priority": "P0",
+      "problem": "项目已经经历多轮密集更新，但代码清理尚缺少独立准入标准、统一优化队列和可机械审查的完成回执，容易出现无收益重构或记录漂移。",
+      "functional_outcome": "后续每个优化都必须说明功能收益、验证方法和回滚路径；没有证据的美化工作不能进入执行阶段。",
+      "evidence": [
+        "AGENTS.md 有安全与工作流规则，但此前没有专门的代码清理准入和回执规范。",
+        "engineering-graph.json 记录系统架构，不适合承载逐项代码优化状态。",
+        "project-progress.json 记录项目总进度，但没有优化依赖图和执行回执 schema。"
+      ],
+      "scope": [
+        "新增 docs/CODE_QUALITY.md。",
+        "新增 code-optimization-graph.json。",
+        "新增机械 validator 并接入 run_local_checks.py。",
+        "在 AGENTS.md、README.md 和 project-progress.json 中声明治理入口。"
+      ],
+      "non_goals": [
+        "本项目不在本次治理提交中拆分大型运行时模块。",
+        "本项目不改变公共协议、状态机、权限、数据库或用户功能。"
+      ],
+      "acceptance_criteria": [
+        "代码规范明确功能优先和禁止为了优化而优化。",
+        "优化图包含唯一节点、依赖边、详细 TODO、状态机和回执 contract。",
+        "validator 能拒绝未知依赖、重复 ID、非法状态、缺失 terminal receipt 和乱序 TODO。",
+        "run_local_checks.py 包含优化图 validator 且完整通过。"
+      ],
+      "validation_commands": [
+        "python3 scripts/validate_code_optimization_graph.py",
+        "python3 scripts/run_local_checks.py"
+      ],
+      "rollback": "删除新增治理文件并撤销 AGENTS/README/run_local_checks/project-progress 的对应引用；不涉及数据库或公共协议迁移。",
+      "risk": "low",
+      "dependencies": [],
+      "receipt_required": true
+    },
+    {
+      "id": "OPT-001",
+      "kind": "contract_reliability",
+      "title": "统一 Rethlas façade schema 与运行时 handler 的权威来源",
+      "status": "completed",
+      "priority": "P0",
+      "problem": "src/re_ctm/tools.py 同时承载工具 schema、参数校验、dispatch 和大型 handler；近期真实压力测试已经发现 schema 分支与 handler 默认语义可能漂移。",
+      "functional_outcome": "保证 tools/list、服务端参数验证和运行时处理器对六个 façade 的 operation/action 语义一致，非法 JSON 被稳定拒绝，合法客户端无需通过失败学习隐藏结构。",
+      "evidence": [
+        "src/re_ctm/tools.py 当前约 1954 行。",
+        "最近已修复 capability/run envelope 与 oneOf closed variant 问题，说明 contract 漂移是实际功能风险。",
+        "公共目录必须继续保持 18 个 CTM Native 加 6 个 Rethlas façade。"
+      ],
+      "scope": [
+        "提取或集中 Rethlas façade schema 构造与 operation/action 常量。",
+        "建立六个 façade 的稳定 schema snapshot/semantic tests。",
+        "核对 schema 默认值、handler 默认值、README 示例和 hidden aliases。"
+      ],
+      "non_goals": [
+        "不增加或删除公开工具。",
+        "不改变现有合法调用返回结构。",
+        "不借机重写全部 Native tool schema。"
+      ],
+      "acceptance_criteria": [
+        "公开工具名称和顺序保持精确 24 项。",
+        "六个 façade 每个 operation/action 的必需、可选和禁止字段都有测试。",
+        "schema 与 handler 默认值不存在未解释差异。",
+        "隐藏兼容别名继续通过原有回归测试。",
+        "无全文件格式化噪声。"
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src python3 -m unittest tests.test_mcp tests.test_v020 tests.test_methodology -v",
+        "python3 scripts/run_local_checks.py"
+      ],
+      "rollback": "恢复原 TOOL_SPECS 定义位置和 dispatch 引用；snapshot 测试可以保留为行为基线。",
+      "risk": "medium",
+      "dependencies": [
+        "OPT-000"
+      ],
+      "receipt_required": true
+    },
+    {
+      "id": "OPT-002",
+      "kind": "workflow_maintainability",
+      "title": "按状态拆解 workflow transition 计算，同时保留单一机械提交入口",
+      "status": "completed",
+      "priority": "P1",
+      "problem": "WorkflowEngine._commit_action 约 404 行，_task_for_run 约 238 行；协议 1/2、compact/full、branch/join、verify/repair 多条路径集中在少数长函数中，未来修改容易产生状态旁路。",
+      "functional_outcome": "让每个状态的前置条件、服务器派生事实和下一个状态可以独立测试，同时保留一个权威提交入口、事务顺序和机械 finalizer。",
+      "evidence": [
+        "src/re_ctm/workflow.py 当前约 2731 行。",
+        "_commit_action 是当前代码库最大的函数，约 404 行。",
+        "_task_for_run 同时根据 protocol/mode/state 动态改写 contract。"
+      ],
+      "scope": [
+        "先建立所有允许状态转换和错误码的行为基线。",
+        "提取无 I/O 的状态校验与 transition decision 函数。",
+        "保留 WorkflowEngine.commit 作为唯一授权与事务编排入口。",
+        "逐状态迁移，每次只迁移一个状态族。"
+      ],
+      "non_goals": [
+        "不引入新的 workflow 状态。",
+        "不把 server-derived facts 交给模型回显。",
+        "不改变 compact/full 路由或 repair escalation 规则。"
+      ],
+      "acceptance_criteria": [
+        "协议 1 持久化 run 仍可恢复。",
+        "协议 2 所有模型状态 contract 保持 zero-guess。",
+        "允许与拒绝的状态转换、错误码和 epoch/revocation 副作用不变。",
+        "每个提取的 transition 函数有直接单元测试。",
+        "finalizer 仍是唯一 VERIFIED/final artifact 创建者。"
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src python3 -m unittest tests.test_workflow tests.test_v020 tests.test_methodology -v",
+        "python3 scripts/run_local_checks.py"
+      ],
+      "rollback": "按状态族逐次回退到 WorkflowEngine 内部实现；不允许在同一提交中删除旧路径后再建立未验证的新路径。",
+      "risk": "high",
+      "dependencies": [
+        "OPT-003"
+      ],
+      "receipt_required": true
+    },
+    {
+      "id": "OPT-003",
+      "kind": "security_reliability",
+      "title": "建立 workflow resource access 的穷举矩阵测试",
+      "status": "completed",
+      "priority": "P0",
+      "problem": "resource permission pattern、authorize_role_resource、WorkflowEngine read/write/search 分支分布在 capabilities.py 与 workflow.py，多处规则可能在后续重构中发生不一致。",
+      "functional_outcome": "用穷举角色、状态、资源和动作矩阵保护 verifier firewall、branch isolation、project dependency visibility 和 finalizer mechanical-only 规则。",
+      "evidence": [
+        "权限由 default_permissions、authorize_role_resource 和具体资源处理器共同决定。",
+        "跨 owner/run/domain、stale/revoked capability 已有局部测试，但资源矩阵尚未形成单一可审计基线。",
+        "后续 workflow/tools 拆分都依赖稳定的负向权限测试。"
+      ],
+      "scope": [
+        "列出每个 WorkflowRole 在每个活动状态的允许 action/resource 对。",
+        "为 generation、branch、join、assembler、verifier、repair、finalizer 建正向和负向测试。",
+        "覆盖 verifier 禁止 generation/branch/steering/join/snapshot 数据。",
+        "覆盖 project-linked verifier 只能读取 proof-declared frozen dependencies。"
+      ],
+      "non_goals": [
+        "不扩大任何角色权限。",
+        "不把测试矩阵直接变成可由 Native dangerous 修改的策略文件。"
+      ],
+      "acceptance_criteria": [
+        "每个角色至少有允许和拒绝用例。",
+        "所有安全拒绝保持 permission/security hard failure。",
+        "矩阵测试对新增资源默认 fail closed。",
+        "现有 branch barrier、verifier firewall 和 capability 回归全部通过。"
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src python3 -m unittest tests.test_workflow tests.test_v020 -v",
+        "python3 scripts/run_local_checks.py"
+      ],
+      "rollback": "若矩阵错误描述现有合法行为，先修正测试基线而不是改变运行时权限；任何权限行为修改必须单独立项。",
+      "risk": "low",
+      "dependencies": [
+        "OPT-001"
+      ],
+      "receipt_required": true
+    },
+    {
+      "id": "OPT-004",
+      "kind": "persistence_reliability",
+      "title": "审计并分层 StateStore 迁移、运行状态与 project registry 事务边界",
+      "status": "completed",
+      "priority": "P1",
+      "problem": "src/re_ctm/storage.py 约 1433 行，同时包含 schema migration、run/domain/capability、project/claim/revision、reference audit 和 promotion；拆分不当会破坏事务原子性或旧数据库兼容。",
+      "functional_outcome": "在不改变 SQLite schema 和事务语义的前提下，让迁移、运行状态和研究 registry 的原子操作边界更容易验证和维护。",
+      "evidence": [
+        "_migrate_1_to_2 约 160 行。",
+        "promote_verified_run 约 113 行且承载并发、幂等和条件传播规则。",
+        "项目要求旧 protocol-1 run 和 unversioned baseline 数据库可继续升级。"
+      ],
+      "scope": [
+        "先补充迁移回滚、并发 promotion、重复 promotion 和 partial failure 测试。",
+        "区分 migration definitions、workflow persistence 与 research registry repository 边界。",
+        "保持一个 StateStore facade，避免调用方感知内部拆分。"
+      ],
+      "non_goals": [
+        "不切换数据库技术。",
+        "不改变 schema version 或表结构，除非另立功能迁移项目。",
+        "不将 private state 移入 Native workspace。"
+      ],
+      "acceptance_criteria": [
+        "旧数据库迁移与 newer-schema fail-closed 测试保持通过。",
+        "事务失败不会留下半完成 revision、edge、audit 或 promotion。",
+        "public StateStore 调用点无需大范围重写。",
+        "数据库文件与导出 artifact 字节兼容。"
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src python3 -m unittest tests.test_v020 tests.test_workflow -v",
+        "python3 scripts/run_local_checks.py"
+      ],
+      "rollback": "保留 StateStore facade 并逐 repository 回退；禁止不可逆 schema 修改进入此项目。",
+      "risk": "high",
+      "dependencies": [
+        "OPT-003"
+      ],
+      "receipt_required": true
+    },
+    {
+      "id": "OPT-005",
+      "kind": "native_security",
+      "title": "在目标机证据齐备后清理 Native/Bubblewrap attestation 与 command lifecycle 边界",
+      "status": "blocked",
+      "priority": "P1",
+      "problem": "native.py、native_helper_bwrap.py 和 processes.py 共同实现路径暴露、隔离 attestation、命令生命周期和终止 provenance；这些代码较大但直接处于高风险信任边界。",
+      "functional_outcome": "提高隔离和长命令生命周期的可审计性，同时保持 Sage/Magma/普通 shell、只读 toolchain mounts 和 private-root exclusion 的真实目标机行为。",
+      "evidence": [
+        "src/re_ctm/native.py 当前约 1307 行。",
+        "native_helper_bwrap._attest 约 189 行，_bubblewrap_command 约 153 行。",
+        "本地单元测试不能替代每个目标部署后端的真实隔离验收。",
+        "native-isolation-validation.json 是当前主机的 target-specific Bubblewrap 证据：hard isolation、private-vault hidden、read-only toolchain、safe network isolation 和 timeout 检查均通过。",
+        "2026-08-30 当前主机复测中，Bubblewrap command_id poll/kill、TTY write_stdin、private-vault denial、read-only toolchain tests 全部通过；Sage 与 Magma 均通过 Re-CTM Bubblewrap NativeRuntime 执行 2+3 并返回 5。"
+      ],
+      "scope": [
+        "在修改前保存目标机 native-isolation-validation 和 command lifecycle 基线。",
+        "分离纯 mount-plan 计算、attestation probes 和 subprocess transport。",
+        "保持 helper-side revalidation 与 fail-closed startup。"
+      ],
+      "non_goals": [
+        "不因代码简化减少 namespace、mount、capability drop 或 network isolation。",
+        "不为特定 CAS 添加产品名硬编码。",
+        "不在缺少目标机复测时宣称完成。"
+      ],
+      "acceptance_criteria": [
+        "reference Bubblewrap 和所有受支持部署后端的真实验收通过。",
+        "safe/trusted/dangerous 语义与 CTM command_id 生命周期保持兼容。",
+        "private/data roots 仍不可达，toolchain roots 仍只读。",
+        "timeout、TERM、KILL 和 external_or_unknown provenance 保持准确。"
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src python3 -m unittest tests.test_native tests.test_native_helper tests.test_toolchains -v",
+        "python3 scripts/manual_native_isolation_test.py --help",
+        "python3 scripts/run_local_checks.py"
+      ],
+      "rollback": "保留原 backend adapter 和 helper protocol，按独立边界逐步回退；任何 target-PC 失败立即停止。",
+      "risk": "critical",
+      "dependencies": [
+        "OPT-003"
+      ],
+      "blockers": [
+        "内置 Bubblewrap 当前主机基线已经齐备；若清理会触及 external helper adapter/protocol，则必须先取得该后端等价的 TTY、poll/read、timeout/kill、隔离和 CAS lifecycle 证据。"
+      ],
+      "receipt_required": true
+    },
+    {
+      "id": "OPT-006",
+      "kind": "client_reliability",
+      "title": "建立错误码、category、retryable 与客户端动作的稳定目录",
+      "status": "completed",
+      "priority": "P1",
+      "problem": "错误码目前以字符串分布在多个模块；错误 category 和 retryable 决定客户端是 hard failure、修正输入、恢复任务还是重试，漂移会直接破坏用户流程。",
+      "functional_outcome": "使公共错误语义可审计、可测试，保证 permission/security 不被误转为 recoverable，validation/conflict 恢复行为保持一致。",
+      "evidence": [
+        "ReCTMError 在 OAuth、Native、workflow、schema、storage 和 retrieval 层广泛使用。",
+        "rethlas_step 对 validation/conflict 有特殊 retained-write recovery，而 stale/foreign capability 必须 hard fail。",
+        "README 和真实客户端依赖稳定错误码定位问题。"
+      ],
+      "scope": [
+        "生成或维护错误目录，记录 code、category、retryable、owner action 和暴露边界。",
+        "增加重复错误码、冲突 category 和未记录公共错误的检查。",
+        "不要求一次性把所有 raise 改成枚举。"
+      ],
+      "non_goals": [
+        "不改变已有公共错误码名称。",
+        "不把内部异常细节暴露给客户端。"
+      ],
+      "acceptance_criteria": [
+        "公共错误码有唯一语义和客户端动作。",
+        "permission/security hard failure 与 recoverable failure 有机械测试。",
+        "未知内部异常仍在工具边界结构化并脱敏。",
+        "目录维护成本低于其防漂移收益。"
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src python3 -m unittest tests.test_mcp tests.test_workflow tests.test_http -v",
+        "python3 scripts/run_local_checks.py"
+      ],
+      "rollback": "移除目录生成/校验层但保留新增错误语义测试；不得回滚已确认的错误码稳定性。",
+      "risk": "medium",
+      "dependencies": [
+        "OPT-001"
+      ],
+      "receipt_required": true
+    },
+    {
+      "id": "OPT-007",
+      "kind": "documentation_reliability",
+      "title": "减少 AGENTS、README、工程图、进度账本之间的手工重复与事实漂移",
+      "status": "completed",
+      "priority": "P2",
+      "problem": "核心不变量会同时出现在运行时 metadata、AGENTS、README、engineering-graph 和 project-progress；必要重复缺少统一审计时可能随多轮更新出现版本不一致。",
+      "functional_outcome": "让用户、模型和维护者看到相同的工具数量、协议版本、安全边界和验证结论，减少部署与工作流误用。",
+      "evidence": [
+        "24-tool catalog、workflow protocol 2、schema version 2 和 manual-validation 边界在多个文件中重复。",
+        "部分重复是对不同读者必要的，不能简单删除。"
+      ],
+      "scope": [
+        "列出必须重复的稳定事实并增加一致性检查。",
+        "对详细实现事实建立单一来源和链接。",
+        "保持 README 面向用户、AGENTS 面向修改者、graph 面向机器。"
+      ],
+      "non_goals": [
+        "不把 README 变成自动生成的不可读文档。",
+        "不在公开文档暴露 private state 或安全敏感实现细节。"
+      ],
+      "acceptance_criteria": [
+        "关键版本、工具数量和验证边界有机械一致性测试。",
+        "重复内容均有明确受众理由。",
+        "文档链接在源码包和仓库布局中有效。"
+      ],
+      "validation_commands": [
+        "python3 scripts/run_local_checks.py"
+      ],
+      "rollback": "移除自动一致性层并恢复明确手工文本；保留已发现的事实漂移回归。",
+      "risk": "low",
+      "dependencies": [
+        "OPT-001"
+      ],
+      "receipt_required": true
+    },
+    {
+      "id": "OPT-008",
+      "kind": "rejected_optimization",
+      "title": "没有性能基线时进行微优化",
+      "status": "rejected",
+      "priority": "P3",
+      "problem": "目前没有证据表明 Python 局部表达式、容器选择或小函数调用开销是用户功能瓶颈。",
+      "functional_outcome": "不执行；保留工程注意力给正确性、安全、schema 和工作流可靠性。",
+      "evidence": [
+        "当前主要风险来自协议、状态机、权限和复杂控制流，而非已测量 CPU 热点。",
+        "尚无可重复 benchmark 指向具体代码路径。"
+      ],
+      "scope": [
+        "仅记录拒绝决定。"
+      ],
+      "non_goals": [
+        "不修改运行时代码。"
+      ],
+      "acceptance_criteria": [
+        "只有出现可重复性能基线和用户影响后才建立新的独立优化项目。"
+      ],
+      "validation_commands": [],
+      "rollback": "若未来出现证据，创建新的 OPT 节点，不修改本拒绝回执。",
+      "risk": "none",
+      "dependencies": [],
+      "receipt_required": true
+    },
+    {
+      "id": "OPT-009",
+      "kind": "rejected_optimization",
+      "title": "全仓库格式化、批量改名或仅为缩短文件的拆分",
+      "status": "rejected",
+      "priority": "P3",
+      "problem": "此类修改产生大量 diff、降低历史可读性并放大回归面，但没有直接功能收益。",
+      "functional_outcome": "不执行；格式与命名只在功能相关改动的局部范围内改善。",
+      "evidence": [
+        "当前大型模块需要按功能边界和测试证据拆解，而不是按行数机械切割。",
+        "项目仍在高频功能演进期，大面积噪声会降低安全审查质量。"
+      ],
+      "scope": [
+        "仅记录拒绝决定。"
+      ],
+      "non_goals": [
+        "不修改运行时代码。"
+      ],
+      "acceptance_criteria": [
+        "后续清理提交不混入无关全局格式化。"
+      ],
+      "validation_commands": [],
+      "rollback": "若未来采用 formatter，必须另立项目并证明增量执行、兼容性和审查收益。",
+      "risk": "none",
+      "dependencies": [],
+      "receipt_required": true
+    },
+    {
+      "id": "OPT-010",
+      "kind": "governance_reliability",
+      "title": "使优化图回归测试不依赖具体节点永远处于 TODO",
+      "status": "completed",
+      "priority": "P0",
+      "problem": "OPT-001 完成后，tests/test_code_quality.py 仍硬编码从 todo_list 查找 OPT-001，导致功能已经通过的完成状态反而让全量本地 gate 崩溃。",
+      "functional_outcome": "优化治理测试根据当前图动态选择 terminal receipt 节点和 actionable dependency pair，因此节点正常完成、拒绝或从 TODO 移除不会破坏治理测试本身。",
+      "evidence": [
+        "OPT-001 标记 completed 并从 todo_list 移除后，python3 scripts/run_local_checks.py 因 test_todo_dependency_order_is_rejected 的 StopIteration 失败。",
+        "code optimization graph validator 本身在相同状态下通过，说明失败来自测试 fixture 生命周期假设而非图结构。"
+      ],
+      "scope": [
+        "仅修改 tests/test_code_quality.py 的 fixture 选择逻辑。",
+        "保留原有四类治理断言和 validator 行为。"
+      ],
+      "non_goals": [
+        "不修改优化图状态机规则。",
+        "不放宽 terminal receipt 或 TODO dependency 校验。",
+        "不修改任何运行时代码。"
+      ],
+      "acceptance_criteria": [
+        "治理测试不硬编码 OPT-001 或 OPT-003 必须处于 TODO。",
+        "仍能证明删除 terminal receipt 会失败。",
+        "仍能证明交换当前 actionable dependency pair 的顺序会失败。",
+        "tests.test_code_quality 和 scripts/run_local_checks.py 均通过。"
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src python3 -m unittest tests.test_code_quality -v",
+        "python3 scripts/run_local_checks.py"
+      ],
+      "rollback": "恢复测试 fixture 的固定节点选择；不涉及生产代码或数据，但会重新引入节点完成后测试失效的问题。",
+      "risk": "low",
+      "dependencies": [
+        "OPT-000"
+      ],
+      "receipt_required": true
+    },
+    {
+      "id": "OPT-011",
+      "kind": "governance_reliability",
+      "title": "使 TODO 顺序回归测试不依赖真实图中始终存在 actionable dependency pair",
+      "status": "completed",
+      "priority": "P0",
+      "problem": "OPT-003 完成后，当前 TODO 的依赖均已终结，治理测试仍要求真实图中存在两个 actionable 且互相依赖的节点，因此再次错误失败。",
+      "functional_outcome": "TODO 顺序测试在内存副本中构造一条合法的合成依赖再反转顺序，验证 validator 本身而不依赖真实项目拓扑。",
+      "evidence": [
+        "OPT-003 完成后的 run_local_checks.py 因 fixture needs one actionable dependency pair 失败。",
+        "同一状态下 optimization graph validator 正常通过。"
+      ],
+      "scope": [
+        "仅修改 tests/test_code_quality.py 的 TODO 顺序测试 fixture。"
+      ],
+      "non_goals": [
+        "不修改 validator 规则。",
+        "不修改运行时代码。"
+      ],
+      "acceptance_criteria": [
+        "测试可在真实 TODO 不含 actionable dependency pair 时运行。",
+        "合成依赖被反向排序后仍触发 todo order violates dependency。",
+        "全量本地检查通过。"
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src python3 -m unittest tests.test_code_quality -v",
+        "python3 scripts/run_local_checks.py"
+      ],
+      "rollback": "恢复真实图依赖对选择逻辑，会重新引入随项目拓扑变化而失败的问题。",
+      "risk": "low",
+      "dependencies": [
+        "OPT-000"
+      ],
+      "receipt_required": true
+    },
+    {
+      "id": "OPT-012",
+      "kind": "governance_reliability",
+      "title": "使优化图回归测试在零或单个 TODO 时仍可验证依赖顺序",
+      "status": "completed",
+      "priority": "P0",
+      "problem": "完成 OPT-007 后真实优化队列只剩一个 blocked 节点，TODO 顺序测试仍要求至少两个真实 actionable 节点，因此再次把正常收敛误判为测试失败。",
+      "functional_outcome": "治理测试完全在内存图副本中追加两个 synthetic actionable 节点和一条依赖，真实项目可以合法收敛到一个或零个 TODO。",
+      "evidence": [
+        "最终 run_local_checks.py 在 117 个测试中仅 test_todo_dependency_order_is_rejected 失败，原因是 fixture needs two actionable nodes。",
+        "同一次执行中 optimization/documentation/error validators 及所有运行时测试均通过。"
+      ],
+      "scope": [
+        "仅修改 tests/test_code_quality.py 的 repository TODO-count 假设与 synthetic dependency fixture。"
+      ],
+      "non_goals": [
+        "不改变 code-optimization-graph validator。",
+        "不要求项目为了测试保留虚假的未完成优化项。",
+        "不修改生产运行时代码。"
+      ],
+      "acceptance_criteria": [
+        "repository graph test 允许 todo_count 为零。",
+        "dependency-order test 不读取真实 actionable 节点数量即可构造反向依赖并得到预期拒绝。",
+        "tests.test_code_quality 与完整 run_local_checks.py 通过。"
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src python3 -m unittest tests.test_code_quality -v",
+        "python3 scripts/run_local_checks.py"
+      ],
+      "rollback": "恢复对真实 TODO 数量的假设，会使优化队列正常收敛时再次产生治理测试假失败。",
+      "risk": "low",
+      "dependencies": [
+        "OPT-000"
+      ],
+      "receipt_required": true
+    }
+  ],
+  "edges": [
+    {
+      "id": "EDGE-001",
+      "source": "OPT-001",
+      "target": "OPT-000",
+      "relation": "depends_on",
+      "reason": "Schema 整理必须受功能优先准入和回执规则约束。"
+    },
+    {
+      "id": "EDGE-002",
+      "source": "OPT-003",
+      "target": "OPT-001",
+      "relation": "depends_on",
+      "reason": "资源矩阵需要先冻结 façade contract 与测试入口。"
+    },
+    {
+      "id": "EDGE-003",
+      "source": "OPT-002",
+      "target": "OPT-003",
+      "relation": "depends_on",
+      "reason": "拆解状态机前必须有穷举权限和资源行为基线。"
+    },
+    {
+      "id": "EDGE-004",
+      "source": "OPT-004",
+      "target": "OPT-003",
+      "relation": "depends_on",
+      "reason": "持久化拆分前需要稳定权限和状态访问基线。"
+    },
+    {
+      "id": "EDGE-005",
+      "source": "OPT-005",
+      "target": "OPT-003",
+      "relation": "depends_on",
+      "reason": "Native 高风险清理必须先确保跨层权限拒绝测试完整。"
+    },
+    {
+      "id": "EDGE-006",
+      "source": "OPT-006",
+      "target": "OPT-001",
+      "relation": "depends_on",
+      "reason": "错误目录需要以稳定 façade contract 为边界。"
+    },
+    {
+      "id": "EDGE-007",
+      "source": "OPT-007",
+      "target": "OPT-001",
+      "relation": "depends_on",
+      "reason": "文档一致性检查应引用整理后的 contract 权威来源。"
+    },
+    {
+      "id": "EDGE-008",
+      "source": "OPT-010",
+      "target": "OPT-000",
+      "relation": "depends_on",
+      "reason": "治理回归测试的生命周期修复属于 OPT-000 建立的代码清理制度的可靠性补丁。"
+    },
+    {
+      "id": "EDGE-009",
+      "source": "OPT-011",
+      "target": "OPT-000",
+      "relation": "depends_on",
+      "reason": "TODO 顺序 fixture 的拓扑独立性属于代码清理治理测试可靠性。"
+    },
+    {
+      "id": "EDGE-010",
+      "source": "OPT-012",
+      "target": "OPT-000",
+      "relation": "depends_on",
+      "reason": "零/单 TODO 生命周期 fixture 修复属于 OPT-000 建立的治理测试可靠性。"
+    },
+    {
+      "id": "EDGE-011",
+      "source": "OPT-013",
+      "target": "OPT-001",
+      "relation": "depends_on",
+      "reason": "发布候选必须建立在稳定的 façade contract 上。"
+    },
+    {
+      "id": "EDGE-012",
+      "source": "OPT-013",
+      "target": "OPT-002",
+      "relation": "depends_on",
+      "reason": "发布候选必须在 workflow decomposition 完成并通过回归后进行。"
+    },
+    {
+      "id": "EDGE-013",
+      "source": "OPT-013",
+      "target": "OPT-003",
+      "relation": "depends_on",
+      "reason": "发布候选必须以冻结的 workflow authorization matrix 为安全基线。"
+    },
+    {
+      "id": "EDGE-014",
+      "source": "OPT-013",
+      "target": "OPT-004",
+      "relation": "depends_on",
+      "reason": "发布候选必须在 storage migration/promotion 原子性复核完成后进行。"
+    },
+    {
+      "id": "EDGE-015",
+      "source": "OPT-013",
+      "target": "OPT-006",
+      "relation": "depends_on",
+      "reason": "发布候选必须保持已审计的公共错误语义。"
+    },
+    {
+      "id": "EDGE-016",
+      "source": "OPT-013",
+      "target": "OPT-007",
+      "relation": "depends_on",
+      "reason": "发布候选必须先完成当前版本和公共文档事实的一致性治理。"
+    }
+  ],
+  "todo_list": [
+    {
+      "order": 1,
+      "optimization_id": "OPT-005",
+      "phase": "native boundary cleanup after target evidence",
+      "functional_goal": "在不弱化隔离的情况下提高 Native 代码可审计性。",
+      "start_condition": "解除 blockers，取得真实目标机隔离、CAS 和 command lifecycle 基线。",
+      "tasks": [
+        "保存并审计现有 attestation 与 manual validation evidence。",
+        "只先提取纯 mount-plan 和 probe 计算。",
+        "分别验证 source、wheel 和每种 NativeMode。",
+        "运行 Sage/Magma/普通 shell、TTY、timeout、kill 和只读 mount 测试。",
+        "比较 termination provenance 和 private-root denial。"
+      ],
+      "receipt_expectations": [
+        "附目标机而非仅本地 mock 的验证记录。",
+        "列出每个 backend 的 lifecycle 支持状态。",
+        "明确仍待人工验收的部署环境。"
+      ],
+      "stop_condition": "任一隔离属性、CAS 可用性或生命周期语义退化时立即回退。"
+    }
+  ],
+  "receipt_contract": {
+    "append_only": true,
+    "required_fields": [
+      "receipt_id",
+      "optimization_id",
+      "started_at",
+      "completed_at",
+      "status_before",
+      "status_after",
+      "functional_goal",
+      "files_changed",
+      "commands",
+      "tests",
+      "behavior_before",
+      "behavior_after",
+      "risk_review",
+      "rollback",
+      "unresolved",
+      "decision"
+    ],
+    "decision_values": [
+      "accepted",
+      "partial",
+      "rejected"
+    ],
+    "rules": [
+      "A completed node requires an accepted receipt with at least one successful command.",
+      "A rejected node requires a rejected receipt and an explicit reason.",
+      "Commands must record the exact command, exit_code and concise result.",
+      "Tests must distinguish deterministic local checks from manual target/browser/CAS/LaTeX evidence.",
+      "Receipts are appended; historical receipts are never rewritten to hide failures.",
+      "A failed completion check leaves the node in_progress or blocked, never completed."
+    ]
+  },
+  "receipts": [
+    {
+      "receipt_id": "REC-2026-08-30-001",
+      "optimization_id": "OPT-000",
+      "started_at": "2026-08-30T21:26:00-07:00",
+      "completed_at": "2026-08-30T22:17:08-07:00",
+      "status_before": "in_progress",
+      "status_after": "completed",
+      "functional_goal": "建立可执行的功能优先代码清理制度，而不是立即进行无边界重构。",
+      "files_changed": [
+        "docs/CODE_QUALITY.md",
+        "code-optimization-graph.json",
+        "scripts/validate_code_optimization_graph.py",
+        "scripts/run_local_checks.py",
+        "AGENTS.md",
+        "README.md",
+        "project-progress.json",
+        "local-validation.json"
+      ],
+      "commands": [
+        {
+          "command": "python3 scripts/validate_code_optimization_graph.py",
+          "exit_code": 0,
+          "result": "Optimization graph structure, dependencies, TODO order and terminal receipts passed."
+        },
+        {
+          "command": "python3 scripts/run_local_checks.py",
+          "exit_code": 0,
+          "result": "Compile, unit tests, engineering graph and code optimization graph checks passed."
+        }
+      ],
+      "tests": [
+        "Mechanical optimization graph validation.",
+        "Full deterministic local validation through scripts/run_local_checks.py.",
+        "No target-PC, browser, real OAuth client, CAS or real LaTeX manual acceptance is claimed."
+      ],
+      "behavior_before": "Code cleanup had no dedicated admission gate, dependency-ordered TODO or immutable receipt contract.",
+      "behavior_after": "Every future optimization has a machine-validated functional goal, evidence, dependencies, acceptance commands, rollback and terminal receipt requirement.",
+      "risk_review": "Governance-only change; no runtime protocol, database, authority or finalization behavior is intentionally modified.",
+      "rollback": "Revert the new governance files and references; no data migration is required.",
+      "unresolved": [
+        "The approved/proposed optimization items remain separate future work and are not claimed complete.",
+        "Manual validation remains pending under manual-validation.json."
+      ],
+      "decision": "accepted"
+    },
+    {
+      "receipt_id": "REC-2026-08-30-002",
+      "optimization_id": "OPT-008",
+      "started_at": "2026-08-30T21:26:00-07:00",
+      "completed_at": "2026-08-30T22:08:34-07:00",
+      "status_before": "proposed",
+      "status_after": "rejected",
+      "functional_goal": "避免没有性能证据的微优化抢占正确性和安全工作。",
+      "files_changed": [],
+      "commands": [],
+      "tests": [],
+      "behavior_before": "性能清理可能仅凭直觉进入讨论。",
+      "behavior_after": "没有可重复基线和用户影响时，性能工作被明确拒绝。",
+      "risk_review": "不修改代码，因此无运行时回归风险。",
+      "rollback": "未来若获得性能证据，新增独立节点并保留本拒绝历史。",
+      "unresolved": [
+        "尚未建立性能 benchmark，因为当前没有功能瓶颈证据。"
+      ],
+      "decision": "rejected"
+    },
+    {
+      "receipt_id": "REC-2026-08-30-003",
+      "optimization_id": "OPT-009",
+      "started_at": "2026-08-30T21:26:00-07:00",
+      "completed_at": "2026-08-30T22:08:34-07:00",
+      "status_before": "proposed",
+      "status_after": "rejected",
+      "functional_goal": "避免大面积无功能收益 diff 降低安全和兼容性审查质量。",
+      "files_changed": [],
+      "commands": [],
+      "tests": [],
+      "behavior_before": "大型文件可能被仅按行数机械拆分或全仓库格式化。",
+      "behavior_after": "格式、命名和拆分必须绑定具体功能风险与验收证据。",
+      "risk_review": "不修改代码，因此无运行时回归风险。",
+      "rollback": "未来若引入 formatter，新增独立节点并证明增量策略与审查收益。",
+      "unresolved": [],
+      "decision": "rejected"
+    },
+    {
+      "receipt_id": "REC-2026-08-30-004",
+      "optimization_id": "OPT-001",
+      "started_at": "2026-08-30T22:26:00-07:00",
+      "completed_at": "2026-08-30T22:33:30-07:00",
+      "status_before": "in_progress",
+      "status_after": "completed",
+      "functional_goal": "让六个公开 Rethlas façade 的 tools/list schema、服务端参数验证、handler 默认值和隐藏兼容入口共享可审计的 contract 权威来源，消除合法客户端需要通过失败学习隐藏 JSON 语义的风险。",
+      "files_changed": [
+        "src/re_ctm/rethlas_contracts.py",
+        "src/re_ctm/tools.py",
+        "tests/test_rethlas_contracts.py",
+        "code-optimization-graph.json",
+        "project-progress.json",
+        "local-validation.json"
+      ],
+      "commands": [
+        {
+          "command": "PYTHONPATH=src python3 -m unittest tests.test_rethlas_contracts tests.test_mcp tests.test_v020 tests.test_methodology -v",
+          "exit_code": 0,
+          "result": "40 targeted façade, MCP, v0.2 and methodology contract tests passed after extraction and compatibility restoration."
+        },
+        {
+          "command": "python3 scripts/run_local_checks.py",
+          "exit_code": 1,
+          "result": "First full gate exposed an ImportError because LEGACY_RETHLAS_TOOL_NAMES had been removed from re_ctm.tools; this demonstrated that the exported compatibility catalog is an existing code-level contract and must be preserved."
+        },
+        {
+          "command": "python3 scripts/run_local_checks.py",
+          "exit_code": 0,
+          "result": "After restoring LEGACY_RETHLAS_TOOL_NAMES as a re-export of the centralized contract definition, compile, full unit suite, engineering graph and optimization graph checks passed."
+        },
+        {
+          "command": "PYTHONPATH=src python3 -m unittest discover -s tests -q",
+          "exit_code": 0,
+          "result": "100 deterministic unit/integration tests passed."
+        }
+      ],
+      "tests": [
+        "All six public façade schemas are generated from src/re_ctm/rethlas_contracts.py and remain in the exact 18 Native + 6 Rethlas public order.",
+        "Every discriminated operation/action variant is tested for required, optional and forbidden fields; rethlas_start has equivalent non-discriminated coverage.",
+        "Handler defaults for start, retrieval, inspect limits and cancel reason are checked against the same constants advertised by schema annotations.",
+        "ToolRuntime.call now applies the same schema validation used by MCPDispatcher before reaching handlers, and an invalid direct artifact call is proven not to reach workflow.get_artifact.",
+        "All eleven hidden aliases have an explicit façade semantic mapping, remain callable through registered handlers, and remain absent from PUBLIC_TOOL_NAMES.",
+        "No target-PC browser, external CAS, real remote OAuth client or manual LaTeX acceptance is claimed by these deterministic tests."
+      ],
+      "behavior_before": "Public façade schemas, handler default literals and direct ToolRuntime invocation boundaries were maintained in different places. MCPDispatcher validated schemas, but a direct ToolRuntime.call could reach a handler without the same validation. Several real defaults such as retrieval search_intent/num_results and inspect limits were not advertised in tools/list schema annotations.",
+      "behavior_after": "Rethlas façade names, operation/action constants, hidden-alias semantics, defaults and six public input schemas live in one contract module. tools.py consumes isolated schema copies and shared constants, while every ToolRuntime.call validates against TOOL_SPECS before dispatch. Existing legal calls and the 24-tool public catalog are preserved; invalid direct calls now fail at the same contract boundary as MCP calls. Schema output intentionally gains default annotations for previously implicit runtime defaults without changing their runtime values.",
+      "risk_review": "No workflow state, authorization rule, database schema, finalizer rule or public tool count changed. The only intentional rejection expansion is for inputs that were already invalid according to tools/list but could previously bypass validation through direct ToolRuntime.call. The first full gate caught and corrected an accidental removal of the exported LEGACY_RETHLAS_TOOL_NAMES compatibility constant.",
+      "rollback": "Restore the six façade schema literals and default literals in tools.py, remove rethlas_contracts.py and its semantic tests, and remove ToolRuntime.call-level validation. Keep the new tests when possible because they document the compatibility boundary that motivated the change.",
+      "unresolved": [
+        "Real webpage/client behavior remains covered by pending manual validation rather than this local receipt.",
+        "Workflow authorization matrix cleanup is intentionally deferred to OPT-003 rather than mixed into this contract refactor."
+      ],
+      "decision": "accepted"
+    },
+    {
+      "receipt_id": "REC-2026-08-30-005",
+      "optimization_id": "OPT-010",
+      "started_at": "2026-08-30T22:33:30-07:00",
+      "completed_at": "2026-08-30T22:36:28-07:00",
+      "status_before": "in_progress",
+      "status_after": "completed",
+      "functional_goal": "修复代码优化治理测试对具体 TODO 节点生命周期的脆弱依赖，使完成一个优化项目不会反过来破坏全量验证。",
+      "files_changed": [
+        "tests/test_code_quality.py",
+        "code-optimization-graph.json",
+        "local-validation.json"
+      ],
+      "commands": [
+        {
+          "command": "python3 scripts/run_local_checks.py",
+          "exit_code": 1,
+          "result": "Post-completion gate exposed StopIteration in test_todo_dependency_order_is_rejected because the fixture hard-coded completed OPT-001 as a todo item."
+        },
+        {
+          "command": "PYTHONPATH=src python3 -m unittest tests.test_code_quality -v && python3 scripts/run_local_checks.py",
+          "exit_code": 0,
+          "result": "Four governance tests passed with lifecycle-independent fixtures and the full deterministic local gate returned ok=true."
+        }
+      ],
+      "tests": [
+        "Terminal receipt rejection now dynamically chooses a current receipt-required terminal node.",
+        "TODO dependency-order rejection now dynamically chooses an actionable node whose dependency is also actionable.",
+        "The original duplicate-node, missing-receipt and dependency-order validator behaviors remain enforced.",
+        "No runtime, protocol, authorization, persistence or mathematical behavior is changed."
+      ],
+      "behavior_before": "The governance test suite assumed OPT-001 and OPT-003 would remain in todo_list forever, so a legitimate OPT-001 completion caused StopIteration and failed run_local_checks.py.",
+      "behavior_after": "Governance fixtures derive their targets from the current graph state and therefore continue testing the same invariants as optimization nodes progress through their lifecycle.",
+      "risk_review": "Test-only reliability correction. Validator rules are unchanged and the new fixture selection still fails closed when no suitable dependency pair exists.",
+      "rollback": "Restore the fixed OPT-001/OPT-003 fixture lookup, which is safe for runtime but makes governance validation unusable after those nodes leave TODO.",
+      "unresolved": [],
+      "decision": "accepted"
+    },
+    {
+      "receipt_id": "REC-2026-08-30-006",
+      "optimization_id": "OPT-003",
+      "started_at": "2026-08-30T22:37:15-07:00",
+      "completed_at": "2026-08-30T22:41:30-07:00",
+      "status_before": "in_progress",
+      "status_after": "completed",
+      "functional_goal": "用自动化测试锁定七种 workflow 角色的资源访问边界，供后续重构安全使用。",
+      "files_changed": [
+        "tests/test_authorization_matrix.py",
+        "tests/test_v020.py",
+        "code-optimization-graph.json",
+        "project-progress.json",
+        "local-validation.json"
+      ],
+      "commands": [
+        {
+          "command": "PYTHONPATH=src python3 -m unittest tests.test_authorization_matrix -v",
+          "exit_code": 0,
+          "result": "8 authorization matrix tests passed."
+        },
+        {
+          "command": "PYTHONPATH=src python3 -m unittest tests.test_authorization_matrix tests.test_workflow tests.test_v020 -v",
+          "exit_code": 0,
+          "result": "35 authorization, workflow, and v0.2 tests passed."
+        }
+      ],
+      "tests": [
+        "Exact permission tuples are frozen for all seven roles.",
+        "Allow/deny, unknown-resource fail-closed, role/state mismatch, verifier firewall, branch isolation, join-only and finalizer-only behavior are covered.",
+        "Project generator sees the frozen verified set while verifier sees only proof-declared dependency revisions."
+      ],
+      "behavior_before": "Authorization checks existed in scattered tests without one consolidated role/resource baseline.",
+      "behavior_after": "A dedicated matrix and project integration test now protect current authorization behavior before workflow/storage refactors.",
+      "risk_review": "Test-only baseline; no production permission, state, database, or resource behavior changed.",
+      "rollback": "Remove the new tests; production runtime is unaffected but future refactors lose the consolidated authorization regression net.",
+      "unresolved": [
+        "Manual target/browser validation remains pending.",
+        "Workflow decomposition remains separate future work."
+      ],
+      "decision": "accepted"
+    },
+    {
+      "receipt_id": "REC-2026-08-30-007",
+      "optimization_id": "OPT-011",
+      "started_at": "2026-08-30T22:41:30-07:00",
+      "completed_at": "2026-08-30T22:44:30-07:00",
+      "status_before": "in_progress",
+      "status_after": "completed",
+      "functional_goal": "让 TODO 顺序 validator 回归测试独立于真实优化图当前是否存在 actionable dependency pair。",
+      "files_changed": [
+        "tests/test_code_quality.py",
+        "code-optimization-graph.json",
+        "local-validation.json"
+      ],
+      "commands": [
+        {
+          "command": "PYTHONPATH=src python3 -m unittest tests.test_code_quality -v",
+          "exit_code": 1,
+          "result": "Confirmed the fixture failed when all real TODO dependencies were already terminal."
+        },
+        {
+          "command": "PYTHONPATH=src python3 -m unittest tests.test_code_quality -v && python3 scripts/run_local_checks.py",
+          "exit_code": 0,
+          "result": "Governance tests and the complete deterministic local gate passed after using a synthetic dependency in the test copy."
+        }
+      ],
+      "tests": [
+        "The test constructs a dependency only in an in-memory graph copy and reverses its TODO order.",
+        "The real optimization graph is not required to keep unfinished dependency pairs solely for test fixtures.",
+        "Validator behavior remains unchanged."
+      ],
+      "behavior_before": "Completing OPT-003 removed the last actionable dependency pair and caused the governance fixture to fail despite a valid graph.",
+      "behavior_after": "The fixture tests dependency-order rejection independently of project lifecycle and graph topology.",
+      "risk_review": "Test-only reliability change; production and validator semantics are unchanged.",
+      "rollback": "Restore real-graph dependency selection, which reintroduces topology-dependent test failures.",
+      "unresolved": [],
+      "decision": "accepted"
+    },
+    {
+      "receipt_id": "REC-2026-08-30-008",
+      "optimization_id": "OPT-006",
+      "started_at": "2026-08-30T22:44:30-07:00",
+      "completed_at": "2026-08-30T22:51:30-07:00",
+      "status_before": "in_progress",
+      "status_after": "completed",
+      "functional_goal": "机械审计错误码、category、retryable 与客户端动作，防止 hard failure 和 recoverable 语义漂移。",
+      "files_changed": [
+        "scripts/audit_error_contract.py",
+        "scripts/run_local_checks.py",
+        "tests/test_error_contract.py",
+        "src/re_ctm/workflow.py",
+        "src/re_ctm/storage.py",
+        "README.md",
+        "code-optimization-graph.json",
+        "local-validation.json"
+      ],
+      "commands": [
+        {
+          "command": "python3 scripts/audit_error_contract.py",
+          "exit_code": 0,
+          "result": "151 codes and 402 statically auditable semantic points; no unapproved variants, dynamic sources, retryable hard failures, or critical mismatches."
+        },
+        {
+          "command": "PYTHONPATH=src python3 -m unittest tests.test_error_contract tests.test_mcp tests.test_research tests.test_v020 -v",
+          "exit_code": 0,
+          "result": "36 error-contract, MCP, research, and v0.2 tests passed."
+        }
+      ],
+      "tests": [
+        "Permission/security errors are mechanically required to remain non-retryable.",
+        "Validation/conflict remain the only rethlas_step recoverable categories.",
+        "Five intentional multi-variant codes have exact allowlisted semantics and reasons.",
+        "PAPER_SEARCH_UNAVAILABLE now means retryable service outage; unsupported provider operations use PAPER_SEARCH_UNSUPPORTED.",
+        "REFERENCE_RUN_MISMATCH is consistently a permission hard failure."
+      ],
+      "behavior_before": "Error semantics were distributed across source, with two real same-code client-action ambiguities and no repository-wide conflict audit.",
+      "behavior_after": "Source remains the single error-code fact source; an AST auditor derives the catalog, client action policy, controlled exceptions, and CI failure conditions without a second hand-maintained code list.",
+      "risk_review": "Two intentional behavior fixes were made: provider feature absence now has a distinct non-retryable code, and cross-run reference mismatch no longer enters validation/conflict recovery. No permission was expanded.",
+      "rollback": "Remove the audit script/tests/local gate and restore the two previous error declarations; this would reintroduce ambiguous client actions and cross-run recoverability risk.",
+      "unresolved": [
+        "Three narrow dynamic error propagation boundaries remain explicitly allowlisted and audited."
+      ],
+      "decision": "accepted"
+    },
+    {
+      "receipt_id": "REC-2026-08-30-009",
+      "optimization_id": "OPT-002",
+      "started_at": "2026-08-30T22:52:00-07:00",
+      "completed_at": "2026-08-30T23:01:00-07:00",
+      "status_before": "in_progress",
+      "status_after": "completed",
+      "functional_goal": "把 workflow commit 状态分支拆成具名状态族方法，同时保留 _commit_action 作为唯一 action 校验和统一 transition 入口。",
+      "files_changed": [
+        "src/re_ctm/workflow.py",
+        "code-optimization-graph.json",
+        "project-progress.json",
+        "local-validation.json"
+      ],
+      "commands": [
+        {
+          "command": "PYTHONPATH=src python3 -m unittest tests.test_workflow tests.test_v020 tests.test_mcp tests.test_authorization_matrix -v",
+          "exit_code": 0,
+          "result": "47 workflow, verifier, compact/full, MCP and authorization tests passed after all state-family extractions."
+        },
+        {
+          "command": "python3 scripts/run_local_checks.py",
+          "exit_code": 0,
+          "result": "Complete deterministic local gate passed after workflow decomposition."
+        }
+      ],
+      "tests": [
+        "Assessment, exploration, planning, direct screening, join, failure/replan, proof submission, verifier verdict and repair paths remain covered.",
+        "Protocol-1 persisted/resume behavior remains covered by existing workflow tests and protocol-2 compact/full completion by MCP/v0.2 tests.",
+        "Authorization matrix continues to protect role/resource/finalizer boundaries."
+      ],
+      "behavior_before": "_commit_action concentrated about 404 lines of state-specific validation, memory writes, metadata updates, verdict logic and transitions in one method.",
+      "behavior_after": "_commit_action is about 55 lines and delegates to named state-family methods; branch and verifier paths keep their specialized sealing behavior and the same single mechanical commit entry. _task_for_run remains intentionally centralized at 238 lines because splitting protocol-2 schema overlays would increase contract dispersion rather than improve function delivery.",
+      "risk_review": "Mechanical extraction only: no workflow state, error code, verdict rule, epoch behavior, domain sealing, memory side effect, protocol contract, permission, or finalizer authority was intentionally changed.",
+      "rollback": "Inline the extracted _commit_* state-family methods back into _commit_action. No persistent schema or external protocol migration is required.",
+      "unresolved": [
+        "Large individual helpers such as verifier submission remain intentionally cohesive because further splitting would separate verdict evidence from its mechanical transition."
+      ],
+      "decision": "accepted"
+    },
+    {
+      "receipt_id": "REC-2026-08-30-010",
+      "optimization_id": "OPT-004",
+      "started_at": "2026-08-30T23:02:00-07:00",
+      "completed_at": "2026-08-30T23:10:07-07:00",
+      "status_before": "in_progress",
+      "status_after": "completed",
+      "functional_goal": "把纯 SQLite migration schema 与事务型 StateStore 操作分层，同时用失败注入锁定迁移和 promotion 原子性。",
+      "files_changed": [
+        "src/re_ctm/storage.py",
+        "src/re_ctm/storage_schema.py",
+        "tests/test_storage_boundaries.py",
+        "code-optimization-graph.json",
+        "project-progress.json",
+        "local-validation.json"
+      ],
+      "commands": [
+        {
+          "command": "PYTHONPATH=src python3 -m unittest tests.test_storage_boundaries tests.test_v020 tests.test_workflow -v",
+          "exit_code": 0,
+          "result": "36 storage, migration, promotion, v0.2 and workflow tests passed."
+        },
+        {
+          "command": "python3 scripts/run_local_checks.py",
+          "exit_code": 0,
+          "result": "Complete deterministic local gate passed after migration SQL extraction."
+        }
+      ],
+      "tests": [
+        "A deliberately incompatible version-1 database causes v2 migration failure and proves PRAGMA user_version plus partial schema changes roll back.",
+        "A missing promotion dependency fails after the transaction has begun but leaves the original revision ACTIVE and creates no partial promoted revision.",
+        "Repeated promotion from the same source run returns already_promoted and does not create duplicate revisions.",
+        "Existing migration, concurrent promotion conflict, retry-on-terminal and workflow regressions continue to pass."
+      ],
+      "behavior_before": "storage.py mixed roughly 250 lines of pure migration DDL with runtime transaction methods, while rollback/idempotency guarantees were only indirectly covered.",
+      "behavior_after": "Migration DDL lives in storage_schema.py; StateStore keeps the same public facade and migration/transaction orchestration. storage.py dropped from about 1437 to 1195 lines without moving promotion or transition atomic writes across transaction boundaries.",
+      "risk_review": "No table, index, PRAGMA user_version, StateStore method signature, transaction ordering, project promotion rule or workflow persistence behavior was intentionally changed. The new tests specifically guard against partial migration and promotion writes.",
+      "rollback": "Inline the three SQL constants back into StateStore migration methods and remove storage_schema.py/tests. No database migration is needed because schema bytes and version remain unchanged.",
+      "unresolved": [
+        "Further splitting of promotion or transition methods was intentionally rejected because their atomic transaction scope is more valuable than a smaller file."
+      ],
+      "decision": "accepted"
+    },
+    {
+      "receipt_id": "REC-2026-08-30-011",
+      "optimization_id": "OPT-007",
+      "started_at": "2026-08-30T23:10:30-07:00",
+      "completed_at": "2026-08-30T23:14:00-07:00",
+      "status_before": "in_progress",
+      "status_after": "completed",
+      "functional_goal": "对会影响用户和维护者行为的稳定文档事实建立轻量一致性检查，而不自动生成或重写文档正文。",
+      "files_changed": [
+        "scripts/validate_documentation_consistency.py",
+        "tests/test_documentation_consistency.py",
+        "scripts/run_local_checks.py",
+        "docs/CODE_QUALITY.md",
+        "code-optimization-graph.json",
+        "project-progress.json",
+        "local-validation.json"
+      ],
+      "commands": [
+        {
+          "command": "PYTHONPATH=src python3 -m unittest tests.test_documentation_consistency -v && python3 scripts/validate_documentation_consistency.py",
+          "exit_code": 0,
+          "result": "Documentation consistency test and standalone validator passed."
+        },
+        {
+          "command": "python3 scripts/run_local_checks.py",
+          "exit_code": 0,
+          "result": "Complete deterministic local gate passed with documentation consistency included."
+        }
+      ],
+      "tests": [
+        "pyproject.toml and re_ctm.__version__ must agree on 0.2.0.",
+        "Runtime contract must remain 18 CTM Native + 6 Rethlas façade = 24 public tools with 11 hidden legacy aliases.",
+        "README, AGENTS, DEPLOYMENT, engineering graph and project-progress must retain their audience-appropriate stable catalog/version/validation facts.",
+        "README and docs/*.md local Markdown links must resolve inside the repository."
+      ],
+      "behavior_before": "Stable facts were correctly repeated for different audiences but depended on manual review to stay synchronized across source and documents.",
+      "behavior_after": "Source/runtime remain the authority for version and tool counts; a lightweight checker verifies only high-value repeated facts and local links. CODE_QUALITY now states explicit document audiences so content is not collapsed into one generated document.",
+      "risk_review": "Documentation/test-only enforcement; no runtime or protocol behavior changed. The checker intentionally avoids validating historical version strings in the progress ledger as current facts.",
+      "rollback": "Remove the documentation validator/test/local gate and audience section. Runtime behavior is unaffected, but stable documentation drift again becomes manual-only review.",
+      "unresolved": [
+        "Historical project-progress entries intentionally retain old dev-version facts and are not rewritten or treated as current documentation."
+      ],
+      "decision": "accepted"
+    },
+    {
+      "receipt_id": "REC-2026-08-30-012",
+      "optimization_id": "OPT-012",
+      "started_at": "2026-08-30T23:14:30-07:00",
+      "completed_at": "2026-08-30T23:16:00-07:00",
+      "status_before": "in_progress",
+      "status_after": "completed",
+      "functional_goal": "使治理测试允许真实优化队列自然收敛到一个或零个 TODO，同时继续严格验证依赖顺序规则。",
+      "files_changed": [
+        "tests/test_code_quality.py",
+        "code-optimization-graph.json",
+        "local-validation.json"
+      ],
+      "commands": [
+        {
+          "command": "python3 scripts/run_local_checks.py",
+          "exit_code": 1,
+          "result": "Final cleanup gate exposed that the dependency-order fixture still required at least two real actionable TODO nodes after the queue had converged to one blocked node."
+        },
+        {
+          "command": "PYTHONPATH=src python3 -m unittest tests.test_code_quality -v && python3 scripts/run_local_checks.py",
+          "exit_code": 0,
+          "result": "Governance tests and the complete local gate passed after constructing two synthetic actionable nodes only in the in-memory test graph."
+        }
+      ],
+      "tests": [
+        "Repository graph validity no longer requires a nonzero TODO count.",
+        "Dependency-order rejection is exercised with synthetic OPT-900/OPT-901 nodes and does not mutate the repository graph.",
+        "Duplicate node and terminal receipt checks remain unchanged."
+      ],
+      "behavior_before": "A valid optimization queue with only one blocked item caused a fixture-only failure because the test assumed at least two real actionable nodes.",
+      "behavior_after": "Governance tests validate graph rules independently of queue size, so a fully completed queue with zero TODOs is also a valid future state.",
+      "risk_review": "Test-only lifecycle robustness; production and validator semantics are unchanged.",
+      "rollback": "Restore real TODO count assumptions, which would make successful project convergence fail its own governance suite.",
+      "unresolved": [],
+      "decision": "accepted"
+    },
+    {
+      "receipt_id": "REC-2026-08-30-013",
+      "optimization_id": "OPT-013",
+      "started_at": "2026-08-30T23:18:00-07:00",
+      "completed_at": "2026-08-30T23:24:00-07:00",
+      "status_before": "in_progress",
+      "status_after": "completed",
+      "functional_goal": "在不增加功能范围的情况下复核清理后的 Re-CTM，并将通过发布门禁的 v0.2 系列提升为 0.2.1 patch release candidate。",
+      "files_changed": [
+        "pyproject.toml",
+        "src/re_ctm/__init__.py",
+        "README.md",
+        "docs/DEPLOYMENT.md",
+        "manual-validation.json",
+        "tests/test_documentation_consistency.py",
+        "code-optimization-graph.json",
+        "project-progress.json",
+        "local-validation.json"
+      ],
+      "commands": [
+        {
+          "command": "python3 scripts/validate_code_optimization_graph.py && python3 scripts/run_local_checks.py",
+          "exit_code": 0,
+          "result": "Pre-version-bump optimization graph and complete deterministic local release baseline passed."
+        },
+        {
+          "command": "python3 scripts/run_local_checks.py",
+          "exit_code": 0,
+          "result": "After updating current package/runtime/documentation version facts to 0.2.1, the complete deterministic local gate still passed."
+        },
+        {
+          "command": "uv build --out-dir <temporary-release-directory>",
+          "exit_code": 0,
+          "result": "Built re_ctm-0.2.1.tar.gz and re_ctm-0.2.1-py3-none-any.whl successfully from the source distribution path."
+        },
+        {
+          "command": "clean venv: pip install --no-deps re_ctm-0.2.1-py3-none-any.whl; re-ctm --version; inspect installed public catalog",
+          "exit_code": 0,
+          "result": "Clean wheel installation reports re-ctm 0.2.1 and exactly 18 CTM Native + 6 Rethlas façade public tools with 11 hidden aliases."
+        },
+        {
+          "command": "installed wheel: re-ctm check-config plus packaged assess/assemble/verify/repair methodology load",
+          "exit_code": 0,
+          "result": "Installed package reports state/workflow schema 2 and loads all checked packaged methodology contracts."
+        },
+        {
+          "command": "installed wheel: re-ctm attest-native --backend bubblewrap <temporary roots>",
+          "exit_code": 0,
+          "result": "Installed Bubblewrap backend attests hard isolation, hidden forbidden paths, dropped capabilities, private_vault_mounted=false, network isolation and five validated read-only toolchain roots."
+        },
+        {
+          "command": "installed NativeRuntime Sage/Magma smoke using magma -b with an inline command-line argument",
+          "exit_code": 1,
+          "result": "Sage returned 5; Magma exited 0 but treated the expression as a filename. This was a test-driver invocation error rather than a package/runtime failure and was retained as release evidence."
+        },
+        {
+          "command": "installed NativeRuntime: sage -c 'print(2+3)' and printf '2+3;\\nquit;\\n' | magma -b",
+          "exit_code": 0,
+          "result": "Both SageMath and Magma executed through the installed 0.2.1 Bubblewrap NativeRuntime and returned 5."
+        }
+      ],
+      "tests": [
+        "Package and runtime versions agree on 0.2.1 while historical 0.2.0 introduction/migration records remain unchanged.",
+        "The exact 24-tool public catalog and 11 hidden compatibility aliases are preserved in a clean wheel installation.",
+        "Packaged methodology resources, state/workflow schema reporting and Bubblewrap startup attestation work outside the source tree.",
+        "Installed SageMath and Magma execute through the same Bubblewrap NativeRuntime toolchain exposure path used by Re-CTM.",
+        "No new workflow state, database schema, public tool or authorization capability is introduced by the patch version."
+      ],
+      "behavior_before": "The cleaned source tree was locally validated as 0.2.0 but had not been requalified as a packaged patch release after the contract/workflow/storage/documentation cleanup.",
+      "behavior_after": "The current source and package version is 0.2.1, with source, build, clean-install, packaged-resource, public-catalog and installed Bubblewrap/CAS release gates passing.",
+      "risk_review": "Patch release only. State schema remains 2 and workflow protocol remains 2. OPT-005 stays blocked for the optional external-helper backend because no equivalent real lifecycle/isolation/CAS evidence was supplied; this is not misrepresented as completed by the 0.2.1 release candidate.",
+      "rollback": "Restore current version facts to 0.2.0 and remove the 0.2.1 release-candidate metadata. No database or workflow migration is required for rollback because persistent schemas did not change.",
+      "unresolved": [
+        "The release candidate is locally validated but not yet committed or pushed.",
+        "Post-push browser/target-PC/manual checks in manual-validation.json remain pending.",
+        "OPT-005 external-helper backend cleanup remains blocked on equivalent real backend evidence."
+      ],
+      "decision": "accepted"
+    }
+  ]
+}

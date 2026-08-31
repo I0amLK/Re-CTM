@@ -32,6 +32,8 @@ class MethodologyContractTestCase(unittest.TestCase):
                 self.assertEqual(task["step_protocol"]["tool"], "rethlas_step")
                 self.assertIn("run_id", task["step_protocol"]["use_current_envelope_fields"])
                 self.assertIn("capability", task["step_protocol"]["use_current_envelope_fields"])
+                self.assertIn("verbatim", task["step_protocol"]["envelope_binding"])
+                self.assertIn("opaque", task["step_protocol"]["envelope_binding"])
                 self.assertTrue(
                     any(
                         key in task

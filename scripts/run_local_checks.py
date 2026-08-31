@@ -54,6 +54,21 @@ def main() -> int:
             [sys.executable, "scripts/validate_engineering_graph.py"],
             env=environment,
         ),
+        run(
+            "code_optimization_graph",
+            [sys.executable, "scripts/validate_code_optimization_graph.py"],
+            env=environment,
+        ),
+        run(
+            "error_contract",
+            [sys.executable, "scripts/audit_error_contract.py"],
+            env=environment,
+        ),
+        run(
+            "documentation_consistency",
+            [sys.executable, "scripts/validate_documentation_consistency.py"],
+            env=environment,
+        ),
     ]
     manual = json.loads((ROOT / "manual-validation.json").read_text(encoding="utf-8"))
     payload = {

@@ -278,6 +278,55 @@ class MCPDispatcherTestCase(unittest.TestCase):
             "propose_plans",
         )
 
+    def test_rethlas_step_rejects_cross_run_envelope_pair_before_writes(self) -> None:
+        first = self.tools.call(
+            "rethlas_start",
+            {"problem_tex": r"\textbf{Problem.} Prove $1=1$.", "problem_id": "run-a"},
+            self.principal,
+        )["structuredContent"]
+        second = self.tools.call(
+            "rethlas_start",
+            {"problem_tex": r"\textbf{Problem.} Prove $2=2$.", "problem_id": "run-b"},
+            self.principal,
+        )["structuredContent"]
+        first_task = self.tools.call(
+            "rethlas_step", {"run_id": first["run_id"]}, self.principal
+        )["structuredContent"]
+        second_task = self.tools.call(
+            "rethlas_step", {"run_id": second["run_id"]}, self.principal
+        )["structuredContent"]
+
+        mixed = self.tools.call(
+            "rethlas_step",
+            {
+                "run_id": second["run_id"],
+                "capability": first_task["capability"],
+                "writes": [
+                    {
+                        "resource": "memory:generation:immediate_conclusions",
+                        "content": {"conclusion": "Must not land in either run."},
+                    }
+                ],
+                "action": "assessment_complete",
+            },
+            self.principal,
+        )
+        self.assertTrue(mixed["isError"])
+        self.assertEqual(
+            mixed["structuredContent"]["error"]["code"],
+            "CAPABILITY_RUN_MISMATCH",
+        )
+        self.assertEqual(self.store.get_run(first["run_id"])["state"], "assess")
+        self.assertEqual(self.store.get_run(second["run_id"])["state"], "assess")
+
+        still_valid = self.tools.call(
+            "rethlas_read",
+            {"capability": first_task["capability"], "resource": "problem"},
+            self.principal,
+        )
+        self.assertFalse(still_valid["isError"])
+        self.assertNotEqual(first_task["capability"], second_task["capability"])
+
     def test_rethlas_step_write_validation_is_recoverable_and_retains_prior_writes(self) -> None:
         started = self.tools.call(
             "rethlas_start",
