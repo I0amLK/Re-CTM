@@ -136,10 +136,14 @@
     {
       "id": "PC-019",
       "constraint": "The optional re-ctm tui command is a local presentation-only observer over the same OAuth/MCP server. It may consume already-redacted DebugEvent facts through a bounded non-blocking queue and directly present the auto-generated operator authorization key only after successful bind, but it must not poll persistent state/log files, make extra model/network calls, receive secrets through the structured event path, estimate model-token usage, change the 24-tool catalog/state schema/workflow protocol, or become an authority source for L0/L1/L2 decisions."
+    },
+    {
+      "id": "PC-020",
+      "constraint": "The optional re-ctm tui --quick-tunnel path may own exactly one anonymous Cloudflare Quick Tunnel child process after a successful loopback bind. It must use dynamic OAuth-origin mode, accept only HTTPS *.trycloudflare.com output as the public origin, strip Re-CTM and named-tunnel credential variables from the child environment, never kill unrelated processes, and degrade to the local MCP service if cloudflared is unavailable or exits."
     }
   ],
   "implementation_snapshot": {
-    "as_of": "2026-08-31T23:00:00-07:00",
+    "as_of": "2026-08-31T23:18:48-07:00",
     "authority": "This snapshot supersedes the original per-vertex planning labels without erasing the design-time history stored on each vertex.",
     "implemented_local": [
       "V02",
@@ -181,6 +185,7 @@
       "V31"
     ],
     "evidence": [
+      "src/re_ctm/quick_tunnel.py implements the explicit opt-in cloudflared Quick Tunnel lifecycle with strict trycloudflare.com URL parsing, secret/credential environment stripping, no-autoupdate/config isolation, owned-process TERM/KILL cleanup, and local-service degradation; tests/test_quick_tunnel.py covers parser and lifecycle failures.",
       "src/re_ctm/terminal_ui.py implements the optional bounded, non-blocking terminal observer over already-redacted DebugEvent records; src/re_ctm/server.py keeps the raw generated OAuth authorization key on the direct local-terminal presentation path rather than the structured observer path.",
       "src/re_ctm/native_helper_bwrap.py implements a separate-process bubblewrap boundary with namespace, environment, capability, timeout, and forbidden-path probes.",
       "src/re_ctm/tools.py freezes the first 18 public entries to the CTM native catalog and advertises six Rethlas façade tools for a 24-tool LLM-facing catalog; eleven superseded Rethlas protocol names remain accepted as hidden compatibility aliases.",
@@ -1234,6 +1239,12 @@
       "statement": "Persistent-state and retrieval boundaries fail closed under version or origin ambiguity.",
       "formal": "db_version>supported => deny_start; retrieval_url and final_redirect_url remain on configured validated HTTPS providers; caller arbitrary_url => deny",
       "test": "Migrate an unversioned baseline DB additively, reject a future schema version, normalize a fixed OpenAlex response under byte/time bounds, reject an arbitrary provider host or caller-supplied fetch target, and reject a cross-host redirect from an otherwise allowed provider."
+    },
+    {
+      "id": "INV-016",
+      "statement": "Quick Tunnel convenience cannot become ambient process or credential authority.",
+      "formal": "quick_tunnel => explicit_opt_in AND loopback_bind AND owned_cloudflared_process AND public_origin matches https://*.trycloudflare.com AND NOT(inherit_re_ctm_secrets OR named_tunnel_credentials OR kill_unowned_process)",
+      "test": "Exercise missing/early-exit cloudflared, strict URL parsing, stripped RE_CTM and TUNNEL credential variables, OS-assigned loopback ports, real Quick Tunnel URL acquisition, and owned TERM/KILL cleanup; prove plain tui/serve never instantiate the QuickTunnel process path."
     }
   ],
   "workflow_transition_graph": {

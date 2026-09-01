@@ -118,6 +118,28 @@ class TerminalSessionTestCase(unittest.TestCase):
         self.assertEqual(output.count("https://example.trycloudflare.com/mcp"), 1)
         self.assertEqual(output.count("http://127.0.0.1:8765/mcp"), 1)
 
+    def test_quick_tunnel_public_url_suppresses_later_duplicate_origin_event(self) -> None:
+        stream = io.StringIO()
+        session = TerminalSession(stream=stream)
+        session.start(
+            version="0.2.1",
+            workspace=Path("/tmp/project"),
+            mcp_url="http://127.0.0.1:8765/mcp",
+            generated_oauth_key="key",
+        )
+        session.show_public_mcp_url("https://example.trycloudflare.com/mcp")
+        session.observe(
+            event(
+                "oauth.external_origin_resolved",
+                details={"base_url": "https://example.trycloudflare.com"},
+            )
+        )
+        session.close()
+        self.assertEqual(
+            stream.getvalue().count("https://example.trycloudflare.com/mcp"),
+            1,
+        )
+
     def test_full_queue_never_blocks_producer(self) -> None:
         session = TerminalSession(stream=io.StringIO(), queue_size=1)
         session._started.set()
@@ -299,6 +321,29 @@ class TerminalServerIntegrationTestCase(unittest.TestCase):
                 )
             self.assertEqual(code, 130)
             self.assertTrue(session._stopping.is_set())
+
+    def test_quick_tunnel_starts_after_bind_with_actual_local_origin_and_closes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            settings = self._settings(root, oauth_password="operator-key")
+            session = TerminalSession(stream=io.StringIO())
+            application = build_application(settings, debug_observer=session.observe)
+            tunnel = mock.Mock()
+            with mock.patch.object(ReCTMHTTPServer, "serve_forever", return_value=None):
+                code = run_server(
+                    application,
+                    host="127.0.0.1",
+                    port=0,
+                    reveal_generated_oauth_password=True,
+                    terminal_session=session,
+                    quick_tunnel=tunnel,
+                )
+            self.assertEqual(code, 0)
+            tunnel.start.assert_called_once()
+            local_origin = tunnel.start.call_args.args[0]
+            self.assertRegex(local_origin, r"^http://127\.0\.0\.1:\d+$")
+            self.assertNotIn("/mcp", local_origin)
+            tunnel.close.assert_called_once_with()
 
 
 if __name__ == "__main__":

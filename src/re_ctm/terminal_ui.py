@@ -108,6 +108,20 @@ class TerminalSession:
         if thread is not None:
             thread.join(timeout=0.2)
 
+    def show_tunnel_status(self, status: str) -> None:
+        self._safe_write(f"Quick Tunnel   {_terminal_text(status)}\n")
+
+    def show_public_mcp_url(self, mcp_url: str) -> None:
+        safe_url = _terminal_text(mcp_url)
+        if not safe_url:
+            return
+        origin = safe_url[:-4] if safe_url.endswith("/mcp") else ""
+        if origin and origin == self._resolved_origin:
+            return
+        if origin:
+            self._resolved_origin = origin
+        self._safe_write(f"Public MCP URL {safe_url}\n")
+
     def _run(self) -> None:
         while True:
             item = self._queue.get()

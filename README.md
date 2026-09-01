@@ -2,7 +2,7 @@
 
 Re-CTM 是一个通过网页 MCP 客户端使用的本地服务。安装后只需要运行一个 Re-CTM，不需要另外安装 Rethlas，也不需要目标电脑安装 Codex。
 
-当前发布版本：**Re-CTM v0.2.1**。
+当前发布版本：**Re-CTM v0.3.0**。
 
 最终数学任务的正式交付物是：
 
@@ -148,7 +148,21 @@ OAuth 元数据地址：
 http://127.0.0.1:8765/.well-known/oauth-protected-resource
 ```
 
-如果 `RE_CTM_SERVER_URL` 已设置，TUI 会直接显示固定公网 MCP URL。随机 Cloudflare Quick Tunnel 仍由 `cloudflared` 自己创建；TUI 不启动或管理 tunnel。只有当后续可信反向代理请求让 Re-CTM 解析出新的公网 origin 时，TUI 才会追加显示解析后的公网 MCP URL。
+如果网页客户端不在本机，且已经安装 `cloudflared`，推荐直接使用一条命令启动临时公网入口：
+
+```bash
+re-ctm tui --quick-tunnel --native-mode dangerous
+```
+
+`--quick-tunnel` 会先成功绑定本地 loopback MCP，再启动一个只属于本次 TUI 会话的 Cloudflare Quick Tunnel，并在拿到真实随机地址后显示：
+
+```text
+Public MCP URL https://<random>.trycloudflare.com/mcp
+```
+
+如果没有显式 `--port`，也没有设置 `RE_CTM_PORT`，Quick Tunnel 模式会让操作系统自动选择空闲 loopback 端口，所以不需要再运行 `fuser -k -9`。显式端口和 `RE_CTM_PORT` 仍然优先。`--quick-tunnel` 会为本会话使用动态 OAuth origin，即使环境里存在旧的 `RE_CTM_SERVER_URL`；它不会修改环境变量或持久化配置。
+
+Quick Tunnel 是显式可选功能：普通 `re-ctm tui` 和 `re-ctm serve` 都不会检测或启动 `cloudflared`。如果 `cloudflared` 不存在或启动失败，本地 Re-CTM 服务仍保持运行并显示本地 MCP URL。TUI 只接受真实的 HTTPS `*.trycloudflare.com` 地址，不自动安装 `cloudflared`，也不支持 named tunnel/account token 管理。
 
 ## 6. 在网页 MCP 客户端中连接
 
@@ -164,30 +178,22 @@ http://127.0.0.1:8765/mcp
 
 授权完成后，网页客户端即可使用 Re-CTM。
 
-如果网页客户端运行在另一台机器，不能把 `127.0.0.1` 作为客户端地址。可以直接使用 Cloudflare Quick Tunnel，并且**不需要先知道公网 URL，也不需要设置 `RE_CTM_SERVER_URL`**：
+如果网页客户端运行在另一台机器，不能把 `127.0.0.1` 作为客户端地址。最简单的方式是：
 
 ```bash
-PORT=54567
-
-fuser -k -9 ${PORT}/tcp 2>/dev/null || true
-
-env -u RE_CTM_SERVER_URL -u RE_CTM_OAUTH_PASSWORD \
-  RE_CTM_NATIVE_MODE=dangerous \
-  re-ctm serve --host 127.0.0.1 --port ${PORT} &
-MCP_PID=$!
-
-sleep 2
-
-cloudflared tunnel --url http://127.0.0.1:${PORT}
+re-ctm tui --quick-tunnel --native-mode dangerous
 ```
 
-Re-CTM 启动后会在本机终端打印类似：
+Re-CTM 会在同一个终端显示自动生成的 OAuth authorization key、本地地址和随机公网 MCP URL。例如：
 
 ```text
-Re-CTM OAuth authorization key: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+OAuth key      xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+Public MCP URL https://abc-def.trycloudflare.com/mcp
 ```
 
 这串 key 是 Re-CTM 首次 OAuth 授权页面的登录凭据，不是 Cloudflare Tunnel Token。Cloudflare Quick Tunnel 只负责给你公网 HTTPS URL。
+
+如果你需要手工管理 tunnel 或排查 `cloudflared`，原来的两进程方式仍然可用：先运行 `re-ctm tui --port <PORT>` 或 `re-ctm serve --host 127.0.0.1 --port <PORT>`，再在另一个终端执行 `cloudflared tunnel --url http://127.0.0.1:<PORT>`。
 
 建议把启动 Re-CTM 的终端保留在当前窗口中，直到首次 OAuth 授权完成，方便随时核对这串 authorization key 和服务日志。
 

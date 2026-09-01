@@ -2,7 +2,7 @@
 
 This document is an operational guide, not evidence that a target has passed validation. The authoritative acceptance state remains in `manual-validation.json`.
 
-Current release: **Re-CTM v0.2.1**.
+Current release: **Re-CTM v0.3.0**.
 
 ## 1. Required software
 
@@ -136,6 +136,16 @@ set +a
 
 The terminal observer is presentation-only. It consumes already-redacted runtime events through a bounded non-blocking in-memory queue, performs no database/JSONL polling and no extra network calls, and never receives the raw generated authorization key through the structured event path. Slow/broken terminal output is isolated from MCP tool execution. Model token usage is intentionally not estimated because the MCP server is not guaranteed to receive authoritative upstream model-usage metadata.
 
+For the common disposable remote-client path, `tui` can explicitly own one Cloudflare Quick Tunnel:
+
+```bash
+/opt/re-ctm/venv/bin/re-ctm tui --quick-tunnel --native-mode dangerous
+```
+
+When neither `--port` nor `RE_CTM_PORT` is supplied, this mode binds Re-CTM to an OS-selected loopback port and starts `cloudflared tunnel --config /dev/null --no-autoupdate --url <local-origin>` only after that bind succeeds. The child process does not inherit Re-CTM OAuth/token/capability secrets or Cloudflare named-tunnel credential variables. The TUI accepts only HTTPS `*.trycloudflare.com` origins from the bounded cloudflared output stream. On shutdown it terminates only the `Popen` process it created, escalating to kill only if that owned process ignores TERM.
+
+`--quick-tunnel` intentionally selects dynamic OAuth-origin mode for that session even if `RE_CTM_SERVER_URL` is present in the parent environment; it does not rewrite the environment or persisted configuration. Do not use this testing/development shortcut as a substitute for a stable named tunnel or production ingress policy.
+
 Headless/service-style operation remains:
 
 ```bash
@@ -145,25 +155,15 @@ set +a
 /opt/re-ctm/venv/bin/re-ctm serve
 ```
 
-For a disposable Cloudflare Quick Tunnel, the convenient startup order is intentionally server first, tunnel second:
+For a disposable Cloudflare Quick Tunnel, the preferred interactive path is now:
 
 ```bash
-PORT=54567
-fuser -k -9 ${PORT}/tcp 2>/dev/null || true
-
-env -u RE_CTM_SERVER_URL -u RE_CTM_OAUTH_PASSWORD \
-  /opt/re-ctm/venv/bin/re-ctm serve --host 127.0.0.1 --port ${PORT} &
-MCP_PID=$!
-sleep 2
-
-cloudflared tunnel --url http://127.0.0.1:${PORT}
+/opt/re-ctm/venv/bin/re-ctm tui --quick-tunnel --native-mode dangerous
 ```
 
-The Re-CTM terminal prints `Re-CTM OAuth authorization key: ...`. Enter that value on the first OAuth authorization page. It is a Re-CTM authorization credential, not a Cloudflare Tunnel Token.
+The same terminal prints the generated Re-CTM authorization key and, once Cloudflare assigns it, `Public MCP URL https://<random>.trycloudflare.com/mcp`. Enter the authorization key on the first OAuth page and use the public MCP URL in the client. If `cloudflared` is missing or fails, the local MCP service remains available and the TUI reports the degradation rather than killing the server.
 
-`re-ctm tui` does not launch or supervise `cloudflared`. With no fixed `RE_CTM_SERVER_URL`, it initially shows the local MCP URL; if a later trusted loopback proxy request resolves a different external OAuth origin, the terminal observer may then display the resolved public MCP URL. The random tunnel hostname must still be obtained from the tunnel process itself for the client's first connection.
-
-Use the printed `https://<random>.trycloudflare.com/mcp` URL in the MCP client. No Re-CTM restart is required after Cloudflare assigns the random hostname.
+Operators who intentionally want separate process supervision may still run `re-ctm serve`/`re-ctm tui` and `cloudflared tunnel --url ...` independently. Re-CTM never runs `fuser`, `pkill`, `killall`, or kills an unrelated tunnel process.
 
 Expose the service only through HTTPS. Confirm:
 

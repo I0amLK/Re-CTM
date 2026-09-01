@@ -26,6 +26,7 @@ from .mcp import (
 from .oauth import parse_basic_authorization
 
 if TYPE_CHECKING:
+    from .quick_tunnel import QuickTunnel
     from .terminal_ui import TerminalSession
 
 
@@ -557,6 +558,7 @@ def run_server(
     port: int = 8765,
     reveal_generated_oauth_password: bool = False,
     terminal_session: TerminalSession | None = None,
+    quick_tunnel: QuickTunnel | None = None,
 ) -> int:
     try:
         server = ReCTMHTTPServer(
@@ -574,6 +576,7 @@ def run_server(
     )
     bound_host, bound_port = server.server_address[:2]
     local_mcp_url = f"http://{_host_with_port(str(bound_host), int(bound_port))}{MCP_PATH}"
+    local_origin = local_mcp_url[: -len(MCP_PATH)]
     public_mcp_url = (
         application.settings.oauth_server_url.rstrip("/") + MCP_PATH
         if application.settings.oauth_server_url
@@ -588,6 +591,8 @@ def run_server(
                 application.oauth.password if reveal_generated_oauth_password else None
             ),
         )
+        if quick_tunnel is not None:
+            quick_tunnel.start(local_origin)
     elif reveal_generated_oauth_password:
         print(
             f"Re-CTM OAuth authorization key: {application.oauth.password}",
@@ -609,6 +614,8 @@ def run_server(
     except KeyboardInterrupt:
         return 130
     finally:
+        if quick_tunnel is not None:
+            quick_tunnel.close()
         if terminal_session is not None:
             terminal_session.close()
         server.server_close()

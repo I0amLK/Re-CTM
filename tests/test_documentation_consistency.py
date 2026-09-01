@@ -12,7 +12,7 @@ validate_documentation: Callable[[], dict[str, Any]] = VALIDATOR["validate_docum
 class DocumentationConsistencyTestCase(unittest.TestCase):
     def test_stable_documentation_facts_match_runtime_contracts(self) -> None:
         summary = validate_documentation()
-        self.assertEqual(summary["version"], "0.2.1")
+        self.assertEqual(summary["version"], "0.3.0")
         self.assertEqual(summary["native_tool_count"], 18)
         self.assertEqual(summary["rethlas_tool_count"], 6)
         self.assertEqual(summary["public_tool_count"], 24)

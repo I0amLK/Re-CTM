@@ -11,6 +11,7 @@ from unittest import mock
 from re_ctm import __version__
 from re_ctm.cli import build_parser, main
 from re_ctm.config import Settings
+from re_ctm.enums import NativeMode
 from re_ctm.errors import ReCTMError
 
 
@@ -127,6 +128,18 @@ class CLITestCase(unittest.TestCase):
         self.assertEqual(args.host, "127.0.0.4")
         self.assertEqual(args.port, 45454)
 
+    def test_quick_tunnel_without_port_uses_dynamic_port_sentinel(self) -> None:
+        with mock.patch.dict(os.environ, {"RE_CTM_PORT": ""}, clear=False):
+            args = build_parser().parse_args(["tui", "--quick-tunnel"])
+        self.assertTrue(args.quick_tunnel)
+        self.assertIsNone(args.port)
+
+    def test_quick_tunnel_explicit_port_is_preserved(self) -> None:
+        args = build_parser().parse_args(
+            ["tui", "--quick-tunnel", "--port", "45680"]
+        )
+        self.assertEqual(args.port, 45680)
+
     def test_serve_does_not_construct_terminal_session(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -144,14 +157,84 @@ class CLITestCase(unittest.TestCase):
             with mock.patch.dict(os.environ, env, clear=False), mock.patch(
                 "re_ctm.cli.TerminalSession"
             ) as terminal_session, mock.patch(
+                "re_ctm.cli.QuickTunnel"
+            ) as quick_tunnel, mock.patch(
                 "re_ctm.cli.run_server", return_value=0
             ) as run_server:
                 code = main(["serve", "--host", "127.0.0.1", "--port", "45679"])
             self.assertEqual(code, 0)
             terminal_session.assert_not_called()
+            quick_tunnel.assert_not_called()
             application = run_server.call_args.args[0]
             try:
                 self.assertIsNone(run_server.call_args.kwargs["terminal_session"])
+                self.assertIsNone(run_server.call_args.kwargs["quick_tunnel"])
+            finally:
+                application.close()
+
+    def test_plain_tui_does_not_construct_quick_tunnel(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            workspace = root / "workspace"
+            data = root / "data"
+            workspace.mkdir()
+            env = {
+                "RE_CTM_WORKSPACE": str(workspace),
+                "RE_CTM_DATA_ROOT": str(data),
+                "RE_CTM_PRIVATE_ROOT": str(data / "private"),
+                "RE_CTM_DEBUG_ROOT": str(data / "debug"),
+                "RE_CTM_OAUTH_PASSWORD": "configured-for-test",
+                "RE_CTM_NATIVE_EXEC_BACKEND": "disabled",
+                "RE_CTM_LATEX_POLICY": "static_only",
+            }
+            with mock.patch.dict(os.environ, env, clear=True), mock.patch(
+                "re_ctm.cli.QuickTunnel"
+            ) as quick_tunnel, mock.patch(
+                "re_ctm.cli.run_server", return_value=0
+            ) as run_server:
+                code = main(["tui"])
+            self.assertEqual(code, 0)
+            quick_tunnel.assert_not_called()
+            application = run_server.call_args.args[0]
+            try:
+                self.assertEqual(run_server.call_args.kwargs["port"], 8765)
+                self.assertIsNone(run_server.call_args.kwargs["quick_tunnel"])
+            finally:
+                application.close()
+
+    def test_quick_tunnel_main_uses_ephemeral_port_and_dynamic_oauth_origin(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            workspace = root / "workspace"
+            data = root / "data"
+            workspace.mkdir()
+            env = {
+                "RE_CTM_WORKSPACE": str(workspace),
+                "RE_CTM_DATA_ROOT": str(data),
+                "RE_CTM_PRIVATE_ROOT": str(data / "private"),
+                "RE_CTM_DEBUG_ROOT": str(data / "debug"),
+                "RE_CTM_OAUTH_PASSWORD": "configured-for-test",
+                "RE_CTM_SERVER_URL": "https://fixed.example.com",
+                "RE_CTM_NATIVE_EXEC_BACKEND": "disabled",
+                "RE_CTM_LATEX_POLICY": "static_only",
+            }
+            with mock.patch.dict(os.environ, env, clear=True), mock.patch(
+                "re_ctm.cli.QuickTunnel"
+            ) as quick_tunnel_type, mock.patch(
+                "re_ctm.cli.run_server", return_value=0
+            ) as run_server:
+                code = main(["tui", "--quick-tunnel", "--native-mode", "dangerous"])
+            self.assertEqual(code, 0)
+            quick_tunnel_type.assert_called_once()
+            application = run_server.call_args.args[0]
+            try:
+                self.assertEqual(application.settings.oauth_server_url, "")
+                self.assertEqual(application.settings.native_mode, NativeMode.DANGEROUS)
+                self.assertEqual(run_server.call_args.kwargs["port"], 0)
+                self.assertIs(
+                    run_server.call_args.kwargs["quick_tunnel"],
+                    quick_tunnel_type.return_value,
+                )
             finally:
                 application.close()
 

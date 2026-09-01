@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "graph_id": "re-ctm-code-optimization",
   "title": "Re-CTM 功能优先代码优化图",
-  "updated_at": "2026-08-31T23:02:37-07:00",
+  "updated_at": "2026-08-31T23:37:23-07:00",
   "one_sentence_rule": "只做能够以功能正确性、安全边界、可靠性、可维护性或可验证性能收益证明价值的最小代码改进。",
   "purpose": "记录代码清理与重构的原因、功能收益、依赖、执行顺序、验收条件和不可覆盖的执行回执，防止为了优化而优化。",
   "governance": {
@@ -660,6 +660,105 @@
         "OPT-000"
       ],
       "receipt_required": true
+    },
+    {
+      "id": "OPT-015",
+      "kind": "user_onboarding",
+      "title": "让 TUI 可选托管 Cloudflare Quick Tunnel 实现单命令启动",
+      "status": "completed",
+      "priority": "P1",
+      "problem": "当前 re-ctm tui 已能显示 OAuth key、认证状态和工具调用，但远程网页客户端仍要求用户在第二个终端手工运行 cloudflared tunnel --url ... 并复制随机 trycloudflare.com 地址；这使最常用的交互启动仍需多条 shell 命令。",
+      "functional_outcome": "新增 re-ctm tui --quick-tunnel，可在本地 MCP 成功 bind 后按需启动 cloudflared Quick Tunnel、从其输出中提取并显示真实公网 MCP URL，并在 TUI 退出时回收仅由本会话创建的 cloudflared 子进程；不开该开关时不产生任何额外进程、网络请求或性能成本。",
+      "evidence": [
+        "OPT-014 已完成最小终端观察器并通过 130 个本地测试与 producer-side P95 约 0.868 us 的专项 benchmark。",
+        "README/DEPLOYMENT 当前仍要求用户在独立终端执行 cloudflared tunnel --url http://127.0.0.1:<port> 才能取得随机公网地址。",
+        "动态 OAuth origin 已在服务端通过 loopback-trusted forwarded headers 支持随机 Quick Tunnel，无需因新 hostname 重启 Re-CTM。",
+        "该功能只需管理一个显式 opt-in 的 cloudflared 子进程，不需要改变 OAuth、MCP、Rethlas、Native 或持久化协议。"
+      ],
+      "scope": [
+        "为 tui 子命令增加 --quick-tunnel 开关；serve 不增加该开关。",
+        "仅在本地 HTTP server 已成功 bind 后解析 cloudflared 可执行文件并启动 cloudflared tunnel --url <local-origin>。",
+        "读取 cloudflared stderr/stdout 的有界行流，只识别 HTTPS *.trycloudflare.com URL，并将公网 /mcp URL显示到现有 TerminalSession。",
+        "Quick Tunnel 未显式指定端口且无 RE_CTM_PORT 时使用 OS 分配的 loopback 临时端口，避免复制旧脚本中的 fuser -k -9 破坏性行为；显式 --port/RE_CTM_PORT 继续受尊重。",
+        "TUI 关闭时只终止自己启动的 cloudflared；cloudflared 缺失、启动失败或过早退出时给出明确终端错误并保持本地 Re-CTM 服务运行。",
+        "补充 process lifecycle、URL 解析、端口选择、失败降级、无开关零额外进程和文档/性能回归测试。"
+      ],
+      "non_goals": [
+        "不自动安装、下载或升级 cloudflared。",
+        "不执行 fuser、killall、pkill 或杀死任何非本会话创建的进程。",
+        "不支持 Cloudflare named tunnel、token、account API、DNS 或其他 tunnel provider。",
+        "不把 Quick Tunnel URL、OAuth key 或 cloudflared 输出持久化到数据库或项目账本。",
+        "不改变动态 OAuth issuer/resource 的现有安全校验，不信任来自公网 peer 的 forwarded headers。",
+        "不增加模型 token 统计、全屏 UI、数据库轮询、日志 tail 或额外模型/API 调用。"
+      ],
+      "acceptance_criteria": [
+        "re-ctm tui --quick-tunnel --native-mode dangerous 在 cloudflared 可用时只需一条命令即可启动本地 MCP 与 Quick Tunnel，并显示真实 https://<random>.trycloudflare.com/mcp 地址。",
+        "不开 --quick-tunnel 时 subprocess.Popen/cloudflared 检测均不发生，现有 TUI benchmark 和 serve/tui 行为保持兼容。",
+        "Quick Tunnel 默认未指定端口时绑定 loopback 临时端口，不需要也不执行 fuser；显式 --port 或 RE_CTM_PORT 仍被准确使用。",
+        "只接受从 cloudflared 输出提取出的 HTTPS trycloudflare.com origin；其他 URL 文本不作为公网 MCP 地址展示。",
+        "cloudflared 缺失、启动异常、未产生 URL 或运行中退出不会关闭 Re-CTM 本地服务，也不会暴露 OAuth secret。",
+        "Ctrl-C/关闭时 cloudflared 收到 TERM，必要时才 KILL，且只作用于本会话 Popen 对象。",
+        "公开工具仍为 18 Native + 6 Rethlas，state schema 2、workflow protocol 2、OAuth DCR/PKCE 和 Native 权限模型保持不变。",
+        "专项单元测试、benchmark、工程/优化图 validator、文档一致性和 scripts/run_local_checks.py 全部通过。"
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src python3 -m unittest tests.test_terminal_ui tests.test_cli tests.test_oauth tests.test_http -v",
+        "PYTHONPATH=src python3 scripts/benchmark_terminal_ui.py",
+        "python3 scripts/validate_code_optimization_graph.py",
+        "python3 scripts/validate_engineering_graph.py",
+        "python3 scripts/run_local_checks.py"
+      ],
+      "rollback": "移除 --quick-tunnel、QuickTunnel 辅助实现及其测试/文档，恢复 tui 的固定本地 server 启动；不涉及数据库、OAuth token、workflow 或公共 MCP schema 迁移。",
+      "risk": "medium",
+      "dependencies": [
+        "OPT-014"
+      ],
+      "receipt_required": true
+    },
+    {
+      "id": "OPT-016",
+      "kind": "release_readiness",
+      "title": "将 TUI 与 Quick Tunnel 功能线发布为 Re-CTM v0.3.0",
+      "status": "completed",
+      "priority": "P0",
+      "problem": "v0.2.1 之后已经新增可选终端观察器和一键 Quick Tunnel 这一组明确的用户可见功能，继续沿用 0.2.1 会使安装包、文档与实际功能边界失真。",
+      "functional_outcome": "把当前功能线版本提升为 0.3.0，并通过源码、文档、完整回归、构建和干净安装验证证明版本更新没有改变 24-tool、state schema 2、workflow protocol 2 或既有安全边界。",
+      "evidence": [
+        "OPT-014 与 OPT-015 已完成，提供 re-ctm tui、非阻塞工具观察和显式 opt-in Quick Tunnel 单命令启动。",
+        "OPT-015 完成状态下完整本地门禁通过 142 个测试，真实 TryCloudflare 公网 OAuth metadata smoke 通过。",
+        "当前 pyproject.toml、re_ctm.__version__、README 和 DEPLOYMENT 仍声明 0.2.1。"
+      ],
+      "scope": [
+        "把 pyproject.toml 和 src/re_ctm/__init__.py 当前版本更新为 0.3.0。",
+        "同步 README、DEPLOYMENT、当前 project-progress 状态与文档一致性测试中的当前版本事实。",
+        "保留 0.2.0/0.2.1 的历史发布、迁移和执行回执文本，不重写历史。",
+        "运行完整本地门禁，构建 0.3.0 sdist/wheel，并在干净虚拟环境验证安装版本和 24-tool catalog。"
+      ],
+      "non_goals": [
+        "不增加新功能或继续重构 TUI/Quick Tunnel。",
+        "不修改 state schema、workflow protocol、OAuth、Native/Rethlas 权限或公共工具 schema。",
+        "不把尚未完成的真实网页 MV-011/MV-012 验收标记为完成。",
+        "不改写历史记录中的 0.2.0 或 0.2.1 版本事实。"
+      ],
+      "acceptance_criteria": [
+        "re-ctm --version、pyproject.toml、re_ctm.__version__、README 和 DEPLOYMENT 一致为 0.3.0。",
+        "scripts/validate_documentation_consistency.py 和 scripts/run_local_checks.py 全部通过。",
+        "sdist/wheel 构建成功，干净安装后 re-ctm --version 返回 0.3.0。",
+        "干净安装后公开工具仍为 18 Native + 6 Rethlas，隐藏兼容 aliases 仍为 11。",
+        "state schema 仍为 2，workflow protocol 仍为 2，MV-011/MV-012 仍保持 pending。"
+      ],
+      "validation_commands": [
+        "python3 scripts/validate_documentation_consistency.py",
+        "python3 scripts/run_local_checks.py",
+        "uv build --out-dir <temporary-release-directory>",
+        "clean venv install/smoke for re_ctm-0.3.0 wheel"
+      ],
+      "rollback": "把当前版本事实恢复为 0.2.1 并移除本发布节点的 0.3.0 当前状态记录；不涉及任何数据库或 workflow migration。",
+      "risk": "low",
+      "dependencies": [
+        "OPT-015"
+      ],
+      "receipt_required": true
     }
   ],
   "edges": [
@@ -781,6 +880,20 @@
       "target": "OPT-000",
       "relation": "depends_on",
       "reason": "终端观察功能必须受功能优先准入、性能基线、安全边界和执行回执规则约束。"
+    },
+    {
+      "id": "EDGE-018",
+      "source": "OPT-015",
+      "target": "OPT-014",
+      "relation": "depends_on",
+      "reason": "Quick Tunnel 单命令启动复用已完成且经过性能/安全验证的最小 TUI observer 与本地 secret presenter。"
+    },
+    {
+      "id": "EDGE-019",
+      "source": "OPT-016",
+      "target": "OPT-015",
+      "relation": "depends_on",
+      "reason": "0.3.0 版本更新必须建立在已完成并验证的一键 Quick Tunnel 用户功能上。"
     }
   ],
   "todo_list": [
@@ -1449,6 +1562,130 @@
         "MV-011 real webpage and target-terminal acceptance remains pending post-push.",
         "Cloudflare Quick Tunnel creation/supervision remains deliberately outside TUI scope; the tunnel process still supplies the initial random public hostname.",
         "Model token usage remains deliberately unavailable rather than estimated because the MCP server is not guaranteed authoritative upstream usage metadata."
+      ],
+      "decision": "accepted"
+    },
+    {
+      "receipt_id": "REC-2026-08-31-015",
+      "optimization_id": "OPT-015",
+      "started_at": "2026-08-31T23:18:48-07:00",
+      "completed_at": "2026-08-31T23:28:31-07:00",
+      "status_before": "in_progress",
+      "status_after": "completed",
+      "functional_goal": "把最常用的远程网页连接启动收敛成 re-ctm tui --quick-tunnel --native-mode dangerous 一条命令，同时保证普通 tui/serve 不承担任何 tunnel 进程或网络成本。",
+      "files_changed": [
+        "src/re_ctm/quick_tunnel.py",
+        "src/re_ctm/terminal_ui.py",
+        "src/re_ctm/server.py",
+        "src/re_ctm/cli.py",
+        "tests/test_quick_tunnel.py",
+        "tests/test_terminal_ui.py",
+        "tests/test_cli.py",
+        "README.md",
+        "docs/DEPLOYMENT.md",
+        "engineering-graph.json",
+        "code-optimization-graph.json",
+        "project-progress.json",
+        "manual-validation.json",
+        "local-validation.json"
+      ],
+      "commands": [
+        {
+          "command": "PYTHONPATH=src python3 -m unittest tests.test_quick_tunnel tests.test_terminal_ui tests.test_cli tests.test_oauth tests.test_http -v",
+          "exit_code": 0,
+          "result": "Quick Tunnel parsing/lifecycle, TUI/server integration, CLI port/origin behavior, OAuth and HTTP regressions all passed."
+        },
+        {
+          "command": "PYTHONPATH=src python3 scripts/benchmark_terminal_ui.py",
+          "exit_code": 0,
+          "result": "20,000 observed events completed with the latest targeted run at median 839 ns, P95 877 ns and zero queue drops, remaining far below the 20 us acceptance threshold."
+        },
+        {
+          "command": "real source smoke: PYTHONPATH=src python3 -m re_ctm tui --quick-tunnel --host 127.0.0.1 with isolated /tmp data roots and the installed cloudflared",
+          "exit_code": 0,
+          "result": "Re-CTM selected an OS-assigned loopback port, cloudflared produced a real HTTPS *.trycloudflare.com/mcp URL, and a controlled SIGINT smoke returned inner Re-CTM status 130 with no matching cloudflared process left behind."
+        },
+        {
+          "command": "python3 -c 'fetch <dynamic trycloudflare origin>/.well-known/oauth-protected-resource and assert resource equals that public origin'",
+          "exit_code": 0,
+          "result": "A real request through the Quick Tunnel reached Re-CTM; OAuth protected-resource metadata bound resource and authorization_servers to the random public TryCloudflare origin."
+        },
+        {
+          "command": "python3 scripts/run_local_checks.py",
+          "exit_code": 0,
+          "result": "Complete deterministic local gate passed with 142 tests plus compile, engineering graph, optimization graph, error-contract and documentation consistency checks."
+        }
+      ],
+      "tests": [
+        "Strict URL parsing accepts only HTTPS single-label *.trycloudflare.com origins and rejects HTTP, userinfo, alternate ports, suffix-confusion and unrelated hosts.",
+        "QuickTunnel strips Re-CTM OAuth/token/capability secrets and Cloudflare named-tunnel token/certificate/credential variables before Popen, uses /dev/null config plus no-autoupdate, and never prints raw cloudflared logs.",
+        "Missing binary, Popen failure and early child exit degrade to the still-running local MCP service rather than failing the server.",
+        "Default Quick Tunnel startup uses port 0 when neither CLI nor RE_CTM_PORT specifies a port; explicit and environment ports remain supported without fuser/pkill/killall behavior.",
+        "Shutdown sends TERM and only escalates to KILL on the owned Popen object if needed; plain serve and plain tui never construct QuickTunnel.",
+        "Real cloudflared smoke obtained a random public URL and real public OAuth metadata while the existing loopback-trusted dynamic-origin security rule remained authoritative.",
+        "Public URL publication and subsequent oauth.external_origin_resolved events are deduplicated in terminal output.",
+        "Real webpage DCR/PKCE plus Native/Rethlas calls through the new one-command path remain MV-012 post-push manual acceptance rather than being claimed from source/local tests."
+      ],
+      "behavior_before": "The minimal TUI removed OAuth/tool-call opacity but remote webpage use still required a second terminal, manual cloudflared invocation, a preselected port and copying the random public hostname; the common script also used destructive fuser -k -9 to reclaim a fixed port.",
+      "behavior_after": "re-ctm tui --quick-tunnel can bind an OS-selected loopback port, start one anonymous cloudflared Quick Tunnel after bind, print the real public MCP URL, preserve dynamic OAuth issuer binding, and tear down only its owned child on exit. Ordinary tui/serve do not enter this code path. No model-token statistics, persistent tunnel state, named-tunnel credentials, database polling or ambient process killing were introduced.",
+      "risk_review": "Quick Tunnel is testing/development ingress and creates one explicit outbound network process only when requested. The child is isolated from Re-CTM and named-tunnel credential environment variables, automatic cloudflared updates are disabled, user config is bypassed with os.devnull, and only strict TryCloudflare HTTPS origins are trusted for display. OAuth/MCP, Native/Rethlas authority, state schema 2 and workflow protocol 2 are unchanged.",
+      "rollback": "Remove quick_tunnel.py, --quick-tunnel wiring and related tests/docs/graph entries. Plain re-ctm tui remains the OPT-014 implementation and manual cloudflared startup remains available; no database, OAuth, workflow or artifact migration is required.",
+      "unresolved": [
+        "MV-012 real webpage DCR/PKCE and target-machine one-command acceptance remains pending post-push.",
+        "Cloudflare Quick Tunnels remain a disposable testing/development facility; stable production ingress continues to require an operator-managed fixed/named deployment.",
+        "cloudflared installation/update remains operator-owned; Re-CTM does not download or install the binary."
+      ],
+      "decision": "accepted"
+    },
+    {
+      "receipt_id": "REC-2026-08-31-016",
+      "optimization_id": "OPT-016",
+      "started_at": "2026-08-31T23:34:00-07:00",
+      "completed_at": "2026-08-31T23:37:23-07:00",
+      "status_before": "in_progress",
+      "status_after": "completed",
+      "functional_goal": "把已经完成并验证的最小 TUI 与一键 Quick Tunnel 用户功能线以清晰的 minor release 版本发布，同时保证核心协议、权限与持久化格式不漂移。",
+      "files_changed": [
+        "pyproject.toml",
+        "src/re_ctm/__init__.py",
+        "README.md",
+        "docs/DEPLOYMENT.md",
+        "tests/test_documentation_consistency.py",
+        "code-optimization-graph.json",
+        "project-progress.json",
+        "local-validation.json"
+      ],
+      "commands": [
+        {
+          "command": "python3 scripts/validate_documentation_consistency.py && python3 scripts/run_local_checks.py",
+          "exit_code": 0,
+          "result": "After switching current version facts to 0.3.0, documentation consistency and the complete deterministic local gate passed with 142 tests and all graph/error/documentation checks."
+        },
+        {
+          "command": "uv build --out-dir /tmp/re-ctm-030-build.b0a2mT; create /tmp/re-ctm-030-venv.Ov379T; pip install --no-deps re_ctm-0.3.0-py3-none-any.whl; run installed version/schema smoke",
+          "exit_code": 0,
+          "result": "Built re_ctm-0.3.0.tar.gz and re_ctm-0.3.0-py3-none-any.whl; clean install reports re-ctm 0.3.0, 24 public tools, state schema 2 and workflow protocol 2."
+        },
+        {
+          "command": "/tmp/re-ctm-030-venv.Ov379T/bin/python count native/rethlas/public/hidden contracts; /tmp/re-ctm-030-venv.Ov379T/bin/re-ctm tui --help | grep -- --quick-tunnel",
+          "exit_code": 0,
+          "result": "Clean wheel exposes 18 Native + 6 Rethlas = 24 public tools, 11 hidden aliases, and the packaged --quick-tunnel CLI option."
+        }
+      ],
+      "tests": [
+        "pyproject.toml and src/re_ctm/__init__.py agree on 0.3.0, and README/DEPLOYMENT current-release facts match the runtime version.",
+        "The full existing TUI, Quick Tunnel, OAuth, MCP, Native, Rethlas, storage and project regression suite remains green at 142 tests.",
+        "The clean 0.3.0 wheel preserves the exact 24-tool public catalog and 11 hidden aliases while keeping state schema 2 and workflow protocol 2.",
+        "Historical v0.2.0/v0.2.1 release, migration and receipt facts remain historical and were not rewritten as current facts.",
+        "MV-011/MV-012 real webpage/target acceptance remains pending rather than being inferred from local build/install validation."
+      ],
+      "behavior_before": "The codebase already contained user-visible TUI and one-command Quick Tunnel functionality but still identified itself as 0.2.1, conflating a feature addition with the previous patch release.",
+      "behavior_after": "The current source, distribution metadata, installed CLI and current user documentation identify the feature line as Re-CTM 0.3.0. The version bump does not change runtime schemas, public tool contracts or authority behavior.",
+      "risk_review": "Version-alignment release change only. No database migration, workflow protocol change, OAuth behavior change or new permission is introduced; clean-install verification confirms the published wheel contains the expected new TUI/Quick Tunnel modules and unchanged protocol counts.",
+      "rollback": "Restore current version facts to 0.2.1 and remove the 0.3.0 current release metadata/receipt. No persistent data or workflow migration is required.",
+      "unresolved": [
+        "Post-push CI and real webpage MV-011/MV-012 acceptance remain pending.",
+        "The intentionally untouched user artifact pushout_abelianization_exact_sequence.tex remains untracked and must not be included in the release commit."
       ],
       "decision": "accepted"
     }

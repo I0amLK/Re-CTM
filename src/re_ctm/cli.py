@@ -15,6 +15,7 @@ from .config import Settings, materialize_secrets
 from .enums import LatexPolicy, NativeMode
 from .errors import ReCTMError
 from .native import BubblewrapExecBackend, ExternalHelperExecBackend, NativeWorkspace
+from .quick_tunnel import QuickTunnel
 from .server import run_server
 from .storage import STATE_SCHEMA_VERSION
 from .terminal_ui import TerminalSession
@@ -29,11 +30,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"re-ctm {__version__}")
     subcommands = parser.add_subparsers(dest="command", required=True)
 
-    for name, help_text in (
-        ("serve", "Run the OAuth-only HTTP MCP service."),
-        ("tui", "Run the OAuth MCP service with a minimal terminal session monitor."),
+    serve = subcommands.add_parser("serve", help="Run the OAuth-only HTTP MCP service.")
+    tui = subcommands.add_parser(
+        "tui",
+        help="Run the OAuth MCP service with a minimal terminal session monitor.",
+    )
+    for command, default_port in (
+        (serve, os.environ.get("RE_CTM_PORT") or "8765"),
+        (tui, os.environ.get("RE_CTM_PORT") or None),
     ):
-        command = subcommands.add_parser(name, help=help_text)
         command.add_argument(
             "--host",
             default=os.environ.get("RE_CTM_HOST") or "127.0.0.1",
@@ -41,11 +46,16 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument(
             "--port",
             type=int,
-            default=os.environ.get("RE_CTM_PORT") or "8765",
+            default=default_port,
         )
         command.add_argument("--workspace")
         command.add_argument("--native-mode", choices=[item.value for item in NativeMode])
         command.add_argument("--latex-policy", choices=[item.value for item in LatexPolicy])
+    tui.add_argument(
+        "--quick-tunnel",
+        action="store_true",
+        help="Start and manage one temporary Cloudflare Quick Tunnel for this TUI session.",
+    )
 
     subcommands.add_parser("check-config", help="Validate configuration without starting HTTP.")
     subcommands.add_parser("validate-graph", help="Validate engineering-graph.json metrics and invariants.")
@@ -147,6 +157,11 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         settings = Settings.from_env()
+        quick_tunnel_requested = bool(
+            args.command == "tui" and getattr(args, "quick_tunnel", False)
+        )
+        if quick_tunnel_requested:
+            settings = replace(settings, oauth_server_url="")
         if getattr(args, "workspace", None):
             settings = replace(settings, workspace=Path(args.workspace).expanduser().resolve())
         if getattr(args, "native_mode", None):
@@ -224,6 +239,14 @@ def main(argv: list[str] | None = None) -> int:
         if generated_oauth_password:
             settings = replace(settings, oauth_password=secrets.token_urlsafe(32))
         terminal_session = TerminalSession() if args.command == "tui" else None
+        quick_tunnel = (
+            QuickTunnel(terminal_session)
+            if quick_tunnel_requested and terminal_session is not None
+            else None
+        )
+        resolved_port = args.port
+        if resolved_port is None:
+            resolved_port = 0 if quick_tunnel_requested else 8765
         application = build_application(
             settings,
             debug_observer=(terminal_session.observe if terminal_session is not None else None),
@@ -231,9 +254,10 @@ def main(argv: list[str] | None = None) -> int:
         return run_server(
             application,
             host=args.host,
-            port=args.port,
+            port=resolved_port,
             reveal_generated_oauth_password=generated_oauth_password,
             terminal_session=terminal_session,
+            quick_tunnel=quick_tunnel,
         )
     except ReCTMError as exc:
         print(json.dumps({"ok": False, "error": exc.to_payload()}, indent=2), file=sys.stderr)

@@ -237,7 +237,7 @@
         "Connect the real webpage MCP client, complete DCR/PKCE OAuth, and confirm the terminal status advances from waiting for authorization to authorization accepted/token issued/connected without repeating connected for every authenticated MCP request.",
         "Issue several native and Rethlas tool calls and confirm the terminal shows only tool name/start/success-or-safe-error facts, never arguments, results, problem/proof contents, access tokens, authorization codes, capabilities, or client secrets.",
         "Start the same setup with an explicit RE_CTM_OAUTH_PASSWORD and confirm the TUI prints configured externally rather than echoing the password.",
-        "Run through a Cloudflare Quick Tunnel without RE_CTM_SERVER_URL. Confirm the TUI does not claim to create or know the random tunnel hostname before cloudflared reports it; after a trusted proxy request resolves the external origin, confirm the TUI may display that resolved MCP URL.",
+        "Run plain re-ctm tui through an independently managed Cloudflare Quick Tunnel without RE_CTM_SERVER_URL. Confirm the TUI does not claim to own that external process and only updates the public origin after the trusted loopback proxy request resolves it.",
         "Stress tool calls while slowing or breaking the terminal consumer and confirm MCP/tool execution remains responsive; verify no idle polling behavior is observable when no events occur.",
         "Scan debug JSONL, SQLite state, validation reports, and project ledgers for the generated authorization key and confirm it is absent."
       ],
@@ -245,9 +245,34 @@
         "The TUI is optional presentation only and re-ctm serve remains behaviorally compatible for headless use.",
         "Terminal rendering failure, queue pressure, or a closed output pipe cannot change tool success/failure or OAuth authorization semantics.",
         "The generated OAuth key remains local-terminal-only secret material and explicitly configured passwords are never echoed by the TUI.",
-        "No database/log polling, extra model/network request, token-usage estimation, tunnel supervision, public-tool change, workflow-state change, or persistence-schema change is introduced."
+        "Plain tui adds no database/log polling, extra model/network request, token-usage estimation, public-tool change, workflow-state change, persistence-schema change, or tunnel process."
       ],
       "evidence": []
+    },
+    {
+      "id": "MV-012",
+      "name": "One-command Quick Tunnel TUI acceptance",
+      "status": "pending",
+      "steps": [
+        "On a target machine with cloudflared installed, open a disposable project directory and run re-ctm tui --quick-tunnel --native-mode dangerous with RE_CTM_OAUTH_PASSWORD and RE_CTM_PORT unset. Confirm Re-CTM chooses an available loopback port without fuser/pkill and displays both the generated authorization key and a real HTTPS *.trycloudflare.com/mcp URL.",
+        "Connect the real webpage MCP client to the displayed public MCP URL, complete DCR/PKCE OAuth, and exercise both a Native tool and a Rethlas workflow call while the same terminal reports authentication and tool-call state.",
+        "Repeat with an explicit --port and with RE_CTM_PORT to confirm each value is respected; repeat with a stale RE_CTM_SERVER_URL and confirm --quick-tunnel uses the dynamically resolved TryCloudflare origin for that session without rewriting the environment or persisted configuration.",
+        "Temporarily hide cloudflared from PATH and confirm --quick-tunnel reports that it is unavailable while the local MCP server remains running. Separately force cloudflared to exit early and confirm the same local-service degradation.",
+        "Set RE_CTM OAuth/token/capability secrets and Cloudflare named-tunnel credential environment variables, launch --quick-tunnel under process/environment inspection, and confirm the child receives none of those credential variables.",
+        "Press Ctrl-C after the Quick Tunnel is connected, confirm Re-CTM exits cleanly and the cloudflared child created by that TUI session is gone; confirm unrelated pre-existing cloudflared processes are untouched."
+      ],
+      "expected": [
+        "The common remote-client path is one command: re-ctm tui --quick-tunnel --native-mode dangerous.",
+        "Quick Tunnel mode is explicit opt-in; plain tui and serve create no cloudflared process and retain their previous performance profile.",
+        "Only strict HTTPS *.trycloudflare.com output becomes the public MCP URL; Quick Tunnel cannot inherit Re-CTM secrets or named-tunnel credentials.",
+        "Tunnel failure never kills the local MCP service, and shutdown only terminates the child process owned by this TUI session.",
+        "Real webpage/browser compatibility remains a manual target assertion even though deterministic lifecycle tests and a real local-network Quick Tunnel smoke pass."
+      ],
+      "evidence": [
+        "Local source smoke on 2026-08-31 used the installed cloudflared with isolated /tmp Re-CTM data roots: --quick-tunnel selected an OS-assigned loopback port and produced a real HTTPS *.trycloudflare.com/mcp URL.",
+        "A real HTTPS request through that Quick Tunnel to /.well-known/oauth-protected-resource returned resource and authorization_servers bound to the same random TryCloudflare origin.",
+        "A separate timeout/SIGINT source smoke exited Re-CTM with status 130 and left no matching cloudflared process; deterministic tests cover owned TERM-to-KILL escalation. Real webpage DCR/PKCE and target dangerous-mode tool calls remain pending."
+      ]
     }
   ]
 }
