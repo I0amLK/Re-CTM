@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from .capabilities import CapabilityAuthority
 from .config import Settings
-from .debug import DebugEventBus
+from .debug import DebugEventBus, DebugObserver
 from .latex import LatexGate
 from .mcp import MCPDispatcher
 from .native import (
@@ -43,7 +43,11 @@ class ReCTMApplication:
         self.oauth_store.close()
 
 
-def build_application(settings: Settings) -> ReCTMApplication:
+def build_application(
+    settings: Settings,
+    *,
+    debug_observer: DebugObserver | None = None,
+) -> ReCTMApplication:
     settings.validate()
     settings.ensure_directories()
     debug = DebugEventBus(
@@ -51,6 +55,7 @@ def build_application(settings: Settings) -> ReCTMApplication:
         settings.private_root,
         enabled=True,
         trace_payloads=settings.trace_payloads,
+        observer=debug_observer,
     )
     state_store = StateStore(settings.private_root / "state.sqlite3")
     oauth_store = OAuthStore(settings.data_root / "oauth.sqlite3")

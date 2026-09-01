@@ -72,7 +72,7 @@ Every declared root must exist and is canonicalized before startup. Re-CMT rejec
 
 The current external-helper protocol does not promise operator-declared roots; configuring `RE_CTM_NATIVE_EXEC_ALLOW_ROOTS` with `RE_CTM_NATIVE_EXEC_BACKEND=external` fails closed instead of silently ignoring the roots.
 
-`RE_CTM_OAUTH_PASSWORD` is optional for an interactive operator launch. If omitted, `re-ctm serve` generates a high-entropy authorization key and prints it once to the local terminal. Set it explicitly only when a stable operator password is preferred or automation must know it in advance.
+`RE_CTM_OAUTH_PASSWORD` is optional for an interactive operator launch. If omitted, `re-ctm serve` and `re-ctm tui` generate a high-entropy authorization key and reveal it once to the local operator terminal after the HTTP bind succeeds. When a password is explicitly configured, the TUI reports `configured externally` and does not echo the configured secret. Set a stable password only when operator policy or automation requires it.
 
 `RE_CTM_SERVER_URL` is optional. For a stable public hostname or named tunnel, set it explicitly:
 
@@ -125,6 +125,19 @@ Long-running command results include additive `termination` provenance without c
 
 ## 6. Start Re-CTM
 
+For an operator who wants only OAuth and tool-call visibility, start the same server through the minimal terminal observer:
+
+```bash
+set -a
+. /etc/re-ctm/re-ctm.env
+set +a
+/opt/re-ctm/venv/bin/re-ctm tui
+```
+
+The terminal observer is presentation-only. It consumes already-redacted runtime events through a bounded non-blocking in-memory queue, performs no database/JSONL polling and no extra network calls, and never receives the raw generated authorization key through the structured event path. Slow/broken terminal output is isolated from MCP tool execution. Model token usage is intentionally not estimated because the MCP server is not guaranteed to receive authoritative upstream model-usage metadata.
+
+Headless/service-style operation remains:
+
 ```bash
 set -a
 . /etc/re-ctm/re-ctm.env
@@ -147,6 +160,8 @@ cloudflared tunnel --url http://127.0.0.1:${PORT}
 ```
 
 The Re-CTM terminal prints `Re-CTM OAuth authorization key: ...`. Enter that value on the first OAuth authorization page. It is a Re-CTM authorization credential, not a Cloudflare Tunnel Token.
+
+`re-ctm tui` does not launch or supervise `cloudflared`. With no fixed `RE_CTM_SERVER_URL`, it initially shows the local MCP URL; if a later trusted loopback proxy request resolves a different external OAuth origin, the terminal observer may then display the resolved public MCP URL. The random tunnel hostname must still be obtained from the tunnel process itself for the client's first connection.
 
 Use the printed `https://<random>.trycloudflare.com/mcp` URL in the MCP client. No Re-CTM restart is required after Cloudflare assigns the random hostname.
 

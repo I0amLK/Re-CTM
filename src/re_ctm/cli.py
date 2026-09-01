@@ -17,6 +17,7 @@ from .errors import ReCTMError
 from .native import BubblewrapExecBackend, ExternalHelperExecBackend, NativeWorkspace
 from .server import run_server
 from .storage import STATE_SCHEMA_VERSION
+from .terminal_ui import TerminalSession
 from .toolchains import build_toolchain_exposure_plan, parse_native_exec_allow_roots
 
 
@@ -28,19 +29,23 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"re-ctm {__version__}")
     subcommands = parser.add_subparsers(dest="command", required=True)
 
-    serve = subcommands.add_parser("serve", help="Run the OAuth-only HTTP MCP service.")
-    serve.add_argument(
-        "--host",
-        default=os.environ.get("RE_CTM_HOST") or "127.0.0.1",
-    )
-    serve.add_argument(
-        "--port",
-        type=int,
-        default=os.environ.get("RE_CTM_PORT") or "8765",
-    )
-    serve.add_argument("--workspace")
-    serve.add_argument("--native-mode", choices=[item.value for item in NativeMode])
-    serve.add_argument("--latex-policy", choices=[item.value for item in LatexPolicy])
+    for name, help_text in (
+        ("serve", "Run the OAuth-only HTTP MCP service."),
+        ("tui", "Run the OAuth MCP service with a minimal terminal session monitor."),
+    ):
+        command = subcommands.add_parser(name, help=help_text)
+        command.add_argument(
+            "--host",
+            default=os.environ.get("RE_CTM_HOST") or "127.0.0.1",
+        )
+        command.add_argument(
+            "--port",
+            type=int,
+            default=os.environ.get("RE_CTM_PORT") or "8765",
+        )
+        command.add_argument("--workspace")
+        command.add_argument("--native-mode", choices=[item.value for item in NativeMode])
+        command.add_argument("--latex-policy", choices=[item.value for item in LatexPolicy])
 
     subcommands.add_parser("check-config", help="Validate configuration without starting HTTP.")
     subcommands.add_parser("validate-graph", help="Validate engineering-graph.json metrics and invariants.")
@@ -218,12 +223,17 @@ def main(argv: list[str] | None = None) -> int:
         generated_oauth_password = not bool(settings.oauth_password)
         if generated_oauth_password:
             settings = replace(settings, oauth_password=secrets.token_urlsafe(32))
-        application = build_application(settings)
+        terminal_session = TerminalSession() if args.command == "tui" else None
+        application = build_application(
+            settings,
+            debug_observer=(terminal_session.observe if terminal_session is not None else None),
+        )
         return run_server(
             application,
             host=args.host,
             port=args.port,
             reveal_generated_oauth_password=generated_oauth_password,
+            terminal_session=terminal_session,
         )
     except ReCTMError as exc:
         print(json.dumps({"ok": False, "error": exc.to_payload()}, indent=2), file=sys.stderr)

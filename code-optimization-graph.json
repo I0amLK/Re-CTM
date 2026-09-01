@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "graph_id": "re-ctm-code-optimization",
   "title": "Re-CTM 功能优先代码优化图",
-  "updated_at": "2026-08-30T23:24:00-07:00",
+  "updated_at": "2026-08-31T23:02:37-07:00",
   "one_sentence_rule": "只做能够以功能正确性、安全边界、可靠性、可维护性或可验证性能收益证明价值的最小代码改进。",
   "purpose": "记录代码清理与重构的原因、功能收益、依赖、执行顺序、验收条件和不可覆盖的执行回执，防止为了优化而优化。",
   "governance": {
@@ -606,6 +606,60 @@
         "OPT-000"
       ],
       "receipt_required": true
+    },
+    {
+      "id": "OPT-014",
+      "kind": "user_observability",
+      "title": "实现无轮询、非阻塞的最小终端会话观察器",
+      "status": "completed",
+      "priority": "P1",
+      "problem": "交互式启动目前会把 OAuth authorization key、HTTP access log 和普通服务日志直接写到终端，用户无法快速确认认证是否完成，也无法只看每次 MCP tool call 的工具名和成功/失败；同时任何可视化实现都不能为展示引入轮询、额外 API 请求或工具关键路径阻塞。",
+      "functional_outcome": "新增可选 re-ctm tui 启动方式，在保持 re-ctm serve、OAuth/MCP 协议、24 个公开工具、state schema 2 和 workflow protocol 2 不变的前提下，用已有脱敏 DebugEvent 提供 OAuth 状态与工具调用观察，并保证慢终端或观察器故障不影响工具执行。",
+      "evidence": [
+        "src/re_ctm/tools.py 已统一发出 tool.call_started、tool.call_finished 和 tool.call_failed。",
+        "src/re_ctm/oauth.py 已统一发出 authorization/token 生命周期的脱敏事件；src/re_ctm/server.py 仅在本地终端直接显示自动生成的 OAuth authorization key。",
+        "当前 DebugEventBus 已在统一边界完成敏感字段脱敏，因此无需新增第二套运行时事件协议。",
+        "标准库合成基线显示空 None 分支约 20.8 ns、perf_counter_ns 约 76.4 ns、bounded queue put/get 约 1.24 us、跨线程 queue roundtrip 约 1.34 us；最终接受仍以仓库专项 benchmark 为准。"
+      ],
+      "scope": [
+        "为 DebugEventBus 增加可选、异常隔离的内存 observer，observer 通知发生在文件锁外。",
+        "新增标准库 terminal session monitor，使用 bounded non-blocking queue 和独立 daemon renderer；无事件时阻塞等待而非 polling。",
+        "新增 re-ctm tui 子命令，复用 serve 的 host、port、workspace、native-mode 和 latex-policy 参数。",
+        "显示 workspace、MCP URL、自动生成的 OAuth authorization key 或 configured externally、OAuth 状态以及工具调用开始/结束/失败。",
+        "TUI 模式默认抑制传统 HTTP access log；结构化 debug 审计继续保留。",
+        "补充安全、并发、故障隔离、非 TTY、关闭路径和性能回归测试。"
+      ],
+      "non_goals": [
+        "不统计或估算模型 token、计费或 reasoning usage。",
+        "不自动启动或管理 Cloudflare Tunnel，不承诺在隧道创建前知道随机公网 URL。",
+        "不增加数据库表、state schema、workflow state、MCP 工具或公开 tool schema。",
+        "不展示工具参数正文、结果正文、问题正文、证明正文、capability、OAuth token/code/client secret。",
+        "不做全屏 curses/Textual/Rich dashboard、动画、鼠标、文件浏览器、日志搜索或会话历史持久化。",
+        "不修改 WorkflowEngine、NativeRuntime、权限判断或数学 finalization 语义。"
+      ],
+      "acceptance_criteria": [
+        "re-ctm serve 的现有输出、协议和运行行为保持兼容，TUI 未启用时不创建 renderer thread 或 queue。",
+        "TUI 事件生产者只做 non-blocking put_nowait；队列满、renderer 异常、BrokenPipe 或慢终端均不能改变工具返回或 OAuth 行为。",
+        "自动生成的 OAuth authorization key 只在成功 bind 后通过本地 presenter 显示一次，且不进入 DebugEvent、queue、JSONL、SQLite 或验证报告；显式配置密码不回显。",
+        "OAuth 重复 access_token_accepted 被折叠为状态，不因每个 MCP 请求重复刷屏。",
+        "动态 tunnel origin 只有在已有可信 oauth.external_origin_resolved 事件出现后才展示；没有该事件时只显示本地或固定 MCP URL。",
+        "TUI 关闭路径相对基线无可观测端到端回归；启用时 observer producer-side 单事件 P95 小于 20 us，idle 无周期性唤醒。",
+        "公开工具仍为精确 18 Native + 6 Rethlas，state schema 仍为 2，workflow protocol 仍为 2。",
+        "专项测试、优化图/工程图 validator 和 scripts/run_local_checks.py 全部通过。"
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src python3 -m unittest tests.test_terminal_ui tests.test_cli tests.test_oauth tests.test_mcp -v",
+        "PYTHONPATH=src python3 scripts/benchmark_terminal_ui.py",
+        "python3 scripts/validate_code_optimization_graph.py",
+        "python3 scripts/validate_engineering_graph.py",
+        "python3 scripts/run_local_checks.py"
+      ],
+      "rollback": "删除 tui 子命令和 terminal_ui 模块，移除 DebugEventBus observer 接口并恢复 run_server 的默认终端输出；本项目不迁移数据库或公共协议，因此回滚不触及 state.sqlite3、oauth.sqlite3、private vault、proof artifacts 或 project registry。",
+      "risk": "medium",
+      "dependencies": [
+        "OPT-000"
+      ],
+      "receipt_required": true
     }
   ],
   "edges": [
@@ -720,6 +774,13 @@
       "target": "OPT-007",
       "relation": "depends_on",
       "reason": "发布候选必须先完成当前版本和公共文档事实的一致性治理。"
+    },
+    {
+      "id": "EDGE-017",
+      "source": "OPT-014",
+      "target": "OPT-000",
+      "relation": "depends_on",
+      "reason": "终端观察功能必须受功能优先准入、性能基线、安全边界和执行回执规则约束。"
     }
   ],
   "todo_list": [
@@ -1321,6 +1382,73 @@
         "The release candidate is locally validated but not yet committed or pushed.",
         "Post-push browser/target-PC/manual checks in manual-validation.json remain pending.",
         "OPT-005 external-helper backend cleanup remains blocked on equivalent real backend evidence."
+      ],
+      "decision": "accepted"
+    },
+    {
+      "receipt_id": "REC-2026-08-31-014",
+      "optimization_id": "OPT-014",
+      "started_at": "2026-08-31T22:55:00-07:00",
+      "completed_at": "2026-08-31T23:02:37-07:00",
+      "status_before": "in_progress",
+      "status_after": "completed",
+      "functional_goal": "在不改变 Re-CTM 核心协议、权限和持久化边界的前提下，为交互式启动提供 OAuth 与 MCP tool-call 的轻量终端可见性，并把展示开销限制在非阻塞、无轮询的观察路径。",
+      "files_changed": [
+        "src/re_ctm/debug.py",
+        "src/re_ctm/app.py",
+        "src/re_ctm/terminal_ui.py",
+        "src/re_ctm/server.py",
+        "src/re_ctm/cli.py",
+        "tests/test_terminal_ui.py",
+        "tests/test_cli.py",
+        "scripts/benchmark_terminal_ui.py",
+        "README.md",
+        "docs/DEPLOYMENT.md",
+        "engineering-graph.json",
+        "code-optimization-graph.json",
+        "project-progress.json",
+        "manual-validation.json",
+        "local-validation.json"
+      ],
+      "commands": [
+        {
+          "command": "PYTHONPATH=src python3 -m unittest tests.test_terminal_ui tests.test_cli tests.test_oauth tests.test_mcp -v",
+          "exit_code": 0,
+          "result": "Targeted terminal observer, CLI, OAuth and MCP regressions passed, including queue pressure, output failure, secret handling, dynamic-origin deduplication, serve/TUI separation and Ctrl-C shutdown."
+        },
+        {
+          "command": "PYTHONPATH=src python3 scripts/benchmark_terminal_ui.py",
+          "exit_code": 0,
+          "result": "20,000 producer-only observed events completed with median 808 ns, P95 868 ns, max 33,371 ns and zero queue drops; the required P95 threshold is below 20,000 ns."
+        },
+        {
+          "command": "python3 scripts/validate_code_optimization_graph.py && python3 scripts/validate_engineering_graph.py && python3 scripts/validate_documentation_consistency.py",
+          "exit_code": 0,
+          "result": "Optimization governance, engineering graph invariants and stable documentation facts all passed after the TUI architecture/documentation update."
+        },
+        {
+          "command": "python3 scripts/run_local_checks.py",
+          "exit_code": 0,
+          "result": "Complete deterministic local gate passed with 130 tests plus compile, engineering graph, optimization graph, error-contract and documentation checks."
+        }
+      ],
+      "tests": [
+        "TUI startup displays workspace/MCP URL and only the auto-generated OAuth key; explicitly configured passwords are represented as configured externally and are not echoed.",
+        "The generated OAuth key is absent from debug JSONL and persisted data in integration tests; structured observer delivery receives already-redacted DebugEvent values only.",
+        "Tool start/finish/failure and OAuth state transitions are rendered without arguments/results and repeated access-token acceptance is collapsed rather than printed for every request.",
+        "Queue full uses put_nowait and drops presentation events without blocking; broken terminal output is isolated; Ctrl-C returns 130 and closes the presentation path.",
+        "re-ctm serve does not construct TerminalSession and retains normal HTTP access logging; tui mode suppresses only the raw access log while structured debug auditing remains active.",
+        "The exact 18 Native + 6 Rethlas public catalog, state schema 2 and workflow protocol 2 remain covered by the full existing regression suite.",
+        "Real webpage/TUI interaction and target terminal behavior remain a manual post-push acceptance item MV-011 rather than being claimed from local mocks."
+      ],
+      "behavior_before": "Interactive operators saw the raw authorization key and HTTP access logs but had no minimal view of OAuth progress or which MCP tool was being called; adding such visibility risked introducing polling, duplicate event infrastructure, terminal blocking, secret leakage or unreliable token estimates.",
+      "behavior_after": "re-ctm tui runs the same OAuth/MCP server with an optional observer on already-redacted DebugEvent records. A bounded Queue.put_nowait path feeds an append-only daemon renderer; raw generated authorization keys remain on the direct post-bind local-terminal path, configured passwords are not echoed, repeated OAuth acceptance is folded into state, tool payload bodies are never displayed, token usage is intentionally omitted, and headless re-ctm serve remains separate.",
+      "risk_review": "No database schema, workflow state, MCP tool schema, public tool count, Native/Rethlas authorization rule or mathematical finalization behavior changed. Presentation output is untrusted/non-authoritative and terminal control characters are sanitized. Producer-side benchmark is sub-microsecond at P95 on the current machine, but real browser/terminal acceptance remains pending and no claim is made that every deployment terminal has identical scheduling characteristics.",
+      "rollback": "Remove re-ctm tui, terminal_ui.py and the optional DebugEventBus observer wiring, restore run_server to unconditional normal access logging/output, and remove the TUI documentation/validation entries. No state, OAuth database, workflow, project registry or artifact migration is needed.",
+      "unresolved": [
+        "MV-011 real webpage and target-terminal acceptance remains pending post-push.",
+        "Cloudflare Quick Tunnel creation/supervision remains deliberately outside TUI scope; the tunnel process still supplies the initial random public hostname.",
+        "Model token usage remains deliberately unavailable rather than estimated because the MCP server is not guaranteed authoritative upstream usage metadata."
       ],
       "decision": "accepted"
     }

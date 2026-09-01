@@ -114,6 +114,16 @@ re-ctm check-config
 
 ## 5. 启动服务
 
+如果你是在目标项目文件夹中直接打开终端，推荐交互式使用：
+
+```bash
+re-ctm tui
+```
+
+`re-ctm tui` 与 `serve` 使用同一套 OAuth/MCP 服务，只额外增加一个本地、追加式的终端观察层。它会显示当前 workspace、可用的 MCP URL、自动生成的 OAuth authorization key（如果密码由环境变量显式配置则只显示 `configured externally`）、OAuth 连接状态，以及每次 MCP tool call 的工具名和成功/失败。它不轮询数据库或日志文件，不显示工具参数/结果正文，也不统计或估算模型 token。
+
+无界面/headless 部署继续使用原命令：
+
 ```bash
 re-ctm serve --host 127.0.0.1 --port 8765
 ```
@@ -137,6 +147,8 @@ OAuth 元数据地址：
 ```text
 http://127.0.0.1:8765/.well-known/oauth-protected-resource
 ```
+
+如果 `RE_CTM_SERVER_URL` 已设置，TUI 会直接显示固定公网 MCP URL。随机 Cloudflare Quick Tunnel 仍由 `cloudflared` 自己创建；TUI 不启动或管理 tunnel。只有当后续可信反向代理请求让 Re-CTM 解析出新的公网 origin 时，TUI 才会追加显示解析后的公网 MCP URL。
 
 ## 6. 在网页 MCP 客户端中连接
 

@@ -1,9 +1,9 @@
 {
   "project": {
     "name": "Re-CTM",
-    "status": "v0_2_1_release_candidate_local_validated_uncommitted",
+    "status": "v0_2_1_tui_feature_local_validated_uncommitted",
     "target": "A single installable OAuth MCP runtime combining exact CTM computer tools, a Rethlas-derived verified mathematical workflow, and a private cross-run Verified Research Workspace.",
-    "updated_at": "2026-08-30T23:24:00-07:00",
+    "updated_at": "2026-08-31T23:02:37-07:00",
     "source_references": {
       "cmt_local_repo": "../coding-tools-mcp",
       "rethlas_local_repo": "../Rethlas",
@@ -220,6 +220,11 @@
     {
       "id": "AD-039",
       "decision": "Release the accumulated compatibility, safety, contract, workflow, storage and documentation cleanup as patch version 0.2.1 rather than introducing a new minor feature line. Require source gates, sdist/wheel build, clean-wheel installation, packaged methodology/config checks, installed Bubblewrap attestation, and installed Sage/Magma execution before marking the patch release candidate locally validated.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-040",
+      "decision": "Implement the requested terminal UX as a minimal optional observer rather than a full-screen TUI: reuse already-redacted DebugEvent facts, add only a bounded non-blocking in-memory queue and append-only renderer, keep the generated OAuth authorization key on a direct post-bind local-terminal path, suppress noisy HTTP access logs only in tui mode, and omit model-token statistics because authoritative upstream usage is not part of the guaranteed MCP-server input. re-ctm serve, OAuth/MCP semantics, the 24-tool catalog, state schema 2, workflow protocol 2, Native/Rethlas authority, and persistent data remain unchanged.",
       "status": "accepted"
     }
   ],
@@ -971,6 +976,14 @@
     {
       "timestamp": "2026-08-30T23:24:00-07:00",
       "event": "Prepared Re-CTM v0.2.1 as a patch release candidate after the functionality-first cleanup. Source local gates pass; sdist and wheel build successfully; a clean wheel reports 0.2.1 with exactly 24 public tools and 11 hidden aliases; packaged methodology and check-config load correctly; installed Bubblewrap attestation passes; and SageMath plus Magma both execute 2+3=5 through the installed NativeRuntime. The release candidate remains uncommitted/unpushed and manual post-push acceptance remains pending."
+    },
+    {
+      "timestamp": "2026-08-31T23:00:00-07:00",
+      "event": "Started OPT-014 for a minimal re-ctm tui terminal observer. The implementation reuses the existing redacted DebugEventBus through an optional lock-external observer, uses a bounded non-blocking queue plus daemon renderer, keeps the generated OAuth key off the structured event path, hides raw HTTP access logs only in tui mode, exposes tool-call/OAuth status without payload bodies or token estimates, and leaves WorkflowEngine/NativeRuntime/storage/tool schemas untouched. Targeted CLI/OAuth/MCP/TUI tests pass and the initial producer-only benchmark measured about 0.87 microseconds P95 per observed event with no drops; full local gates are still pending before completion."
+    },
+    {
+      "timestamp": "2026-08-31T23:02:37-07:00",
+      "event": "Completed OPT-014 after the targeted terminal/CLI/OAuth/MCP suite, producer-only performance benchmark, graph/document validators and complete local gate passed. The final producer benchmark measured 808 ns median and 868 ns P95 over 20,000 observed events with zero drops; the deterministic suite reached 130 passing tests. The optimization graph now carries REC-2026-08-31-014, while real webpage/target-terminal acceptance remains explicitly pending as MV-011."
     }
   ]
 }

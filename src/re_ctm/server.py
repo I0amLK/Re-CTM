@@ -6,8 +6,9 @@ import json
 import posixpath
 import sys
 import urllib.parse
-from typing import Any, Mapping, cast
+from typing import TYPE_CHECKING, Any, Mapping, cast
 
+from . import __version__
 from .app import ReCTMApplication
 from .config import is_loopback_host
 from .debug import new_trace_id
@@ -23,6 +24,9 @@ from .mcp import (
     validate_http_mirror_headers,
 )
 from .oauth import parse_basic_authorization
+
+if TYPE_CHECKING:
+    from .terminal_ui import TerminalSession
 
 
 MAX_REQUEST_BYTES = 1_048_576
@@ -78,6 +82,8 @@ class ReCTMHTTPServer(http.server.ThreadingHTTPServer):
         self,
         address: tuple[str, int],
         application: ReCTMApplication,
+        *,
+        access_log_enabled: bool = True,
     ) -> None:
         if not application.settings.oauth_server_url and not is_loopback_host(address[0]):
             raise ReCTMError(
@@ -87,6 +93,7 @@ class ReCTMHTTPServer(http.server.ThreadingHTTPServer):
                 details={"host": address[0]},
             )
         self.application = application
+        self.access_log_enabled = access_log_enabled
         super().__init__(address, ReCTMHandler)
 
     def server_close(self) -> None:
@@ -535,6 +542,8 @@ class ReCTMHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Vary", "Origin")
 
     def log_message(self, format: str, *args: object) -> None:
+        if not cast(ReCTMHTTPServer, self.server).access_log_enabled:
+            return
         print(
             f"{self.address_string()} - [{self.log_date_time_string()}] {format % args}",
             file=sys.stderr,
@@ -547,14 +556,39 @@ def run_server(
     host: str = "127.0.0.1",
     port: int = 8765,
     reveal_generated_oauth_password: bool = False,
+    terminal_session: TerminalSession | None = None,
 ) -> int:
-    server = ReCTMHTTPServer((host, port), application)
+    try:
+        server = ReCTMHTTPServer(
+            (host, port),
+            application,
+            access_log_enabled=terminal_session is None,
+        )
+    except Exception:
+        application.close()
+        raise
     oauth_mode = (
         f"fixed OAuth origin {application.settings.oauth_server_url}"
         if application.settings.oauth_server_url
         else "dynamic OAuth origin from loopback tunnel/request headers"
     )
-    if reveal_generated_oauth_password:
+    bound_host, bound_port = server.server_address[:2]
+    local_mcp_url = f"http://{_host_with_port(str(bound_host), int(bound_port))}{MCP_PATH}"
+    public_mcp_url = (
+        application.settings.oauth_server_url.rstrip("/") + MCP_PATH
+        if application.settings.oauth_server_url
+        else ""
+    )
+    if terminal_session is not None:
+        terminal_session.start(
+            version=__version__,
+            workspace=application.settings.workspace,
+            mcp_url=public_mcp_url or local_mcp_url,
+            generated_oauth_key=(
+                application.oauth.password if reveal_generated_oauth_password else None
+            ),
+        )
+    elif reveal_generated_oauth_password:
         print(
             f"Re-CTM OAuth authorization key: {application.oauth.password}",
             file=sys.stderr,
@@ -564,16 +598,19 @@ def run_server(
             "It is not a Cloudflare Tunnel token.",
             file=sys.stderr,
         )
-    print(
-        f"Re-CTM OAuth MCP listening on http://{host}:{port}{MCP_PATH}; "
-        f"{oauth_mode}; complete browser workflow requires post-push manual validation.",
-        file=sys.stderr,
-    )
+    if terminal_session is None:
+        print(
+            f"Re-CTM OAuth MCP listening on http://{host}:{port}{MCP_PATH}; "
+            f"{oauth_mode}; complete browser workflow requires post-push manual validation.",
+            file=sys.stderr,
+        )
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         return 130
     finally:
+        if terminal_session is not None:
+            terminal_session.close()
         server.server_close()
     return 0
 

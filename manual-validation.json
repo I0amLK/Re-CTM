@@ -227,6 +227,27 @@
         "Portable project artifacts are sufficient for research/project management without exposing private chain-of-thought-like workflow memory."
       ],
       "evidence": []
+    },
+    {
+      "id": "MV-011",
+      "name": "Minimal terminal observer acceptance",
+      "status": "pending",
+      "steps": [
+        "On a target machine, open a terminal in a disposable project directory and run re-ctm tui with RE_CTM_OAUTH_PASSWORD unset. Confirm the displayed workspace is the current directory, the local/fixed MCP URL is correct, and the generated authorization key appears only after a successful bind.",
+        "Connect the real webpage MCP client, complete DCR/PKCE OAuth, and confirm the terminal status advances from waiting for authorization to authorization accepted/token issued/connected without repeating connected for every authenticated MCP request.",
+        "Issue several native and Rethlas tool calls and confirm the terminal shows only tool name/start/success-or-safe-error facts, never arguments, results, problem/proof contents, access tokens, authorization codes, capabilities, or client secrets.",
+        "Start the same setup with an explicit RE_CTM_OAUTH_PASSWORD and confirm the TUI prints configured externally rather than echoing the password.",
+        "Run through a Cloudflare Quick Tunnel without RE_CTM_SERVER_URL. Confirm the TUI does not claim to create or know the random tunnel hostname before cloudflared reports it; after a trusted proxy request resolves the external origin, confirm the TUI may display that resolved MCP URL.",
+        "Stress tool calls while slowing or breaking the terminal consumer and confirm MCP/tool execution remains responsive; verify no idle polling behavior is observable when no events occur.",
+        "Scan debug JSONL, SQLite state, validation reports, and project ledgers for the generated authorization key and confirm it is absent."
+      ],
+      "expected": [
+        "The TUI is optional presentation only and re-ctm serve remains behaviorally compatible for headless use.",
+        "Terminal rendering failure, queue pressure, or a closed output pipe cannot change tool success/failure or OAuth authorization semantics.",
+        "The generated OAuth key remains local-terminal-only secret material and explicitly configured passwords are never echoed by the TUI.",
+        "No database/log polling, extra model/network request, token-usage estimation, tunnel supervision, public-tool change, workflow-state change, or persistence-schema change is introduced."
+      ],
+      "evidence": []
     }
   ]
 }

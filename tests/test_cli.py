@@ -117,6 +117,44 @@ class CLITestCase(unittest.TestCase):
         self.assertEqual(args.host, "127.0.0.2")
         self.assertEqual(args.port, 42424)
 
+    def test_tui_defaults_follow_environment(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {"RE_CTM_HOST": "127.0.0.4", "RE_CTM_PORT": "45454"},
+            clear=False,
+        ):
+            args = build_parser().parse_args(["tui"])
+        self.assertEqual(args.host, "127.0.0.4")
+        self.assertEqual(args.port, 45454)
+
+    def test_serve_does_not_construct_terminal_session(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            workspace = root / "workspace"
+            data = root / "data"
+            workspace.mkdir()
+            env = {
+                "RE_CTM_WORKSPACE": str(workspace),
+                "RE_CTM_DATA_ROOT": str(data),
+                "RE_CTM_PRIVATE_ROOT": str(data / "private"),
+                "RE_CTM_DEBUG_ROOT": str(data / "debug"),
+                "RE_CTM_OAUTH_PASSWORD": "configured-for-test",
+                "RE_CTM_LATEX_POLICY": "static_only",
+            }
+            with mock.patch.dict(os.environ, env, clear=False), mock.patch(
+                "re_ctm.cli.TerminalSession"
+            ) as terminal_session, mock.patch(
+                "re_ctm.cli.run_server", return_value=0
+            ) as run_server:
+                code = main(["serve", "--host", "127.0.0.1", "--port", "45679"])
+            self.assertEqual(code, 0)
+            terminal_session.assert_not_called()
+            application = run_server.call_args.args[0]
+            try:
+                self.assertIsNone(run_server.call_args.kwargs["terminal_session"])
+            finally:
+                application.close()
+
     def test_cli_flags_override_environment(self) -> None:
         with mock.patch.dict(
             os.environ,

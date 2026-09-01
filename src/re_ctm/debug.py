@@ -9,7 +9,7 @@ import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 
 _SENSITIVE_KEY = re.compile(
@@ -72,6 +72,9 @@ class DebugEvent:
     details: dict[str, Any] = field(default_factory=dict)
 
 
+DebugObserver = Callable[[DebugEvent], None]
+
+
 class DebugEventBus:
     """Thread-safe, redacted JSONL event sink with per-run mirrors."""
 
@@ -82,11 +85,13 @@ class DebugEventBus:
         *,
         enabled: bool = True,
         trace_payloads: bool = False,
+        observer: DebugObserver | None = None,
     ) -> None:
         self.global_path = global_path
         self.private_root = private_root
         self.enabled = enabled
         self.trace_payloads = trace_payloads
+        self.observer = observer
         self._lock = threading.Lock()
 
     def emit(
@@ -133,6 +138,13 @@ class DebugEventBus:
                     self.private_root / "runs" / run_id / "debug" / "events.jsonl",
                     line,
                 )
+        if self.observer is not None:
+            try:
+                self.observer(event)
+            except Exception:
+                # Runtime observers are presentation-only. Debug persistence and
+                # the caller's operation must never depend on their health.
+                pass
         return resolved_trace
 
     def write_state_snapshot(
