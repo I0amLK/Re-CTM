@@ -124,7 +124,7 @@ def build_application(
         store=oauth_store,
         debug=debug,
     )
-    tools = ToolRuntime(native, workflow, debug)
+    tools = ToolRuntime(native, workflow, debug, workflow_protocol_version=settings.workflow_protocol_version)
     mcp = MCPDispatcher(tools)
     return ReCTMApplication(
         settings=settings,

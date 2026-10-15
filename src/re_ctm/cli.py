@@ -4,8 +4,9 @@ import argparse
 import json
 import os
 import secrets
-import subprocess
 import sys
+import sqlite3
+import tempfile
 from dataclasses import replace
 from pathlib import Path
 
@@ -13,13 +14,22 @@ from . import __version__
 from .app import build_application
 from .config import Settings, materialize_secrets
 from .enums import LatexPolicy, NativeMode
+from .engineering_graph import main as validate_engineering_graph
 from .errors import ReCTMError
 from .native import BubblewrapExecBackend, ExternalHelperExecBackend, NativeWorkspace
 from .quick_tunnel import QuickTunnel
 from .server import run_server
-from .storage import STATE_SCHEMA_VERSION
+from .storage import STATE_SCHEMA_VERSION, StateStore
 from .terminal_ui import TerminalSession
 from .toolchains import build_toolchain_exposure_plan, parse_native_exec_allow_roots
+
+
+class _SingleFactOption(argparse.Action):
+    def __call__(self, parser: argparse.ArgumentParser, namespace: argparse.Namespace,
+                 values: str, option_string: str | None = None) -> None:
+        if getattr(namespace, self.dest, None) is not None:
+            parser.error(f"Repeated fact-graph option: {option_string}")
+        setattr(namespace, self.dest, values)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -49,16 +59,31 @@ def build_parser() -> argparse.ArgumentParser:
             default=default_port,
         )
         command.add_argument("--workspace")
-        command.add_argument("--native-mode", choices=[item.value for item in NativeMode])
+        command.add_argument("--native-mode", choices=[NativeMode.DANGEROUS.value])
         command.add_argument("--latex-policy", choices=[item.value for item in LatexPolicy])
     tui.add_argument(
         "--quick-tunnel",
         action="store_true",
         help="Start and manage one temporary Cloudflare Quick Tunnel for this TUI session.",
     )
+    tui.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show redacted tool completion and trace diagnostics in the terminal.",
+    )
 
     subcommands.add_parser("check-config", help="Validate configuration without starting HTTP.")
     subcommands.add_parser("validate-graph", help="Validate engineering-graph.json metrics and invariants.")
+    facts = subcommands.add_parser("fact-graph", help="Export or revoke private verified project facts.")
+    fact_operations = facts.add_subparsers(dest="fact_operation", required=True)
+    export = fact_operations.add_parser("export", help="Read-only deterministic fact graph export.")
+    export.add_argument("--project", required=True, action=_SingleFactOption)
+    export.add_argument("--out", action=_SingleFactOption)
+    revoke = fact_operations.add_parser("revoke", help="Append an operator revocation including descendants.")
+    revoke.add_argument("fact_id")
+    revoke.add_argument("--reason", required=True, action=_SingleFactOption)
+    for command in (export, revoke):
+        command.add_argument("--state-db", action=_SingleFactOption)
     attest = subcommands.add_parser(
         "attest-native",
         help="Probe a native isolation helper without enabling command execution.",
@@ -81,9 +106,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
+        if args.command == "fact-graph":
+            return _fact_graph_command(args)
         if args.command == "validate-graph":
-            script = Path(__file__).resolve().parents[2] / "scripts" / "validate_engineering_graph.py"
-            return subprocess.call([sys.executable, str(script)])
+            source_root = Path(__file__).resolve().parents[2]
+            graph = source_root / "engineering-graph.json"
+            checkout = (source_root / "src" / "re_ctm" / "cli.py").resolve() == Path(__file__).resolve()
+            return validate_engineering_graph(graph if checkout and graph.is_file() else None)
         if args.command == "attest-native":
             workspace = Path(
                 args.workspace or os.environ.get("RE_CTM_WORKSPACE") or os.getcwd()
@@ -220,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
                         "theorem_search_url": settings.theorem_search_url,
                         "theorem_search_timeout_seconds": settings.theorem_search_timeout_seconds,
                         "state_schema_version": STATE_SCHEMA_VERSION,
-                        "workflow_protocol_version": 2,
+                        "workflow_protocol_version": 3,
                         "research_workspace": {
                             "project_registry": True,
                             "compact_verified_lane": True,
@@ -238,7 +267,9 @@ def main(argv: list[str] | None = None) -> int:
         generated_oauth_password = not bool(settings.oauth_password)
         if generated_oauth_password:
             settings = replace(settings, oauth_password=secrets.token_urlsafe(32))
-        terminal_session = TerminalSession() if args.command == "tui" else None
+        terminal_session = (
+            TerminalSession(verbose=args.verbose) if args.command == "tui" else None
+        )
         quick_tunnel = (
             QuickTunnel(terminal_session)
             if quick_tunnel_requested and terminal_session is not None
@@ -262,3 +293,47 @@ def main(argv: list[str] | None = None) -> int:
     except ReCTMError as exc:
         print(json.dumps({"ok": False, "error": exc.to_payload()}, indent=2), file=sys.stderr)
         return 2
+
+
+def _fact_graph_command(args: argparse.Namespace) -> int:
+    if args.state_db is not None:
+        path = Path(args.state_db)
+    elif os.environ.get("RE_CTM_PRIVATE_ROOT"):
+        path = Path(os.environ["RE_CTM_PRIVATE_ROOT"]).expanduser() / "state.sqlite3"
+    else:
+        root = Path(os.environ.get("RE_CTM_DATA_ROOT", "~/.re-ctm")).expanduser()
+        path = root / "private" / "state.sqlite3"
+    if not path.is_absolute() or not path.is_file():
+        raise ReCTMError("INVALID_ARGUMENT", "fact-graph requires an existing absolute state database path.",
+                        category="validation")
+    try:
+        store = StateStore.open_read_only(path) if args.fact_operation == "export" else StateStore(path)
+        try:
+            result = (store.project_fact_graph_operator(args.project) if args.fact_operation == "export" else
+                      store.revoke_project_fact(args.fact_id, "operator", args.reason))
+        finally:
+            store.close()
+        text = json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+        if args.fact_operation == "export" and args.out is not None:
+            _publish_fact_graph(Path(args.out), text)
+        else:
+            print(text, end="")
+        return 0
+    except (OSError, sqlite3.Error) as exc:
+        raise ReCTMError("FACT_GRAPH_IO_ERROR", str(exc), category="internal") from exc
+
+
+def _publish_fact_graph(path: Path, text: str) -> None:
+    """Publish complete bytes without ever replacing an existing destination."""
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                          prefix=".fact-graph-", delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.link(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)

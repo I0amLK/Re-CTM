@@ -32,7 +32,7 @@ INTENTIONAL_VARIANTS: dict[str, set[tuple[str, bool]]] = {
         ("conflict", False),
         ("conflict", True),
     },
-    "PATCH_CONFLICT": {
+    "REVISION_MISMATCH": {
         ("conflict", False),
         ("conflict", True),
     },
@@ -56,9 +56,9 @@ INTENTIONAL_VARIANT_REASONS = {
         "A non-file target needs operator reconciliation, while changed content can "
         "be retried after an explicit baseline/path refresh."
     ),
-    "PATCH_CONFLICT": (
-        "Baseline races are retryable after refresh; semantic add-target collisions "
-        "require the caller to change the requested patch."
+    "REVISION_MISMATCH": (
+        "A changed existing source can be retried after a fresh read; a revision "
+        "supplied for a missing source requires correcting the operation."
     ),
     "RESEARCH_SERVICE_ERROR": (
         "HTTP 5xx responses are retryable service failures; 4xx responses require "
@@ -74,6 +74,11 @@ ALLOWED_DYNAMIC_SOURCES = {
     ("capabilities.py", "_denied", "ReCTMError"),
     ("native.py", "_assert_inside", "ReCTMError"),
     ("native.py", "_validate_response", "ReCTMError"),
+    ("native_exec.py", "_security", "ReCTMError"),
+    ("native_patch.py", "_failure", "ReCTMError"),
+    ("storage_actions.py", "conflict", "ReCTMError"),
+    ("storage_creation.py", "creation_error", "ReCTMError"),
+    ("storage_receipts.py", "receipt_error", "ReCTMError"),
 }
 
 CRITICAL_VARIANTS = {

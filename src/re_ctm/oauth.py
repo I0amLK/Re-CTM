@@ -247,6 +247,14 @@ class OAuthService:
             "bearer_methods_supported": ["header"],
         }
 
+    def protected_mcp_resource_metadata(self, *, base_url: str | None = None) -> dict[str, Any]:
+        base = self._base_url(base_url)
+        return {
+            "resource": f"{base}/mcp",
+            "authorization_servers": [base],
+            "bearer_methods_supported": ["header"],
+        }
+
     def register(self, metadata: Mapping[str, Any], *, trace_id: str) -> dict[str, Any]:
         redirects = validate_redirect_uris(metadata.get("redirect_uris"))
         grant_types = metadata.get("grant_types", ["authorization_code"])
@@ -290,7 +298,7 @@ class OAuthService:
         response_type = str(params.get("response_type") or "")
         code_challenge = str(params.get("code_challenge") or "")
         method = str(params.get("code_challenge_method") or "")
-        resource = str(params.get("resource") or "").rstrip("/")
+        resource = _normalize_resource(str(params.get("resource") or ""), base)
         state = str(params.get("state") or "")
         client = self.store.get_client(client_id)
         if client is None:
@@ -301,7 +309,7 @@ class OAuthService:
             raise invalid_argument("response_type must be code")
         if method != "S256" or not valid_pkce_challenge(code_challenge):
             raise invalid_argument("code_challenge_method must be S256 with a valid challenge")
-        if resource != base:
+        if not _resource_matches(base, resource):
             raise ReCTMError("OAUTH_INVALID_TARGET", "resource must identify this server.", category="permission")
         return {
             "client_id": client_id,
@@ -376,7 +384,7 @@ class OAuthService:
         code = str(params.get("code") or "")
         redirect_uri = str(params.get("redirect_uri") or "")
         verifier = str(params.get("code_verifier") or "")
-        resource = str(params.get("resource") or "").rstrip("/")
+        resource = _normalize_resource(str(params.get("resource") or ""), base)
         client_id = str(params.get("client_id") or basic_client_id or "")
         client_secret = str(params.get("client_secret") or basic_client_secret or "")
         presented_method = "client_secret_basic" if basic_client_id else (
@@ -399,8 +407,8 @@ class OAuthService:
         facts = (
             secrets.compare_digest(record["client_id"], client_id),
             secrets.compare_digest(record["redirect_uri"], redirect_uri),
-            secrets.compare_digest(record["resource"], resource),
-            secrets.compare_digest(resource, base),
+            secrets.compare_digest(record["resource"].encode(), resource.encode()),
+            _resource_matches(base, resource),
             verify_pkce(verifier, record["code_challenge"]),
         )
         if not all(facts):
@@ -409,7 +417,7 @@ class OAuthService:
                 "Authorization code binding or PKCE verification failed.",
                 category="permission",
             )
-        token = self._create_access_token(client_id, base_url=base)
+        token = self._create_access_token(client_id, base_url=base, resource=resource)
         self.debug.emit(
             "oauth.access_token_issued",
             "oauth_authority",
@@ -437,7 +445,7 @@ class OAuthService:
         try:
             payload = _decode_signed_token(token, self.token_secret)
             now = int(time.time())
-            if payload.get("iss") != base or payload.get("aud") != base:
+            if payload.get("iss") != base or not _resource_matches(base, payload.get("aud")):
                 raise ValueError("issuer or audience")
             if int(payload.get("exp", 0)) < now:
                 raise ValueError("expired")
@@ -473,14 +481,16 @@ class OAuthService:
         )
         return principal
 
-    def _create_access_token(self, client_id: str, *, base_url: str | None = None) -> str:
+    def _create_access_token(
+        self, client_id: str, *, base_url: str | None = None, resource: str | None = None
+    ) -> str:
         base = self._base_url(base_url)
         now = int(time.time())
         return _encode_signed_token(
             {
                 "v": 1,
                 "iss": base,
-                "aud": base,
+                "aud": base if resource is None else resource,
                 "sub": client_id,
                 "client_id": client_id,
                 "iat": now,
@@ -500,6 +510,16 @@ class OAuthService:
             )
         _validate_server_url(base)
         return base
+
+
+def _normalize_resource(resource: str, base: str) -> str:
+    # Preserve historical origin trailing-slash handling, but new path resources
+    # must match /mcp exactly and stay bound unchanged through the code exchange.
+    return base if resource.rstrip("/") == base else resource
+
+
+def _resource_matches(base: str, resource: Any) -> bool:
+    return resource in (base, f"{base}/mcp")
 
 
 def _validate_server_url(value: str) -> None:

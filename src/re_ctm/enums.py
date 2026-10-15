@@ -4,6 +4,8 @@ from enum import StrEnum
 
 
 class NativeMode(StrEnum):
+    # SAFE remains the internal no-network helper/LaTeX policy. Public server
+    # configuration accepts DANGEROUS only; legacy policy symbols are not grants.
     SAFE = "safe"
     TRUSTED = "trusted"
     DANGEROUS = "dangerous"

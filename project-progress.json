@@ -1,14 +1,20 @@
 {
   "project": {
     "name": "Re-CTM",
-    "status": "v0_3_0_release_candidate_local_validated_uncommitted",
+    "status": "runtime_machine_accepted_final_launcher_activation_pending",
     "target": "A single installable OAuth MCP runtime combining exact CTM computer tools, a Rethlas-derived verified mathematical workflow, and a private cross-run Verified Research Workspace.",
-    "updated_at": "2026-08-31T23:37:23-07:00",
+    "updated_at": "2026-10-15T07:07:00Z",
     "source_references": {
       "cmt_local_repo": "../coding-tools-mcp",
       "rethlas_local_repo": "../Rethlas",
       "cmt_analysis": "../architecture-undirected-cycle-graph.md",
-      "rethlas_analysis": "../rethlas-architecture-undirected-cycle-graph.md"
+      "rethlas_analysis": "../rethlas-architecture-undirected-cycle-graph.md",
+      "mtm_backport": {
+        "repository": "https://github.com/I0amLK/MTM",
+        "commit": "b5dbd2577869d2aaf7b0933373df6671d104581c",
+        "baseline_re_ctm_commit": "50d08eb89e3ecc46317fd49709fa4ebcda135b5a",
+        "scope": "docs/MTM_BACKPORT.md"
+      }
     }
   },
   "product_constraints": {
@@ -20,8 +26,6 @@
     "final_artifact": "latex",
     "target_rethlas_functional_equivalence_percent": 95,
     "native_cmt_permission_modes": [
-      "safe",
-      "trusted",
       "dangerous"
     ],
     "dangerous_scope": "Native CMT computer-tool authority only; it must never bypass Rethlas workflow authorization."
@@ -236,6 +240,26 @@
       "id": "AD-042",
       "decision": "Version the completed terminal observer plus one-command Quick Tunnel feature line as Re-CTM 0.3.0. Treat this as a user-visible minor release while preserving the exact 24-tool public contract, 11 hidden aliases, state schema 2, workflow protocol 2, OAuth/Native/Rethlas authority boundaries, and all historical 0.2.x release/migration records.",
       "status": "accepted"
+    },
+    {
+      "id": "AD-043",
+      "decision": "Backport MTM workspace/OAuth/operator/LaTeX reliability through the existing Python Re-CTM surface. Existing native tool names/order, six Rethlas facades, eleven hidden aliases, schema 2, protocol 2 and safe/trusted/dangerous modes remain fixed. read_file continuation and Git repo_path are documented optional schema extensions with a new pinned catalog fingerprint and a regression retaining the entire historical contract after removing those extensions. No MTM receipt/fact-graph/schema/protocol migration or deployment is implied.",
+      "status": "accepted"
+    },
+    {
+      "id": "AD-044",
+      "status": "accepted",
+      "decision": "The user explicitly chose migration to the new MTM contracts after disclosure that tools/protocol/database changes break the previous freeze. Implement actual v11 Native19+workflow6 behavior, protocol3 and schema3–8 recovery/fact semantics; retain product identity and all isolation/capability/verifier/finalizer boundaries. This authorizes source and disposable fixture migration only, not live databases/security settings/install/deploy/push."
+    },
+    {
+      "id": "AD-045",
+      "status": "accepted",
+      "decision": "Version the explicitly authorized breaking MTM contract migration as Re-CTM 0.4.0: 25 public tools (Native19 plus workflow6), no hidden alias dispatch, dangerous-only public configuration, protocol 3 by default with explicit protocol 2 and persisted protocol 1/2 compatibility, and additive schema 8 with actual bound receipts, recovery and fact graph behavior. Source integration and tests are in progress; this decision does not assert full validation or a deployed release. Preserve AD-031 and all earlier release decisions as historical records."
+    },
+    {
+      "id": "AD-046",
+      "status": "accepted",
+      "decision": "Version the bounded OPT-024 Native HTTP parent-thread lifetime repair as Re-CTM 0.4.1. Keep 25 public tools, protocol 3, schema 8, OAuth ownership, Bubblewrap --die-with-parent and all isolation. A dedicated creator thread owns each child until terminal; do not replace active installations or claim new-host acceptance from the old candidate."
     }
   ],
   "authorization_model": {
@@ -286,19 +310,7 @@
     "rethlas_control",
     "rethlas_artifact"
   ],
-  "legacy_rethlas_aliases": [
-    "rethlas_next",
-    "rethlas_read",
-    "rethlas_write",
-    "rethlas_search",
-    "rethlas_commit",
-    "rethlas_status",
-    "rethlas_steer",
-    "rethlas_resume",
-    "rethlas_cancel",
-    "rethlas_get_artifact",
-    "rethlas_export_final"
-  ],
+  "legacy_rethlas_aliases": [],
   "workflow": {
     "states": [
       "created",
@@ -599,16 +611,17 @@
       "P5"
     ],
     "current_phase_id": "P3/P4/P6/P7/P8",
-    "current_focus": "Re-CTM v0.3.0 is locally release-candidate validated with the minimal TUI and explicit one-command Quick Tunnel feature line: 142 deterministic tests pass, real TryCloudflare OAuth metadata smoke passes, sdist/wheel build succeeds, and a clean wheel reports 0.3.0 with the exact 18-tool CTM prefix plus six Rethlas façade tools and 11 hidden aliases. The release candidate is not yet committed or pushed; real webpage MV-011/MV-012 and other target-PC/manual acceptance remain separate.",
+    "current_focus": "OPT-024 runtime fix has ordinary-host full528/528, installed178/178, isolation and requiredLaTeX evidence. Corrected a disposable HTTP harness signing-secret bootstrap bug;22affectedregressionspass. Await only candidate-bound22installedregressions+13realHTTP/Bubblewrap supplement before side-by-side installation.",
     "next_actions": [
-      "Review and commit the v0.3.0 release-candidate working tree, then push with a normal fast-forward push and observe remote CI",
-      "After push, observe CI and execute all checks in manual-validation.json including MV-010, MV-011 and MV-012"
+      "Freeze current harness/test/governance-only changes and verify every runtime/packagefile equals priorqualifiedwheel.",
+      "Run scoped installed HTTP lifecycle supplement without repeating unrelatedfullsuite; preserve originalfailedreport.",
+      "Independently review supplement then install newside-by-sidevenv; onlineactivation remains separate."
     ]
   },
   "local_validation": {
     "report": "local-validation.json",
-    "last_result": "passed",
-    "test_count": 142,
+    "last_result": "target_connector_physical_gates_blocked",
+    "test_count": 497,
     "graph_metrics": {
       "vertices": 31,
       "edges": 60,
@@ -682,7 +695,90 @@
       "Fresh-context-equivalent cognitive independence",
       "Every intended target LaTeX distribution",
       "End-to-end 95-percent Rethlas equivalence"
-    ]
+    ],
+    "scope_note": "validated_scope is historical evidence. current_update preserves the migration snapshot; current_target_validation records this target phase. The current RC checklist supersedes but preserves the old MV manifest; no prior host report qualifies this candidate.",
+    "current_update": {
+      "id": "OPT-018..OPT-021",
+      "version": "0.4.0",
+      "status": "implemented_target_validation_blocked",
+      "report": "docs/validation/MTM-0.4-local-validation.json",
+      "test_count": 459,
+      "passed": 453,
+      "failures": 1,
+      "errors": 5,
+      "tests_skipped": 0,
+      "remaining_failures": [
+        "test_bubblewrap_command_lifecycle_poll_read_and_kill (test_ctm_native_compat.CTMNativeCompatibilityTestCase.test_bubblewrap_command_lifecycle_poll_read_and_kill)",
+        "test_bubblewrap_tty_write_stdin_interaction (test_ctm_native_compat.CTMNativeCompatibilityTestCase.test_bubblewrap_tty_write_stdin_interaction)",
+        "test_attestation_and_dangerous_private_vault_denial (test_native_helper.BubblewrapNativeHelperTestCase.test_attestation_and_dangerous_private_vault_denial)",
+        "test_dangerous_runtime_mounts_user_path_toolchain_read_only (test_native_helper.BubblewrapNativeHelperTestCase.test_dangerous_runtime_mounts_user_path_toolchain_read_only)",
+        "test_explicit_generic_toolchain_root_is_on_path_and_reported (test_native_helper.BubblewrapNativeHelperTestCase.test_explicit_generic_toolchain_root_is_on_path_and_reported)",
+        "test_required_policy_compiles_inside_bubblewrap (test_latex.LatexGateTestCase.test_required_policy_compiles_inside_bubblewrap)"
+      ],
+      "host_blocker": "Current cloud host cannot complete Bubblewrap attestation (NETLINK_ROUTE Operation not permitted), leaving five real Native isolation/lifecycle errors and one required LaTeX failure. Target-host/browser/external-source/mathematical acceptance is not established. No test is skipped and the production isolation gate remains fail-closed.",
+      "baseline_comparison": "Original baseline:142 tests,3failures+5errors. OPT017 compatible snapshot:247tests,3failures+5errors. Two OAuth/UI-only CLI tests now explicitly select disabled backend in unit fixtures; all dedicated real-isolation/LaTeX tests remain enabled.",
+      "source_contract": {
+        "public_tools": 25,
+        "native_tools": 19,
+        "workflow_facades": 6,
+        "hidden_aliases_callable": 0,
+        "tool_contract": "mtm-tools-v11",
+        "default_new_run_protocol": 3,
+        "explicit_new_run_protocols": [
+          2,
+          3
+        ],
+        "persisted_protocols": [
+          1,
+          2,
+          3
+        ],
+        "state_schema": 8,
+        "public_native_modes": [
+          "dangerous"
+        ]
+      },
+      "package_validation": {
+        "report": "docs/validation/MTM-0.4-package-validation.json",
+        "offline_sdist_and_wheel": true,
+        "source_fingerprints_match": true,
+        "imported_modules": 49,
+        "source_resource_files": 53,
+        "installed": false
+      }
+    },
+    "current_target_validation": {
+      "id": "OPT-022",
+      "version": "0.4.0",
+      "status": "release_gates_pending",
+      "test_count": 497,
+      "passed": 491,
+      "failures": 1,
+      "errors": 5,
+      "tests_skipped": 0,
+      "report": "docs/validation/target-20261014-source-validation.json",
+      "oauth_report": "docs/validation/target-20261014-oauth-validation.json",
+      "host_blocker": "MTM attestation has nested_user_namespaces_disabled=true; bwrap usernamespace probe returns ENOSPC. Existing host binaries present; normal-host execution still required.",
+      "installed_package": "Fresh offline installedwheel+sdist validation under .release-validation/package-20261014; do not relocate /workspace venv.",
+      "host_command": "cd '/home/lk/桌面/MTM/Re-CTM' && /home/lk/miniconda3/bin/python3 scripts/release_target_checks.py",
+      "release_ready": false
+    },
+    "current_terminal_repair": {
+      "id": "OPT-023",
+      "status": "source_fixed_new_candidate_pending",
+      "source_sha256": "f8160baaecd319a14cd1216b220bed7a8d4e1e5181ff1bd0382c0940fd6f8e7a",
+      "affected_test_count": 48,
+      "affected_tests_passed": 48,
+      "full_test_count": 510,
+      "full_tests_passed": 504,
+      "failures": 1,
+      "errors": 5,
+      "skips": 0,
+      "report": ".release-validation/terminal-probe-20261014/OPT023-local-validation.json",
+      "stress_report": ".release-validation/terminal-probe-20261014/source-final-diagnostic-result-20261014T174027Z-acdc72.json",
+      "scope": "Actual source-process PTY/pipe I/O; Native disabled/static_only is not installed physical acceptance.",
+      "release_ready": false
+    }
   },
   "git": {
     "initialized": true,
@@ -696,7 +792,7 @@
       "basis": "Identity confirmed from public commits owned by GitHub account I0amLK; configured only in this repository."
     },
     "remote": "https://github.com/I0amLK/Re-CTM.git",
-    "push_status": "v0_3_0_release_candidate_uncommitted",
+    "push_status": "mtm_new_contract_migration_uncommitted_unpushed",
     "latest_local_commit": "Resolve with `git rev-parse HEAD`; the ledger intentionally avoids a self-referential commit hash.",
     "push_attempt": {
       "transport": "https",
@@ -708,7 +804,7 @@
     "initial_files": [
       "All current source, tests, graph, debug, validation, and planning files are intended for the initial commit."
     ],
-    "working_tree_note": "The v0.3.0 release candidate is locally validated but not yet committed. The intentionally untouched untracked user artifact pushout_abelianization_exact_sequence.tex remains outside Re-CTM source changes and must remain unstaged."
+    "working_tree_note": "Requested MTM-compatible and authorized new-contract source/test/documentation updates are uncommitted in the existing cloud clone. MTM reference checkout remains clean. No Work, Codex CLI, installation, live state/security change, deployment, commit or push was performed."
   },
   "engineering_debug_notes": [
     {
@@ -752,6 +848,22 @@
       "scope": "deployment configuration and HTTP server construction",
       "resolution": "Corrected deployment documentation, made serve defaults honor RE_CTM_HOST/RE_CTM_PORT, assigned the application before ThreadingHTTPServer binds, added a bind-failure regression, and reran the full redacted smoke successfully. AD-015 later removed the loopback/Quick-Tunnel requirement for RE_CTM_SERVER_URL while retaining it as the fixed-origin override.",
       "preventive_action": "Keep config.example.env, deployment docs, CLI defaults, and standalone smoke under the same regression suite; preserve original OS errors on partial construction failure."
+    },
+    {
+      "id": "DBG-007",
+      "symptom": "Closing real PTY/pipe output leaves OAuth/MCP healthy but changes SIGINT130 to process exit120.",
+      "scope": "TerminalSession default buffered stderr during interpreter shutdown",
+      "resolution": "OPT-023 writes only untouched standard stderr directly without global fd changes, preserves customstreams and incremental codecstate, and serializes failure handling.",
+      "evidence": ".release-validation/terminal-probe-20261014/source-flush-diagnostic-result-20261014T173142Z-c51915.json",
+      "preventive_action": "Keep four real buffered CLI subprocess tests plus candidate-specific ordinary-host PTY/pipe stress; oldinstalled reports cannot qualify changedsource."
+    },
+    {
+      "id": "DBG-008",
+      "symptom": "Real connected async Native commands return running then SIGKILL after HTTP handler exit; sync pair succeeds.",
+      "scope": "CommandManager Popen creating-thread lifetime with Linux PR_SET_PDEATHSIG",
+      "resolution": "OPT-024 uses per-command owner thread and locks admission/spawn/registration against close and concurrent starts; new candidate verification remains in progress.",
+      "evidence": ".local-install/workspace/human-authorized-test-20261015T0434Z/human-authorized-test-report.json",
+      "preventive_action": "Keep real HTTP/prctl regression plus installed OAuth HTTP+Bwrap normal/stdin/kill/timeout/shutdown target tests."
     }
   ],
   "known_risks": [
@@ -1003,6 +1115,83 @@
     {
       "timestamp": "2026-08-31T23:37:23-07:00",
       "event": "Promoted the completed TUI plus one-command Quick Tunnel feature line to Re-CTM 0.3.0. Current source/package/documentation version facts now agree on 0.3.0; complete local gates pass; re_ctm-0.3.0 sdist/wheel build successfully; and a clean wheel reports 0.3.0, 18 Native + 6 Rethlas = 24 public tools, 11 hidden aliases, state schema 2, workflow protocol 2, and the packaged --quick-tunnel CLI. Historical 0.2.x records remain unchanged and browser/target manual acceptance remains pending."
+    },
+    {
+      "timestamp": "2026-10-14T12:15:37.508016Z",
+      "event": "Started OPT-017 after inspecting Re-CTM and MTM contracts and recording the compatible scope. Baseline full checks ran 142 tests with 3 failures/5 errors at Bubblewrap-host-dependent boundaries; graph, compile, error-contract and documentation gates passed. Work adds lossless UTF-8 paging, bounded Git repository selection, no-clobber persistent secrets, path-aware /mcp OAuth, compact/verbose operator output and MTM bounded LaTeX literal scanning. State/workflow schemas and all authority/finalizer boundaries remain unchanged; larger MTM contract migrations remain a separate decision."
+    },
+    {
+      "timestamp": "2026-10-14T12:30:57.536473Z",
+      "event": "Compatible OPT-017 snapshot ran 247 tests with 239 passing and the same eight pre-existing host-dependent failures; other gates passed and report is preserved. Independent review drove fail-closed Git helper/transport/submodule guards and a safer dual-view LaTeX scan. User then explicitly authorized new tool/protocol/database contracts; OPT-017 is superseded without claiming full gate acceptance, and OPT-018..021 now implement actual behavior rather than relabeling versions."
+    },
+    {
+      "date": "2026-10-14T13:00:23.879518Z",
+      "change": "Implemented user-authorized MTM new contracts as v0.4.0 source. Native19+workflow6, protocol3+legacy resume, schemas3–8 receipts/recovery/facts, package/resource checks and independent regressions; 453/459 current full-suite tests pass with six host-bound isolation/LaTeX checks blocked.",
+      "evidence": "docs/MTM_MIGRATION.md; docs/validation/MTM-0.4-local-validation.json; OPT-018..021 receipts."
+    },
+    {
+      "timestamp": "2026-10-14T16:07:33.716Z",
+      "event": "Target validation OPT022 fixes installed validate-graph, self-contained source distribution, obsolete OAuth smoke and current acceptance docs.497tests run/491pass with unchanged six nestednamespace physical-gate failures;33loopbackOAuth regressions pass. Added bounded ordinaryterminal driver with actual HTTPworkflow fixture and safe isolated packagechecks. Current release remains blocked pending physical/browser/sourcequality/operator evidence; originalhistorical reports preserved."
+    },
+    {
+      "timestamp": "2026-10-14T17:41:29Z",
+      "event": "OPT-023 repaired the reproduced closed-PTY/pipe shutdown defect.48 affected regressions pass; all three actual source-only stress cases pass with exit130, bounded observer pressure and no rawOAuth leakage. Full source gate510/504 with the same six connector physical blockers. Previous installed candidate is superseded; rebuild and strict ordinary-host acceptance remain pending."
+    },
+    {
+      "timestamp": "2026-10-15T04:49:30Z",
+      "event": "OPT-024 authorized after human-authorized actual webpage connection tests exposed request-thread parent-death SIGKILL. Old regression 4fail/4pass; source repair 8/8pass so far. Independent initial code review found no must-fix. Added 0.4.1 candidate version and explicit fresh target/installed acceptance requirement. Online0.4.0 unchanged."
+    },
+    {
+      "timestamp": "2026-10-15T05:14:00Z",
+      "event": "OPT-024 source review and regressions complete:18specific tests,90affected tests and15package/documentation tests passed;15mechanical acceptance-helper tests passed. Fullaggregate528/522, onlysixknownnested-bwrap/realLaTeXblockers. Source0.4.1 nowawaitsfrozenfreshinstalledrealHTTP+hard-isolation acceptance. Online0.4.0 notchanged; actualconnectedfailure evidence retained."
+    },
+    {
+      "timestamp": "2026-10-15T05:39:00Z",
+      "event": "Ordinary-host0.4.1corebaselinepassed528source/178installed plusrealbwrap/OAuth/requiredLaTeX. DedicatedHTTPscriptfailedbeforestartbecauseitsSettingsomittedsigningsecrets. Harnessnowusesrandommemory-onlykeys, saferedactedstartuperrors,22affectedtests passed. Productpackage55files unchanged. Scoped supplement willreuse exactcorebaselineandrunonlymissinginstalledHTTPcases; oldfailuresretained."
+    },
+    {
+      "timestamp": "2026-10-15T07:07:00Z",
+      "event": "Reconciled accepted 528/178 strict baseline, 22/13 supplement, installed 0.4.1 and six actual connector lifecycle checks. Added separately tested reversible launcher activation helper; runtime source remains byte-identical. No live state, service or host launcher changed through MTM."
+    },
+    {
+      "timestamp": "2026-10-15T07:19:00Z",
+      "event": "Final source aggregate 550 tests had 544 pass plus the same six connector physical-isolation blocks; all other validators passed. New package fixture exposed a test-only overbroad /workspace prefix assertion; corrected exact filenames and independent 23/23 source regression passed. Final host package+launcher driver requires a successful fresh package report before activation. No denied interpreter retried."
     }
-  ]
+  ],
+  "opt024_source_checkpoint": {
+    "version": "0.4.1",
+    "passed_tests": 522,
+    "total_tests": 528,
+    "failures": 1,
+    "errors": 5,
+    "skips": 0,
+    "report": ".release-validation/opt024-20261015/local-validation.json",
+    "target_acceptance": "pending",
+    "online_service": "unchanged_0.4.0"
+  },
+  "opt024_host_baseline": {
+    "version": "0.4.1",
+    "source_tests": 528,
+    "source_passed": 528,
+    "installed_tests": 178,
+    "installed_passed": 178,
+    "machine_gates_passed": 5,
+    "report": ".release-validation/opt024-20261015/acceptance-20261015T052516Z-0af202a2/report.json",
+    "overall_passed": false,
+    "failure": "disposable_harness_signing_secret_bootstrap",
+    "runtime_package_unchanged": true,
+    "new_affected_regressions": 22,
+    "new_affected_passed": 22,
+    "remaining": "candidate_bound_real_HTTP_Bubblewrap_supplement",
+    "online_service": "unchanged_0.4.0"
+  },
+  "release_041_checkpoint": {
+    "evidence": "docs/validation/release-0.4.1-evidence.json",
+    "runtime_unchanged": true,
+    "launcher_helper": "scripts/activate_release_launcher.py",
+    "host_activation": "pending",
+    "publication": "not performed",
+    "scope": "Bounded engineering acceptance only; mathematical quality and broader model/provider claims remain unvalidated.",
+    "package_status": "final_source_fixture_corrected_host_package_revalidation_pending"
+  }
 }

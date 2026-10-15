@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +10,7 @@ from pathlib import Path
 from re_ctm.capabilities import CapabilityAuthority
 from re_ctm.debug import DebugEventBus
 from re_ctm.enums import LatexPolicy, NativeMode
+from re_ctm.errors import ReCTMError
 from re_ctm.latex import LatexGate
 from re_ctm.mcp import (
     META_CLIENT_CAPABILITIES,
@@ -48,7 +51,7 @@ class MCPDispatcherTestCase(unittest.TestCase):
             NativeMode.DANGEROUS,
             debug,
         )
-        self.tools = ToolRuntime(native, workflow, debug)
+        self.tools = ToolRuntime(native, workflow, debug, workflow_protocol_version=2)
         self.dispatcher = MCPDispatcher(self.tools)
         self.principal = OAuthPrincipal("client-1", "client-1", "mcp")
 
@@ -76,7 +79,7 @@ class MCPDispatcherTestCase(unittest.TestCase):
         )
         names = [item["name"] for item in listed["result"]["tools"]]
         self.assertEqual(names, list(PUBLIC_TOOL_NAMES))
-        self.assertEqual(len(names), 24)
+        self.assertEqual(len(names), 25)
         self.assertNotIn("rethlas_next", names)
         self.assertIn("rethlas_step", names)
         self.assertEqual(listed["result"]["tools"][0]["outputSchema"]["required"], ["ok"])
@@ -101,6 +104,53 @@ class MCPDispatcherTestCase(unittest.TestCase):
             modern_requested_in_handshake["result"]["protocolVersion"],
             "2025-11-25",
         )
+
+    def test_lossless_read_continuation_roundtrips_through_mcp(self) -> None:
+        content = "中文🙂 line\r\nnext\n"
+        (self.workspace / "page.txt").write_bytes(content.encode("utf-8"))
+        arguments = {"path": "page.txt", "max_bytes": 4, "max_lines": 1}
+        chunks = []
+        for request_id in range(32):
+            response = self.dispatcher.dispatch(json.loads(json.dumps({
+                "jsonrpc": "2.0", "id": request_id, "method": "tools/call",
+                "params": {"name": "read_file", "arguments": arguments},
+            })), self.principal)
+            self.assertNotIn("error", response)
+            result = response["result"]
+            self.assertFalse(result["isError"])
+            page = result["structuredContent"]
+            chunks.append(page["content"])
+            if not page["truncated"]:
+                break
+            arguments = page["next_action"]["arguments"]
+        else:
+            self.fail("MCP continuation did not terminate")
+        self.assertEqual("".join(chunks), content)
+
+    def test_nested_repo_is_selected_through_all_public_git_tools(self) -> None:
+        repository = self.workspace / "nested"
+        repository.mkdir()
+        subprocess.run(["git", "init", "-q", str(repository)], check=True)
+        (repository / "value.txt").write_text("initial\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(repository), "add", "value.txt"], check=True)
+        subprocess.run([
+            "git", "-C", str(repository), "-c", "user.name=Fixture", "-c",
+            "user.email=fixture@example.invalid", "commit", "-qm", "initial",
+        ], check=True)
+        (repository / "value.txt").write_text("changed\n", encoding="utf-8")
+        for name, extra in (
+            ("git_status", {}), ("git_diff", {"path": "value.txt"}),
+            ("git_log", {"path": "value.txt"}), ("git_show", {"path": "value.txt"}),
+            ("git_blame", {"path": "value.txt", "rev": "HEAD"}),
+        ):
+            with self.subTest(tool=name):
+                response = self.dispatcher.dispatch({
+                    "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                    "params": {"name": name, "arguments": {"repo_path": "nested", **extra}},
+                }, self.principal)
+                self.assertNotIn("error", response)
+                self.assertFalse(response["result"]["isError"], response)
+                self.assertEqual(response["result"]["structuredContent"]["repo_path"], "nested")
 
     def test_ctm_tool_arguments_are_validated_before_dispatch(self) -> None:
         missing = self.dispatcher.dispatch(
@@ -165,7 +215,7 @@ class MCPDispatcherTestCase(unittest.TestCase):
         self.assertTrue(denied["isError"])
         self.assertEqual(denied["structuredContent"]["error"]["code"], "ABSOLUTE_PATH_DENIED")
 
-    def test_rethlas_step_facade_and_hidden_legacy_alias(self) -> None:
+    def test_protocol2_step_facade_and_retired_alias_rejection(self) -> None:
         started = self.tools.call(
             "rethlas_start",
             {"problem_tex": r"\textbf{Problem.} Prove $1=1$.", "problem_id": "facade"},
@@ -221,8 +271,8 @@ class MCPDispatcherTestCase(unittest.TestCase):
         )
         self.assertTrue(recoverable_payload["submission"]["writes_retained"])
         stale = self.tools.call(
-            "rethlas_read",
-            {"capability": advanced["capability"], "resource": "problem"},
+            "rethlas_inspect",
+            {"operation": "read", "capability": advanced["capability"], "resource": "problem"},
             self.principal,
         )
         self.assertTrue(stale["isError"])
@@ -240,7 +290,7 @@ class MCPDispatcherTestCase(unittest.TestCase):
         self.assertTrue(stale_step["isError"])
         self.assertEqual(
             stale_step["structuredContent"]["error"]["code"],
-            "CAPABILITY_REVOKED",
+            "IDEMPOTENCY_CONFLICT",
         )
         recovered = self.tools.call(
             "rethlas_step",
@@ -255,28 +305,45 @@ class MCPDispatcherTestCase(unittest.TestCase):
 
         listed_names = [item["name"] for item in self.tools.list_tools()]
         self.assertNotIn("rethlas_status", listed_names)
-        legacy = self.tools.call(
-            "rethlas_status",
-            {"run_id": run_id},
-            self.principal,
-        )["structuredContent"]
-        self.assertTrue(legacy["ok"])
-        self.assertEqual(legacy["state"], "propose_plans")
-
+        with self.assertRaises(ReCTMError) as rejected:
+            self.tools.call("rethlas_status", {"run_id": run_id}, self.principal)
+        self.assertEqual(rejected.exception.code, "UNKNOWN_TOOL")
         legacy_over_mcp = self.dispatcher.dispatch(
-            {
-                "jsonrpc": "2.0",
-                "id": 99,
-                "method": "tools/call",
-                "params": {"name": "rethlas_status", "arguments": {"run_id": run_id}},
-            },
+            {"jsonrpc": "2.0", "id": 99, "method": "tools/call",
+             "params": {"name": "rethlas_status", "arguments": {"run_id": run_id}}},
             self.principal,
         )
-        self.assertTrue(legacy_over_mcp["result"]["structuredContent"]["ok"])
-        self.assertEqual(
-            legacy_over_mcp["result"]["structuredContent"]["state"],
-            "propose_plans",
-        )
+        self.assertEqual(legacy_over_mcp["error"]["code"], -32602)
+        self.assertEqual(legacy_over_mcp["error"]["data"]["reason"], "unknown_tool")
+
+    def test_exact_step_replay_is_historical_and_recover_only_never_executes_work(self) -> None:
+        started = self.tools.call("rethlas_start", {"problem_tex": "Prove 1=1", "problem_id": "receipts"}, self.principal)["structuredContent"]
+        run_id = started["run_id"]
+        task = self.tools.call("rethlas_step", {"run_id": run_id}, self.principal)["structuredContent"]
+        request = {"run_id": run_id, "capability": task["capability"], "action": "assessment_complete",
+                   "payload": {"route": "full"}, "writes": [
+                       {"resource": "memory:generation:immediate_conclusions", "content": {"summary": "Initial"}},
+                       {"resource": "memory:generation:events", "content": {"event_type": "assessment", "summary": "Plan"}},
+                   ]}
+        missing = self.tools.call("rethlas_step", {**request, "recover_only": True}, self.principal)
+        self.assertTrue(missing["isError"])
+        self.assertEqual(missing["structuredContent"]["error"]["code"], "SUBMISSION_RECEIPT_NOT_FOUND")
+        self.assertEqual(self.tools.workflow.vault.read_generation_memory(run_id, "events"), [])
+        applied = self.tools.call("rethlas_step", request, self.principal)["structuredContent"]
+        self.assertEqual(applied["state"], "explore")
+        count = len(self.tools.workflow.vault.read_generation_memory(run_id, "events"))
+        for arguments in (request, {**request, "recover_only": True}):
+            replay = self.tools.call("rethlas_step", arguments, self.principal)["structuredContent"]
+            self.assertTrue(replay["state_is_historical"])
+            self.assertTrue(replay["submission"]["replayed"])
+            self.assertFalse(replay["submission"]["retryable"])
+            self.assertEqual(replay["writes_applied"], 0)
+            self.assertNotIn("capability", replay)
+            self.assertTrue(replay["task_required"])
+        self.assertEqual(len(self.tools.workflow.vault.read_generation_memory(run_id, "events")), count)
+        conflict = self.tools.call("rethlas_step", {**request, "payload": {"route": "compact"}}, self.principal)
+        self.assertTrue(conflict["isError"])
+        self.assertEqual(conflict["structuredContent"]["error"]["code"], "IDEMPOTENCY_CONFLICT")
 
     def test_rethlas_step_rejects_cross_run_envelope_pair_before_writes(self) -> None:
         first = self.tools.call(
@@ -320,8 +387,8 @@ class MCPDispatcherTestCase(unittest.TestCase):
         self.assertEqual(self.store.get_run(second["run_id"])["state"], "assess")
 
         still_valid = self.tools.call(
-            "rethlas_read",
-            {"capability": first_task["capability"], "resource": "problem"},
+            "rethlas_inspect",
+            {"operation": "read", "capability": first_task["capability"], "resource": "problem"},
             self.principal,
         )
         self.assertFalse(still_valid["isError"])
@@ -484,7 +551,9 @@ class MCPDispatcherTestCase(unittest.TestCase):
         self.assertEqual(direct["state"], "direct_proving")
         self.assertEqual(direct["context"]["active_plans"][0]["dependencies"], ["Lemma A"])
 
-    def test_zero_guess_easy_flow_reaches_done_without_schema_corrections(self) -> None:
+    def test_default_protocol3_zero_guess_easy_flow_reaches_done_without_schema_corrections(self) -> None:
+        self.tools = ToolRuntime(self.tools.native, self.tools.workflow, self.tools.debug)
+        self.assertEqual(self.tools.workflow_protocol_version, 3)
         started = self.tools.call(
             "rethlas_start",
             {"problem_tex": r"\textbf{Problem.} Prove $1=1$.", "problem_id": "zero-guess-e2e"},
@@ -495,6 +564,8 @@ class MCPDispatcherTestCase(unittest.TestCase):
         assess = self.tools.call("rethlas_step", {"run_id": run_id}, self.principal)["structuredContent"]
         self.assertEqual(assess["state"], "assess")
         self.assertEqual(assess["task"]["minimal_submission"]["action"], "assessment_complete")
+        self.assertEqual(assess["task"]["workflow_protocol_version"], 3)
+        self.assertTrue(assess["context"]["mathematical_research_state"]["advisory_only"])
         assembled = self.tools.call(
             "rethlas_step",
             {
@@ -684,9 +755,9 @@ class MCPDispatcherTestCase(unittest.TestCase):
         self.assertTrue(structured["dangerously_skip_all_permissions"])
         self.assertEqual(structured["endpoint_path"], "/mcp")
         self.assertEqual(structured["output_retention"]["buffer_bytes_per_stream"], 524288)
-        self.assertEqual(structured["tool_count"], 24)
+        self.assertEqual(structured["tool_count"], 25)
         self.assertEqual(structured["tools"], list(PUBLIC_TOOL_NAMES))
-        self.assertEqual(len(structured["hidden_legacy_rethlas_aliases"]), 11)
+        self.assertNotIn("hidden_legacy_rethlas_aliases", structured)
 
     def test_view_image_returns_image_content_block(self) -> None:
         png = base64.b64decode(

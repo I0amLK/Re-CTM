@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import errno
 import hashlib
 import ipaddress
 import os
 import secrets
 import shutil
+import stat
 import sys
+import tempfile
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -15,6 +18,9 @@ from .toolchains import (
     parse_native_exec_allow_roots,
     validate_explicit_toolchain_roots,
 )
+
+
+MAX_PERSISTED_SECRET_BYTES = 65_536
 
 
 def _truthy(value: str | None) -> bool:
@@ -54,7 +60,7 @@ class Settings:
     data_root: Path
     private_root: Path
     debug_root: Path
-    native_mode: NativeMode = NativeMode.SAFE
+    native_mode: NativeMode = NativeMode.DANGEROUS
     native_exec_backend: str = "disabled"
     native_exec_helper: Path | None = None
     native_isolation_attested: bool = False
@@ -69,6 +75,7 @@ class Settings:
     theorem_search_timeout_seconds: int = 30
     token_secret: bytes = b""
     capability_secret: bytes = b""
+    workflow_protocol_version: int = 3
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -80,7 +87,13 @@ class Settings:
         debug_root = Path(
             os.environ.get("RE_CTM_DEBUG_ROOT") or str(data_root / "debug")
         ).expanduser().resolve()
-        native_mode = NativeMode(os.environ.get("RE_CTM_NATIVE_MODE") or NativeMode.SAFE)
+        raw_native_mode = os.environ.get("RE_CTM_NATIVE_MODE") or NativeMode.DANGEROUS.value
+        if raw_native_mode != NativeMode.DANGEROUS.value:
+            raise _invalid_native_mode()
+        native_mode = NativeMode.DANGEROUS
+        raw_protocol = os.environ.get("RE_CTM_WORKFLOW_PROTOCOL_VERSION", "3")
+        if raw_protocol not in {"2", "3"}:
+            raise ReCTMError("INVALID_WORKFLOW_PROTOCOL", "RE_CTM_WORKFLOW_PROTOCOL_VERSION must be 2 or 3.", category="validation")
         configured_backend = (os.environ.get("RE_CTM_NATIVE_EXEC_BACKEND") or "").strip()
         native_exec_backend = configured_backend or (
             "bubblewrap"
@@ -136,11 +149,16 @@ class Settings:
             ),
             token_secret=token_secret,
             capability_secret=capability_secret,
+            workflow_protocol_version=int(raw_protocol),
         )
         settings.validate()
         return settings
 
     def validate(self) -> None:
+        if type(self.workflow_protocol_version) is not int or self.workflow_protocol_version not in {2, 3}:
+            raise ReCTMError("INVALID_WORKFLOW_PROTOCOL", "workflow_protocol_version must be 2 or 3.", category="validation")
+        if self.native_mode is not NativeMode.DANGEROUS:
+            raise _invalid_native_mode()
         if not self.workspace.is_dir():
             raise ReCTMError(
                 "INVALID_WORKSPACE",
@@ -220,6 +238,14 @@ class Settings:
                 pass
 
 
+def _invalid_native_mode() -> ReCTMError:
+    return ReCTMError(
+        "INVALID_NATIVE_MODE",
+        "RE_CTM_NATIVE_MODE must be dangerous; safe and trusted public profiles are retired.",
+        category="validation",
+    )
+
+
 def _decode_secret(raw: str, name: str) -> bytes:
     value = raw.strip()
     if not value:
@@ -259,20 +285,91 @@ def materialize_secrets(settings: Settings) -> Settings:
 
 
 def _load_or_create_secret(path: Path) -> bytes:
-    if path.exists():
-        raw = path.read_text(encoding="ascii").strip()
-        return _decode_secret(raw, str(path))
+    persisted = _read_persisted_secret(path)
+    if persisted is not None:
+        return persisted
     secret = secrets.token_bytes(32)
+    return _publish_secret_candidate(path, secret)
+
+
+def _publish_secret_candidate(path: Path, secret: bytes) -> bytes:
+    # The parent directory is server-owned. Publish a fully written inode without
+    # replacing a concurrent winner, and always return the persisted winning key.
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    temporary = path.with_name(path.name + f".{os.getpid()}.tmp")
-    temporary.write_text(secret.hex() + "\n", encoding="ascii")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
     try:
-        temporary.chmod(0o600)
-    except OSError:
-        pass
-    os.replace(temporary, path)
+        # mkstemp uses exclusive creation and mode 0600, before any bytes exist.
+        with os.fdopen(descriptor, "w", encoding="ascii") as staged:
+            staged.write(secret.hex() + "\n")
+            staged.flush()
+            os.fsync(staged.fileno())
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            pass
+    finally:
+        temporary.unlink()
+    if os.name == "posix":
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    persisted = _read_persisted_secret(path)
+    if persisted is None:
+        raise ReCTMError(
+            "UNSAFE_SECRET_FILE",
+            "Persisted secret disappeared during initialization.",
+            category="security",
+        )
+    return persisted
+
+
+def _read_persisted_secret(path: Path) -> bytes | None:
     try:
-        path.chmod(0o600)
-    except OSError:
-        pass
-    return secret
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISREG(metadata.st_mode):
+        raise ReCTMError(
+            "UNSAFE_SECRET_FILE", "Persisted secret must be a regular file.", category="security"
+        )
+    # Reject links and nonregular files before reading; O_NONBLOCK also prevents
+    # a replacement FIFO from blocking startup. Private-directory ownership is
+    # still required; this does not reconcile keys in already-running processes.
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        if exc.errno not in {errno.ENOENT, errno.ELOOP}:
+            raise
+        raise ReCTMError(
+            "UNSAFE_SECRET_FILE", "Persisted secret changed while opening.", category="security"
+        ) from exc
+    with os.fdopen(descriptor, "r", encoding="ascii") as persisted:
+        opened = os.fstat(persisted.fileno())
+        if not stat.S_ISREG(opened.st_mode) or (
+            opened.st_dev, opened.st_ino
+        ) != (metadata.st_dev, metadata.st_ino):
+            raise ReCTMError(
+                "UNSAFE_SECRET_FILE", "Persisted secret changed while opening.", category="security"
+            )
+        try:
+            raw = persisted.read(MAX_PERSISTED_SECRET_BYTES + 1)
+        except UnicodeDecodeError as exc:
+            raise ReCTMError(
+                "INVALID_SECRET", "Persisted secret must contain ASCII hex.", category="validation"
+            ) from exc
+    if len(raw) > MAX_PERSISTED_SECRET_BYTES:
+        raise ReCTMError(
+            "INVALID_SECRET", "Persisted secret exceeds the supported file size.", category="validation"
+        )
+    raw = raw.strip()
+    if not raw or any(character not in "0123456789abcdefABCDEF" for character in raw):
+        raise ReCTMError(
+            "INVALID_SECRET", "Persisted secret must contain nonempty hex.", category="validation"
+        )
+    return _decode_secret(raw, "Persisted OAuth secret")

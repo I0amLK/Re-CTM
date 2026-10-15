@@ -336,7 +336,7 @@ class WorkflowTestCase(unittest.TestCase):
         tools = ToolRuntime(native, self.engine, self.debug)
         principal = OAuthPrincipal(client_id=self.owner, subject=self.owner, scope="mcp")
         terminal_result = tools.call(
-            "rethlas_next",
+            "rethlas_step",
             {"run_id": run_id},
             principal,
         )
@@ -345,7 +345,7 @@ class WorkflowTestCase(unittest.TestCase):
         self.assertTrue(terminal["workspace_export"]["ok"])
         automatic_path = native_workspace / terminal["workspace_export_path"]
         self.assertEqual(automatic_path.read_text(encoding="utf-8"), VALID_PROOF)
-        repeated = tools.call("rethlas_next", {"run_id": run_id}, principal)
+        repeated = tools.call("rethlas_step", {"run_id": run_id}, principal)
         self.assertEqual(
             repeated["structuredContent"]["workspace_export"]["status"],
             "unchanged",
@@ -356,24 +356,24 @@ class WorkflowTestCase(unittest.TestCase):
         self.assertEqual(final["workspace_export_path"], terminal["workspace_export_path"])
 
         default_export = tools.call(
-            "rethlas_export_final",
-            {"run_id": run_id},
+            "rethlas_artifact",
+            {"action": "export", "artifact": "final_tex", "run_id": run_id},
             principal,
         )
         self.assertFalse(default_export["isError"])
         self.assertEqual(default_export["structuredContent"]["export"]["status"], "unchanged")
 
         exported = tools.call(
-            "rethlas_export_final",
-            {"run_id": run_id, "path": "exports/proof_verified.tex"},
+            "rethlas_artifact",
+            {"action": "export", "artifact": "final_tex", "run_id": run_id, "path": "exports/proof_verified.tex"},
             principal,
         )
         export_path = native_workspace / "exports" / "proof_verified.tex"
         self.assertEqual(export_path.read_text(encoding="utf-8"), VALID_PROOF)
         self.assertFalse(exported["structuredContent"]["workflow_authority_inherited_by_native"])
         baseline_required = tools.call(
-            "rethlas_export_final",
-            {"run_id": run_id, "path": "exports/proof_verified.tex"},
+            "rethlas_artifact",
+            {"action": "export", "artifact": "final_tex", "run_id": run_id, "path": "exports/proof_verified.tex"},
             principal,
         )
         self.assertTrue(baseline_required["isError"])

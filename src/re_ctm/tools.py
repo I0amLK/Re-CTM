@@ -9,6 +9,7 @@ from .debug import DebugEventBus, new_trace_id
 from .errors import ReCTMError, invalid_argument
 from .latex import static_latex_errors
 from .native import NativeRuntime
+from .native_catalog import NATIVE_TOOL_DECLARATIONS, NATIVE_TOOL_NAMES, TOOL_CONTRACT_VERSION
 from .oauth import OAuthPrincipal
 from .processes import COMMAND_BUFFER_BYTES, COMMAND_HEAD_BUFFER_DIVISOR
 from .rethlas_contracts import (
@@ -59,6 +60,7 @@ class ToolSpec:
     destructive: bool = False
     open_world: bool = False
     idempotent: bool | None = None
+    output_schema: dict[str, Any] | None = None
 
     def definition(self, name: str) -> dict[str, Any]:
         return {
@@ -66,7 +68,7 @@ class ToolSpec:
             "title": self.title,
             "description": self.description,
             "inputSchema": self.input_schema,
-            "outputSchema": tool_output_schema(),
+            "outputSchema": self.output_schema or tool_output_schema(),
             "annotations": {
                 "title": self.title,
                 "readOnlyHint": self.read_only,
@@ -102,298 +104,30 @@ def tool_output_schema() -> dict[str, Any]:
 
 OBJECT = {"type": "object", "additionalProperties": False, "required": []}
 
-CTM_NATIVE_TOOL_NAMES = (
-    "server_info",
-    "check_exec_environment",
-    "read_file",
-    "list_dir",
-    "list_files",
-    "search_text",
-    "apply_patch",
-    "exec_command",
-    "write_stdin",
-    "kill_command",
-    "read_output",
-    "git_status",
-    "git_diff",
-    "git_log",
-    "git_show",
-    "git_blame",
-    "request_permissions",
-    "view_image",
-)
+CTM_NATIVE_TOOL_NAMES = NATIVE_TOOL_NAMES
 
 PUBLIC_TOOL_NAMES = CTM_NATIVE_TOOL_NAMES + RETHLAS_TOOL_NAMES
 
 
-TOOL_SPECS: dict[str, ToolSpec] = {
-    "server_info": ToolSpec(
-        "Server info",
-        "Return server, workspace, project-context, auth, policy, and fixed-tool metadata.",
-        {**OBJECT, "properties": {}},
-        read_only=True,
-    ),
-    "check_exec_environment": ToolSpec(
-        "Check exec environment",
-        "Return lightweight exec_command sandbox and environment status known to the server.",
-        {**OBJECT, "properties": {}},
-        read_only=True,
-    ),
-    "read_file": ToolSpec(
-        "Read file",
-        "Read a UTF-8 text file slice inside the configured workspace.",
-        {
-            **OBJECT,
-            "required": ["path"],
-            "properties": {
-                "path": {"type": "string", "minLength": 1},
-                "start_line": {"type": "integer", "minimum": 1, "default": 1},
-                "end_line": {"type": "integer", "minimum": 1},
-                "max_lines": {"type": "integer", "minimum": 1},
-                "max_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 131072},
-                "encoding": {"type": "string", "enum": ["utf-8"], "default": "utf-8"},
-            },
-        },
-        read_only=True,
-    ),
-    "list_dir": ToolSpec(
-        "List directory",
-        "List directory entries inside the configured workspace.",
-        {
-            **OBJECT,
-            "properties": {
-                "path": {"type": "string", "default": "."},
-                "recursive": {"type": "boolean", "default": False},
-                "max_depth": {"type": "integer", "minimum": 1, "maximum": 20, "default": 1},
-                "max_entries": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 1000},
-                "include_hidden": {"type": "boolean", "default": False},
-                "include_ignored": {"type": "boolean", "default": False},
-                "sort": {"type": "string", "enum": ["name", "type", "modified"], "default": "name"},
-            },
-        },
-        read_only=True,
-    ),
-    "list_files": ToolSpec(
-        "List files",
-        "List workspace files using glob filters.",
-        {
-            **OBJECT,
-            "properties": {
-                "path": {"type": "string", "default": "."},
-                "patterns": {"type": "array", "items": {"type": "string"}},
-                "glob": {"type": "string"},
-                "exclude_patterns": {"type": "array", "items": {"type": "string"}},
-                "include_hidden": {"type": "boolean", "default": False},
-                "include_ignored": {"type": "boolean", "default": False},
-                "max_results": {"type": "integer", "minimum": 1, "maximum": 50000, "default": 5000},
-                "sort": {"type": "string", "enum": ["path", "modified"], "default": "path"},
-            },
-        },
-        read_only=True,
-    ),
-    "search_text": ToolSpec(
-        "Search text",
-        "Search UTF-8 workspace files for text or regex matches.",
-        {
-            **OBJECT,
-            "required": ["query"],
-            "properties": {
-                "query": {"type": "string", "minLength": 1},
-                "path": {"type": "string", "default": "."},
-                "regex": {"type": "boolean", "default": False},
-                "case_sensitive": {"type": "boolean", "default": False},
-                "include_globs": {"type": "array", "items": {"type": "string"}},
-                "glob": {"type": "string"},
-                "exclude_globs": {"type": "array", "items": {"type": "string"}},
-                "context_lines": {"type": "integer", "minimum": 0, "maximum": 5, "default": 0},
-                "max_results": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 1000},
-                "max_preview_bytes": {"type": "integer", "minimum": 80, "maximum": 4096, "default": 512},
-            },
-        },
-        read_only=True,
-    ),
-    "apply_patch": ToolSpec(
-        "Apply patch",
-        "Stage, validate, and atomically apply a patch envelope. Example: *** Begin Patch\n*** Update File: app.py\n@@\n-old\n+new\n*** End Patch",
-        {
-            **OBJECT,
-            "required": ["patch"],
-            "properties": {
-                "patch": {"type": "string", "minLength": 1},
-                "dry_run": {"type": "boolean", "default": False},
-            },
-        },
-        destructive=True,
-    ),
-    "exec_command": ToolSpec(
-        "Execute command",
-        "Run a bounded command under runtime policy. Pass workdir explicitly for reconnect-safe paths. A still-running command returns command_id. Example: {\"cmd\":\"pytest -q\",\"workdir\":\".\",\"yield_time_ms\":30000}. Retained output is bounded per stream; for very large output redirect to a file (cmd > out.log 2>&1) and page it with read_file or search_text.",
-        {
-            **OBJECT,
-            "required": ["cmd"],
-            "properties": {
-                "cmd": {"type": "string", "minLength": 1},
-                "workdir": {"type": "string", "default": "."},
-                "cwd": {"type": "string"},
-                "timeout_ms": {"type": "integer", "minimum": 1, "maximum": 600000, "default": 30000},
-                "yield_time_ms": {"type": "integer", "minimum": 0, "maximum": 30000, "default": 10000},
-                "max_output_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 65536},
-                "verbosity": {"type": "string", "enum": ["summary", "preview", "full"]},
-                "preview_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 4096},
-                "stdin": {"type": "string", "default": ""},
-                "tty": {"type": "boolean", "default": False},
-                "env": {"type": "object", "additionalProperties": {"type": "string"}, "default": {}},
-            },
-        },
-        destructive=True,
-        open_world=True,
-    ),
-    "write_stdin": ToolSpec(
-        "Write stdin",
-        "Poll or interact with a running command by command_id. Empty chars wait for output; non-empty chars writes to stdin. Example: {\"command_id\":\"abc\",\"chars\":\"\",\"yield_time_ms\":10000}.",
-        {
-            **OBJECT,
-            "required": ["command_id"],
-            "properties": {
-                "command_id": {"type": "string", "minLength": 1},
-                "chars": {"type": "string", "default": ""},
-                "yield_time_ms": {"type": "integer", "minimum": 0, "maximum": 30000, "default": 10000},
-                "max_output_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 65536},
-                "verbosity": {"type": "string", "enum": ["summary", "preview", "full"]},
-                "preview_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 4096},
-            },
-        },
-    ),
-    "kill_command": ToolSpec(
-        "Kill command",
-        "Terminate a server-managed command by command_id. Example: {\"command_id\":\"abc\",\"signal\":\"KILL\"}.",
-        {
-            **OBJECT,
-            "required": ["command_id"],
-            "properties": {
-                "command_id": {"type": "string", "minLength": 1},
-                "signal": {"type": "string", "enum": ["TERM", "KILL", "INT"], "default": "TERM"},
-                "wait_ms": {"type": "integer", "minimum": 0, "maximum": 30000, "default": 5000},
-                "kill_wait_ms": {"type": "integer", "minimum": 0, "maximum": 30000, "default": 2000},
-                "max_output_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 65536},
-                "verbosity": {"type": "string", "enum": ["summary", "preview", "full"]},
-                "preview_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 4096},
-            },
-        },
-        destructive=True,
-    ),
-    "read_output": ToolSpec(
-        "Read output",
-        "Read retained command output using an output_ref returned by exec_command/write_stdin. Each stream retains the earliest output (head) plus the most recent output (rolling tail); bytes between them may be evicted and are reported via evicted_gap_bytes. Example: {\"output_ref\":\"command:abc:stdout\",\"offset\":0,\"limit\":4096}.",
-        {
-            **OBJECT,
-            "required": ["output_ref"],
-            "properties": {
-                "output_ref": {"type": "string", "minLength": 1},
-                "stream": {"type": "string", "enum": ["stdout", "stderr"]},
-                "offset": {"type": "integer", "minimum": 0, "default": 0},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 4096},
-            },
-        },
-        read_only=True,
-    ),
-    "git_status": ToolSpec(
-        "Git status",
-        "Return git working tree status for the workspace.",
-        {**OBJECT, "properties": {"path": {"type": "string", "default": "."}, "include_untracked": {"type": "boolean", "default": True}, "max_entries": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 1000}}},
-        read_only=True,
-    ),
-    "git_diff": ToolSpec(
-        "Git diff",
-        "Return unified git diff for workspace changes.",
-        {**OBJECT, "properties": {"path": {"type": "string"}, "paths": {"type": "array", "items": {"type": "string"}}, "staged": {"type": "boolean", "default": False}, "unstaged": {"type": "boolean", "default": True}, "context_lines": {"type": "integer", "minimum": 0, "maximum": 20, "default": 3}, "max_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 262144}}},
-        read_only=True,
-    ),
-    "git_log": ToolSpec(
-        "Git log",
-        "Return recent git commits with bounded structured metadata.",
-        {**OBJECT, "properties": {"path": {"type": "string", "default": "."}, "ref": {"type": "string", "default": "HEAD"}, "max_count": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}, "skip": {"type": "integer", "minimum": 0, "maximum": 10000, "default": 0}}},
-        read_only=True,
-    ),
-    "git_show": ToolSpec(
-        "Git show",
-        "Return bounded git show output for a revision.",
-        {**OBJECT, "properties": {"rev": {"type": "string", "default": "HEAD"}, "path": {"type": "string"}, "paths": {"type": "array", "items": {"type": "string"}}, "include_diff": {"type": "boolean", "default": True}, "context_lines": {"type": "integer", "minimum": 0, "maximum": 20, "default": 3}, "max_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576, "default": 262144}}},
-        read_only=True,
-    ),
-    "git_blame": ToolSpec(
-        "Git blame",
-        "Return bounded git blame metadata for a workspace file.",
-        {**OBJECT, "required": ["path"], "properties": {"path": {"type": "string", "minLength": 1}, "rev": {"type": "string"}, "start_line": {"type": "integer", "minimum": 1, "default": 1}, "end_line": {"type": "integer", "minimum": 1}, "max_lines": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 200}}},
-        read_only=True,
-    ),
-    "request_permissions": ToolSpec(
-        "Request permissions",
-        "Report scoped permission-request status without silently granting operations.",
-        {**OBJECT, "required": ["tool_name", "permission", "reason", "arguments"], "properties": {"tool_name": {"type": "string", "enum": ["exec_command", "apply_patch"]}, "permission": {"type": "string", "enum": ["network", "destructive_command", "long_timeout", "sensitive_env", "shell_expansion", "inline_script", "privileged_executable", "write_generated_or_ignored"]}, "reason": {"type": "string", "minLength": 1}, "arguments": {"type": "object", "additionalProperties": True}, "scope": {"type": "string", "enum": ["once", "session"], "default": "once"}, "ttl_seconds": {"type": "integer", "minimum": 1, "maximum": 3600, "default": 300}}},
-        read_only=True,
-        idempotent=False,
-    ),
-    "view_image": ToolSpec(
-        "View image",
-        "Return a workspace image as MCP image content.",
-        {**OBJECT, "required": ["path"], "properties": {"path": {"type": "string", "minLength": 1}, "max_bytes": {"type": "integer", "minimum": 1024, "maximum": 10485760, "default": 5242880}, "max_width": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 2000}, "max_height": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 2000}, "auto_resize": {"type": "boolean", "default": True}}},
-        read_only=True,
-    ),
-    "rethlas_start": ToolSpec(
+FACADE_TOOL_SPECS: dict[str, ToolSpec] = {
+    'rethlas_start': ToolSpec(
         "Start verified mathematical workflow",
         "Call this first for every concrete mathematical proof, derivation, or verification task unless the user explicitly asks for a direct informal answer. Create a private Rethlas reasoning run; continue with rethlas_step until verification and automatic proof_verified.tex workspace delivery complete.",
         facade_schema("rethlas_start"),
     ),
-    "rethlas_next": ToolSpec(
-        "Get next Rethlas task",
-        "Advance mechanical states and issue the current reasoning-domain task and capability.",
-        {**OBJECT, "required": ["run_id"], "properties": {"run_id": {"type": "string"}}},
+    'rethlas_step': ToolSpec(
+        "Advance Rethlas workflow",
+        "Issue the current Rethlas task, or submit its logical writes plus commit payload and immediately return the next task. Always copy run_id and capability verbatim from the same current task envelope; capability is opaque and must never be decoded, edited, normalized, concatenated, or synthesized. Always follow the returned task.write_contract, task.commit_payload_schema, and task minimal/example submission instead of guessing JSON shapes. Each memory write is one JSON object unless the current write_contract explicitly says otherwise. Recoverable validation/conflict corrections return a fresh capability and identify whether earlier writes were retained. Incomplete screening is accepted in place and returns exact missing plan/subgoal ids instead of failing the run.",
+        facade_schema("rethlas_step"),
         destructive=True,
     ),
-    "rethlas_read": ToolSpec(
-        "Read Rethlas logical resource",
-        "Read a capability-authorized logical resource; never accepts filesystem paths.",
-        {
-            **OBJECT,
-            "required": ["capability", "resource"],
-            "properties": {
-                "capability": CAPABILITY_INPUT_SCHEMA,
-                "resource": {"type": "string"},
-            },
-        },
+    'rethlas_inspect': ToolSpec(
+        "Inspect Rethlas run",
+        "Inspect public run status or capability-authorized logical resources/memory without changing workflow state.",
+        facade_schema("rethlas_inspect"),
         read_only=True,
     ),
-    "rethlas_write": ToolSpec(
-        "Write Rethlas logical resource",
-        "Write a capability-authorized memory record, proof, join result, or verifier report.",
-        {
-            **OBJECT,
-            "required": ["capability", "resource", "content"],
-            "properties": {
-                "capability": CAPABILITY_INPUT_SCHEMA,
-                "resource": {"type": "string"},
-                "content": {},
-            },
-        },
-        destructive=True,
-    ),
-    "rethlas_search": ToolSpec(
-        "Search Rethlas memory",
-        "Search a capability-authorized generation or branch memory channel.",
-        {
-            **OBJECT,
-            "required": ["capability", "resource", "query"],
-            "properties": {
-                "capability": CAPABILITY_INPUT_SCHEMA,
-                "resource": {"type": "string"},
-                "query": {"type": "string"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 100},
-            },
-        },
-        read_only=True,
-    ),
-    "rethlas_retrieve": ToolSpec(
+    'rethlas_retrieve': ToolSpec(
         "Retrieve external mathematical research",
         "Use one capability-gated research façade for theorem search, paper discovery/lookup, or stored theorem context. External providers are fixed HTTPS trust domains with bounded responses; returned references remain unverified until verifier audit.",
         facade_schema("rethlas_retrieve"),
@@ -401,117 +135,13 @@ TOOL_SPECS: dict[str, ToolSpec] = {
         destructive=False,
         open_world=True,
     ),
-    "rethlas_commit": ToolSpec(
-        "Commit Rethlas task",
-        "Seal the current reasoning domain and request its server-validated workflow transition.",
-        {
-            **OBJECT,
-            "required": ["capability", "action"],
-            "properties": {
-                "capability": CAPABILITY_INPUT_SCHEMA,
-                "action": {"type": "string"},
-                "payload": {"type": "object"},
-            },
-        },
-        destructive=True,
-    ),
-    "rethlas_status": ToolSpec(
-        "Rethlas status",
-        "Return public run progress without exposing private branch contents.",
-        {**OBJECT, "required": ["run_id"], "properties": {"run_id": {"type": "string"}}},
-        read_only=True,
-    ),
-    "rethlas_steer": ToolSpec(
-        "Steer Rethlas workflow",
-        "Queue user guidance for the next safe generator or repair checkpoint.",
-        {
-            **OBJECT,
-            "required": ["run_id", "message"],
-            "properties": {
-                "run_id": {"type": "string"},
-                "message": {"type": "string", "minLength": 1},
-            },
-        },
-        destructive=True,
-    ),
-    "rethlas_resume": ToolSpec(
-        "Resume Rethlas workflow",
-        "Reissue the active task for a non-terminal persisted run.",
-        {**OBJECT, "required": ["run_id"], "properties": {"run_id": {"type": "string"}}},
-        destructive=True,
-    ),
-    "rethlas_cancel": ToolSpec(
-        "Cancel Rethlas workflow",
-        "Cancel and seal a non-terminal run.",
-        {
-            **OBJECT,
-            "required": ["run_id"],
-            "properties": {
-                "run_id": {"type": "string"},
-                "reason": {"type": "string"},
-            },
-        },
-        destructive=True,
-    ),
-    "rethlas_get_artifact": ToolSpec(
-        "Get Rethlas artifact",
-        "Return draft LaTeX, final verified LaTeX, verification report, transition log, or terminal debug manifest.",
-        {
-            **OBJECT,
-            "required": ["run_id", "artifact"],
-            "properties": {
-                "run_id": {"type": "string"},
-                "artifact": {
-                    "type": "string",
-                    "enum": [
-                        "draft_tex",
-                        "final_tex",
-                        "verification_report",
-                        "transition_log",
-                        "debug_manifest"
-                    ],
-                },
-            },
-        },
-        read_only=True,
-    ),
-    "rethlas_export_final": ToolSpec(
-        "Export verified LaTeX",
-        "Ensure the mechanically finalized proof_verified.tex exists in the workspace through the controlled trust-domain bridge. When path is omitted, use the run's automatic workspace_export_path; an explicit alternate path may be overwritten only with expected_sha256.",
-        {
-            **OBJECT,
-            "required": ["run_id"],
-            "properties": {
-                "run_id": {"type": "string"},
-                "path": {
-                    "type": "string",
-                    "minLength": 1,
-                    "description": "Optional alternate workspace-relative .tex path. Defaults to the run's workspace_export_path.",
-                },
-                "expected_sha256": {"type": "string"},
-            },
-        },
-        destructive=True,
-    ),
-    "rethlas_step": ToolSpec(
-        "Advance Rethlas workflow",
-        "Issue the current Rethlas task, or submit its logical writes plus commit payload and immediately return the next task. Always copy run_id and capability verbatim from the same current task envelope; capability is opaque and must never be decoded, edited, normalized, concatenated, or synthesized. Always follow the returned task.write_contract, task.commit_payload_schema, and task minimal/example submission instead of guessing JSON shapes. Each memory write is one JSON object unless the current write_contract explicitly says otherwise. Recoverable validation/conflict corrections return a fresh capability and identify whether earlier writes were retained. Incomplete screening is accepted in place and returns exact missing plan/subgoal ids instead of failing the run.",
-        facade_schema("rethlas_step"),
-        destructive=True,
-    ),
-    "rethlas_inspect": ToolSpec(
-        "Inspect Rethlas run",
-        "Inspect public run status or capability-authorized logical resources/memory without changing workflow state.",
-        facade_schema("rethlas_inspect"),
-        read_only=True,
-    ),
-    "rethlas_control": ToolSpec(
+    'rethlas_control': ToolSpec(
         "Control Rethlas run or project",
         "Queue owner steering/cancellation for a run, or create owner-scoped research projects and claims. Verified claim revisions remain finalizer-only and cannot be minted through this tool.",
         facade_schema("rethlas_control"),
         destructive=True,
     ),
-    "rethlas_artifact": ToolSpec(
+    'rethlas_artifact': ToolSpec(
         "Read or export Rethlas artifact",
         "Return/export run artifacts or portable owner project manifests/summaries. Final proof export never bypasses the mechanical verification gate, and project artifacts never expose private reasoning memory.",
         facade_schema("rethlas_artifact"),
@@ -519,10 +149,23 @@ TOOL_SPECS: dict[str, ToolSpec] = {
     ),
 }
 
-if tuple(TOOL_SPECS)[: len(CTM_NATIVE_TOOL_NAMES)] != CTM_NATIVE_TOOL_NAMES:
-    raise RuntimeError("Re-CTM must preserve the exact 18-tool CTM prefix")
-if any(name not in TOOL_SPECS for name in PUBLIC_TOOL_NAMES):
-    raise RuntimeError("Every public Re-CTM tool must have a tool specification")
+# Native declarations and facade declarations each have one current authority.
+TOOL_SPECS = {
+    **{
+        declaration["name"]: ToolSpec(
+            title=declaration["title"], description=declaration["description"],
+            input_schema=declaration["inputSchema"],
+            read_only=declaration["annotations"]["readOnlyHint"],
+            destructive=declaration["annotations"]["destructiveHint"],
+            open_world=declaration["annotations"]["openWorldHint"],
+            idempotent=declaration["annotations"]["idempotentHint"],
+            output_schema=declaration["outputSchema"],
+        ) for declaration in NATIVE_TOOL_DECLARATIONS
+    },
+    **FACADE_TOOL_SPECS,
+}
+if tuple(TOOL_SPECS) != PUBLIC_TOOL_NAMES:
+    raise RuntimeError("Public catalog must be exactly Native v11 followed by six workflow tools")
 
 
 def validate_tool_arguments(name: str, arguments: Mapping[str, Any]) -> None:
@@ -533,6 +176,18 @@ def validate_tool_arguments(name: str, arguments: Mapping[str, Any]) -> None:
 
 
 def _validate_schema_value(value: Any, schema: Mapping[str, Any], *, path: str) -> None:
+    for candidate in schema.get("allOf", []):
+        if isinstance(candidate, Mapping):
+            _validate_schema_value(value, candidate, path=path)
+    condition = schema.get("if")
+    if isinstance(condition, Mapping):
+        branch = schema.get("then" if _schema_matches(value, condition, path=path) else "else")
+        if isinstance(branch, Mapping):
+            _validate_schema_value(value, branch, path=path)
+    if isinstance(schema.get("not"), Mapping) and _schema_matches(value, schema["not"], path=path):
+        raise invalid_argument(f"{path} matches a forbidden schema")
+    if "enum" in schema and value not in schema["enum"]:
+        raise invalid_argument(f"{path} must be one of {schema['enum']!r}")
     if "const" in schema and value != schema["const"]:
         raise invalid_argument(f"{path} must equal {schema['const']!r}")
     one_of = schema.get("oneOf")
@@ -578,6 +233,15 @@ def _validate_schema_value(value: Any, schema: Mapping[str, Any], *, path: str) 
         minimum_items = schema.get("minItems")
         if isinstance(minimum_items, int) and len(value) < minimum_items:
             raise invalid_argument(f"{path} must contain at least {minimum_items} items")
+        maximum_items = schema.get("maxItems")
+        if isinstance(maximum_items, int) and len(value) > maximum_items:
+            raise invalid_argument(f"{path} must contain at most {maximum_items} items")
+        if schema.get("uniqueItems") and any(item == previous for index, item in enumerate(value) for previous in value[:index]):
+            raise invalid_argument(f"{path} must contain unique items")
+        prefix = schema.get("prefixItems", [])
+        for index, prefix_schema in enumerate(prefix if isinstance(prefix, list) else []):
+            if index < len(value) and isinstance(prefix_schema, Mapping):
+                _validate_schema_value(value[index], prefix_schema, path=f"{path}[{index}]")
         item_schema = schema.get("items")
         if isinstance(item_schema, Mapping):
             for index, item in enumerate(value):
@@ -588,6 +252,14 @@ def _validate_schema_value(value: Any, schema: Mapping[str, Any], *, path: str) 
         for key in required if isinstance(required, list) else []:
             if key not in value:
                 raise invalid_argument(f"{path}.{key} is required")
+        for key, dependencies in schema.get("dependentRequired", {}).items():
+            if key in value:
+                for dependency in dependencies:
+                    if dependency not in value:
+                        raise invalid_argument(f"{path}.{key} requires {dependency}")
+        for bound, compare in (("minProperties", lambda n: len(value) < n), ("maxProperties", lambda n: len(value) > n)):
+            if isinstance(schema.get(bound), int) and compare(schema[bound]):
+                raise invalid_argument(f"{path} violates {bound}")
         additional = schema.get("additionalProperties", True)
         for key, item in value.items():
             child_path = f"{path}.{key}"
@@ -643,7 +315,9 @@ class ToolRuntime:
         native: NativeRuntime,
         workflow: WorkflowEngine,
         debug: DebugEventBus,
+        *, workflow_protocol_version: int = 3,
     ) -> None:
+        self.workflow_protocol_version = workflow_protocol_version
         self.native = native
         self.workflow = workflow
         self.debug = debug
@@ -655,6 +329,7 @@ class ToolRuntime:
             "list_files": self._native("list_files"),
             "search_text": self._native("search_text"),
             "apply_patch": self._native("apply_patch"),
+            "apply_changes": self._native("apply_changes"),
             "exec_command": self._native("exec_command"),
             "write_stdin": self._native("write_stdin"),
             "kill_command": self._native("kill_command"),
@@ -667,18 +342,7 @@ class ToolRuntime:
             "request_permissions": self._native("request_permissions"),
             "view_image": self._native("view_image"),
             "rethlas_start": self._rethlas_start,
-            "rethlas_next": self._rethlas_next,
-            "rethlas_read": self._rethlas_read,
-            "rethlas_write": self._rethlas_write,
-            "rethlas_search": self._rethlas_search,
             "rethlas_retrieve": self._rethlas_retrieve,
-            "rethlas_commit": self._rethlas_commit,
-            "rethlas_status": self._rethlas_status,
-            "rethlas_steer": self._rethlas_steer,
-            "rethlas_resume": self._rethlas_resume,
-            "rethlas_cancel": self._rethlas_cancel,
-            "rethlas_get_artifact": self._rethlas_get_artifact,
-            "rethlas_export_final": self._rethlas_export_final,
             "rethlas_step": self._rethlas_step,
             "rethlas_inspect": self._rethlas_inspect,
             "rethlas_control": self._rethlas_control,
@@ -766,13 +430,37 @@ class ToolRuntime:
                 details={"tool": name, "error": error.to_payload()},
             )
             return _tool_result(name, payload, is_error=True)
+        # A successful transport response can still contain a rejected logical
+        # submission. Keep that outcome visible in compact operator output.
+        event_type = "tool.call_finished"
+        decision = "allow"
+        reason = "tool_completed"
+        details: dict[str, Any] = {"tool": name, "result_keys": sorted(payload)}
+        if payload.get("ok") is False:
+            event_type = "tool.call_failed"
+            decision = "deny"
+            reason = "tool_reported_denial"
+            error = payload.get("error")
+            if isinstance(error, Mapping):
+                details["error"] = {"code": error.get("code")}
+        else:
+            submission = payload.get("submission")
+            if (
+                isinstance(submission, Mapping)
+                and submission.get("ok") is False
+                and isinstance(submission.get("error"), Mapping)
+            ):
+                event_type = "tool.call_submission_rejected"
+                decision = "defer"
+                reason = "submission_needs_correction"
+                details["error"] = {"code": submission["error"].get("code")}
         self.debug.emit(
-            "tool.call_finished",
+            event_type,
             "tool_runtime",
             trace_id=trace,
-            decision="allow" if payload.get("ok") is not False else "deny",
-            reason="tool_completed" if payload.get("ok") is not False else "tool_reported_denial",
-            details={"tool": name, "result_keys": sorted(payload)},
+            decision=decision,
+            reason=reason,
+            details=details,
         )
         return _tool_result(name, payload, is_error=payload.get("ok") is False)
 
@@ -785,8 +473,9 @@ class ToolRuntime:
             arguments: dict[str, Any],
             trace_id: str,
         ) -> dict[str, Any]:
-            _ = principal
             method = getattr(self.native, method_name)
+            if method_name in {"apply_patch", "apply_changes"}:
+                return method(**arguments, principal_scope={"subject": principal.subject, "client_id": principal.client_id, "scope": principal.scope})
             return method(**{**arguments, "trace_id": trace_id}) if method_name == "exec_command" else method(**arguments)
 
         return handler
@@ -830,6 +519,13 @@ class ToolRuntime:
             "output_retention": {
                 "buffer_bytes_per_stream": COMMAND_BUFFER_BYTES,
                 "head_bytes_per_stream": COMMAND_BUFFER_BYTES // COMMAND_HEAD_BUFFER_DIVISOR,
+                "completed_ttl_seconds": 300,
+                "max_completed_commands": 32,
+            },
+            "workspace_mutation_policy": {
+                "mode": "unrestricted", "structured_only_supported": False,
+                "structured_write_tools": ["apply_patch", "apply_changes"],
+                "enforced_by": "bubblewrap" if native_info.get("native_exec_backend") == "BubblewrapExecBackend" else "workspace_path_checks",
             },
             "endpoint_path": "/mcp",
             "project_context": {
@@ -841,11 +537,12 @@ class ToolRuntime:
             "oauth_client_id": principal.client_id,
             "tool_count": len(PUBLIC_TOOL_NAMES),
             "tools": list(PUBLIC_TOOL_NAMES),
-            "ctm_native_tool_count": len(CTM_NATIVE_TOOL_NAMES),
+            "native_tool_count": len(CTM_NATIVE_TOOL_NAMES),
             "rethlas_tool_count": len(RETHLAS_TOOL_NAMES),
-            "ctm_native_tools": list(CTM_NATIVE_TOOL_NAMES),
+            "native_tools": list(CTM_NATIVE_TOOL_NAMES),
             "rethlas_tools": list(RETHLAS_TOOL_NAMES),
-            "hidden_legacy_rethlas_aliases": list(HIDDEN_LEGACY_ALIAS_SEMANTICS),
+            "hidden_alias_count": 0,
+            "tool_contract_version": TOOL_CONTRACT_VERSION,
             "tool_catalog_stable": True,
             "mathematical_task_routing": (
                 "Concrete proof, derivation, proof-repair, and rigorous verification tasks should start with rethlas_start unless the user explicitly requests a direct informal answer."
@@ -857,7 +554,7 @@ class ToolRuntime:
             },
             "research_workspace": {
                 "state_schema_version": self.workflow.store.schema_version(),
-                "workflow_protocol_version": 2,
+                "workflow_protocol_version": self.workflow_protocol_version,
                 "project_registry": True,
                 "compact_verified_lane": True,
                 "proof_manifest": True,
@@ -895,7 +592,9 @@ class ToolRuntime:
             target_claim_id=(str(arguments.get("target_claim_id") or "").strip() or None),
             workflow_mode=str(arguments.get("workflow_mode") or START_DEFAULT_WORKFLOW_MODE),
             register_result=bool(arguments.get("register_result", START_DEFAULT_REGISTER_RESULT)),
-            workflow_protocol_version=2,
+            workflow_protocol_version=self.workflow_protocol_version,
+            creation_key=arguments.get("creation_key"),
+            workspace_identity=str(self.native.workspace.root),
             trace_id=trace_id,
         )
 
@@ -1013,114 +712,9 @@ class ToolRuntime:
             "writes_applied": len(write_results),
         }
 
-    def _rethlas_step(
-        self,
-        principal: OAuthPrincipal,
-        arguments: dict[str, Any],
-        trace_id: str,
-    ) -> dict[str, Any]:
-        run_id = str(arguments.get("run_id") or "")
-        capability = str(arguments.get("capability") or "")
-        writes = arguments.get("writes") or []
-        action = str(arguments.get("action") or "")
-        payload = arguments.get("payload") or {}
-        if not isinstance(writes, list):
-            raise invalid_argument("writes must be an array")
-        if not isinstance(payload, Mapping):
-            raise invalid_argument("payload must be an object")
-        if not action and not writes and not capability:
-            return self._attach_done_export_if_needed(
-                principal,
-                self.workflow.next_task(
-                    owner_id=principal.client_id,
-                    run_id=run_id,
-                    trace_id=trace_id,
-                ),
-                trace_id,
-            )
-        if not capability:
-            raise invalid_argument("capability is required when submitting a Rethlas step")
-        # Bind the two client-supplied envelope fields before any write, recovery,
-        # or next-task issuance. A capability from run A must never be usable with
-        # a run_id from run B, even when the later resource operation would itself
-        # reject or succeed independently.
-        self.workflow.capabilities.validate(
-            capability,
-            owner_id=principal.client_id,
-            action="commit",
-            resource="workflow",
-            trace_id=trace_id,
-            expected_run_id=run_id,
-        )
-        if writes and not action:
-            raise invalid_argument("action is required when writes are submitted")
-        write_results: list[dict[str, Any]] = []
-        for index, item in enumerate(writes):
-            try:
-                if not isinstance(item, Mapping):
-                    raise invalid_argument("each write must be an object")
-                write_results.append(
-                    self.workflow.write(
-                        owner_id=principal.client_id,
-                        capability=capability,
-                        resource=str(item.get("resource") or ""),
-                        content=item.get("content"),
-                        trace_id=trace_id,
-                    )
-                )
-            except ReCTMError as exc:
-                if exc.category not in {"validation", "conflict"}:
-                    raise
-                failed_resource = (
-                    str(item.get("resource") or "")
-                    if isinstance(item, Mapping)
-                    else ""
-                )
-                return self._recoverable_rethlas_step(
-                    principal=principal,
-                    run_id=run_id,
-                    capability=capability,
-                    error=exc,
-                    write_results=write_results,
-                    trace_id=trace_id,
-                    failed_write={"index": index, "resource": failed_resource},
-                )
-        if not action:
-            raise invalid_argument("action is required to complete a Rethlas step")
-        try:
-            submission = self.workflow.commit(
-                owner_id=principal.client_id,
-                capability=capability,
-                action=action,
-                payload=payload,
-                trace_id=trace_id,
-            )
-        except ReCTMError as exc:
-            if exc.category not in {"validation", "conflict"}:
-                raise
-            return self._recoverable_rethlas_step(
-                principal=principal,
-                run_id=run_id,
-                capability=capability,
-                error=exc,
-                write_results=write_results,
-                trace_id=trace_id,
-            )
-        next_task = self._attach_done_export_if_needed(
-            principal,
-            self.workflow.next_task(
-                owner_id=principal.client_id,
-                run_id=run_id,
-                trace_id=trace_id,
-            ),
-            trace_id,
-        )
-        self.workflow.capabilities.revoke(
-            capability,
-            "superseded_by_rethlas_step",
-            trace_id=trace_id,
-        )
-        return {**next_task, "submission": submission, "writes_applied": len(write_results)}
+    def _rethlas_step(self, principal: OAuthPrincipal, arguments: dict[str, Any], trace_id: str) -> dict[str, Any]:
+        from .workflow_submission import step
+        return step(self, principal, arguments, trace_id)
 
     def _rethlas_inspect(
         self,

@@ -267,6 +267,34 @@ class CapabilityAuthority:
         )
         return claims
 
+    def submission_receipt(
+        self, token: str, *, owner_id: str, run_id: str,
+        workspace_sha256: str, request_sha256: str,
+    ) -> tuple[CapabilityClaims, dict[str, Any] | None]:
+        """Authenticate historical receipt lookup without granting execution.
+
+        Expiry, revocation and epoch drift are ignored only for an already stored,
+        exact matching receipt. New work still passes validate and SQL rechecks.
+        """
+        from .storage_receipts import check_binding, matches_claims, receipt_error
+        claims = _claims_from_payload(self._decode(token))
+        if claims.run_id != run_id:
+            raise _denied("CAPABILITY_RUN_MISMATCH", "Capability and run_id must come from the same task envelope.")
+        record = self.store.get_capability(claims.nonce)
+        if record is None:
+            raise _denied("CAPABILITY_UNKNOWN", "Capability is not registered.")
+        if not _record_matches_claims(record, claims):
+            raise _denied("CAPABILITY_REGISTRY_MISMATCH", "Persisted and signed capability facts disagree.")
+        run = self.store.get_run(run_id)
+        if claims.owner_id != owner_id or run["owner_id"] != owner_id:
+            raise _denied("CAPABILITY_OWNER_MISMATCH", "Capability belongs to another OAuth owner.")
+        receipt = self.store.find_submission_receipt(hashlib.sha256(token.encode()).hexdigest(), owner_id, run_id)
+        if receipt is not None:
+            if not matches_claims(receipt, claims):
+                raise receipt_error()
+            check_binding(receipt, workspace_sha256, request_sha256)
+        return claims, receipt
+
     def revoke(self, token: str, reason: str, *, trace_id: str) -> None:
         payload = self._decode(token)
         claims = _claims_from_payload(payload)

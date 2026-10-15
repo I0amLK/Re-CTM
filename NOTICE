@@ -12,5 +12,13 @@ Rethlas
 Copyright Rethlas contributors
 Source: https://github.com/frenzymath/Rethlas
 
+MTM-reboot
+Copyright 2026 MTM-reboot Contributors
+Source: https://github.com/I0amLK/MTM
+Workspace, OAuth, operator-output, LaTeX-scanning, Native v11, workflow protocol 3,
+durable recovery and verified-fact behavior has been adapted from MTM. MTM-reboot is an incremental Rust implementation based on the
+public behavior, architecture, compatibility contracts and migration evidence of
+Re-CTM; the Coding Tools MCP and Rethlas attributions above remain applicable.
+
 Re-CTM is a new integrated work. The upstream projects are not responsible
 for Re-CTM's modifications, security claims, workflow behavior, or releases.

@@ -32,7 +32,7 @@ class HTTPGatewayTestCase(unittest.TestCase):
             data_root=data,
             private_root=private,
             debug_root=data / "debug",
-            native_mode=NativeMode.SAFE,
+            native_mode=NativeMode.DANGEROUS,
             latex_policy=LatexPolicy.STATIC_ONLY,
             oauth_server_url=f"http://127.0.0.1:{port}",
             oauth_password="operator-password",
@@ -158,7 +158,7 @@ class HTTPGatewayTestCase(unittest.TestCase):
             },
         )
         self.assertEqual(status, 200)
-        self.assertEqual(len(json.loads(body)["result"]["tools"]), 24)
+        self.assertEqual(len(json.loads(body)["result"]["tools"]), 25)
 
         modern_request = {
             "jsonrpc": "2.0",
@@ -213,7 +213,7 @@ class HTTPGatewayTestCase(unittest.TestCase):
                 data_root=data,
                 private_root=private,
                 debug_root=data / "debug",
-                native_mode=NativeMode.SAFE,
+                native_mode=NativeMode.DANGEROUS,
                 latex_policy=LatexPolicy.STATIC_ONLY,
                 oauth_server_url="",
                 oauth_password="operator-password",
@@ -250,7 +250,7 @@ class HTTPGatewayTestCase(unittest.TestCase):
             self.assertEqual(status, 200)
             server_card = json.loads(body)
             self.assertEqual(server_card["endpoint"], public_base + "/mcp")
-            self.assertEqual(server_card["oauth"]["resource"], public_base)
+            self.assertEqual(server_card["oauth"]["resource"], public_base + "/mcp")
 
             status, _headers, body = self.request(
                 "GET",
@@ -343,7 +343,7 @@ class HTTPGatewayTestCase(unittest.TestCase):
             )
             self.assertEqual(status, 401)
             self.assertIn(
-                public_base + "/.well-known/oauth-protected-resource",
+                public_base + "/.well-known/oauth-protected-resource/mcp",
                 unauthorized_headers["WWW-Authenticate"],
             )
 
@@ -431,7 +431,7 @@ class HTTPGatewayTestCase(unittest.TestCase):
                 data_root=data,
                 private_root=private,
                 debug_root=data / "debug",
-                native_mode=NativeMode.SAFE,
+                native_mode=NativeMode.DANGEROUS,
                 latex_policy=LatexPolicy.STATIC_ONLY,
                 oauth_server_url="",
                 oauth_password="operator-password",
@@ -462,7 +462,7 @@ class HTTPGatewayTestCase(unittest.TestCase):
                     data_root=data,
                     private_root=private,
                     debug_root=data / "debug",
-                    native_mode=NativeMode.SAFE,
+                    native_mode=NativeMode.DANGEROUS,
                     latex_policy=LatexPolicy.STATIC_ONLY,
                     oauth_server_url=f"http://127.0.0.1:{occupied_port}",
                     oauth_password="operator-password",

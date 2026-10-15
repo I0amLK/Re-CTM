@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
 import re
 import secrets
+import stat
 import subprocess
 import sys
 import tempfile
@@ -18,6 +20,10 @@ from .debug import DebugEventBus, new_trace_id
 from .enums import NativeMode
 from .errors import ReCTMError, invalid_argument
 from .native_helper_bwrap import _bubblewrap_command, _helper_child_env
+from .native_changes import NativeTransaction
+from .native_replay import NativeReplay
+from .native_exec import ExecInvocation, collect_executable_facts
+from .toolchains import DEFAULT_SANDBOX_PATH
 from .processes import CommandManager, MAX_ACTIVE_COMMANDS
 from .toolchains import ToolchainExposurePlan, build_toolchain_exposure_plan
 
@@ -36,6 +42,7 @@ DEFAULT_EXCLUDED = {
 }
 
 NATIVE_HELPER_PROTOCOL = "re-ctm-native-helper-v1"
+MAX_READ_FILE_BYTES = 64 * 1024 * 1024
 _REQUIRED_ATTESTATION_TRUE = {
     "hard_isolation",
     "workspace_mounted",
@@ -137,50 +144,107 @@ class NativeWorkspace:
         raw_path: str,
         *,
         start_line: int = 1,
+        end_line: int | None = None,
         max_lines: int = 500,
         max_bytes: int = 131_072,
+        line_byte_offset: int = 0,
+        expected_sha256: str | None = None,
     ) -> dict[str, Any]:
+        for name, value, minimum in (
+            ("start_line", start_line, 1), ("max_lines", max_lines, 1),
+            ("max_bytes", max_bytes, 1), ("line_byte_offset", line_byte_offset, 0),
+        ):
+            if type(value) is not int or value < minimum:
+                raise invalid_argument(f"{name} must be an integer >= {minimum}")
+        if end_line is not None and (type(end_line) is not int or end_line < start_line):
+            raise invalid_argument("end_line must be an integer >= start_line")
+        if max_bytes > 1_048_576 or line_byte_offset > MAX_READ_FILE_BYTES:
+            raise invalid_argument("max_bytes or line_byte_offset exceeds the read limit")
+        if expected_sha256 is not None and (
+            not isinstance(expected_sha256, str)
+            or re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha256) is None
+        ):
+            raise invalid_argument("expected_sha256 must be a 64-character hex digest")
+        self._validate_text(raw_path)
         resolved = self.resolve_existing(raw_path)
-        if resolved.path.is_dir():
-            raise ReCTMError("IS_DIRECTORY", "Path is a directory.", category="validation")
-        data = resolved.path.read_bytes()
+        data = _read_file_snapshot(resolved.path, root=self.root)
+        digest = hashlib.sha256(data).hexdigest()
+        if expected_sha256 is not None and expected_sha256.lower() != digest:
+            raise _read_file_changed()
         try:
-            text = data.decode("utf-8")
+            data.decode("utf-8")
         except UnicodeDecodeError as exc:
             raise ReCTMError(
                 "BINARY_FILE",
                 "Native read_file supports UTF-8 text only.",
                 category="validation",
             ) from exc
-        lines = text.splitlines(keepends=True)
-        if start_line < 1:
-            raise invalid_argument("start_line must be >= 1")
-        selected: list[str] = []
-        bytes_used = 0
+        # LF defines source lines, preserving CRLF and other Unicode separators as content.
+        total_lines = data.count(b"\n") + int(bool(data) and not data.endswith(b"\n"))
+        end_limit = min(end_line, total_lines) if end_line is not None else total_lines
         index = start_line - 1
-        while index < len(lines) and len(selected) < max_lines:
-            encoded = lines[index].encode("utf-8")
-            if selected and bytes_used + len(encoded) > max_bytes:
+        offset = line_byte_offset
+        if index >= total_lines and offset:
+            raise invalid_argument("line_byte_offset requires an existing line")
+        line_start = 0
+        if index < end_limit:
+            for _ in range(index):
+                line_start = data.find(b"\n", line_start) + 1
+        selected = bytearray()
+        last_line = start_line
+        for _ in range(min(max_lines, max(0, end_limit - index))):
+            newline = data.find(b"\n", line_start)
+            line_end = len(data) if newline == -1 else newline + 1
+            position = line_start + offset
+            if position >= line_end or data[position] & 0xC0 == 0x80:
+                raise invalid_argument(
+                    "line_byte_offset must identify a UTF-8 boundary inside the requested line"
+                )
+            count = min(line_end - position, max_bytes - len(selected))
+            while count and position + count < line_end and data[position + count] & 0xC0 == 0x80:
+                count -= 1
+            if count == 0:
+                if not selected:
+                    raise ReCTMError(
+                        "READ_PAGE_TOO_SMALL",
+                        "max_bytes cannot hold the next UTF-8 character; use at least 4 bytes.",
+                        category="validation",
+                    )
                 break
-            if not selected and len(encoded) > max_bytes:
-                selected.append(encoded[:max_bytes].decode("utf-8", errors="ignore"))
-                bytes_used = max_bytes
+            selected.extend(data[position:position + count])
+            last_line = index + 1
+            if position + count < line_end:
+                offset += count
                 break
-            selected.append(lines[index])
-            bytes_used += len(encoded)
             index += 1
-        content = "".join(selected)
-        end_line = start_line + max(len(selected) - 1, 0)
-        truncated = index < len(lines) or len(data) > max_bytes and not selected
+            line_start = line_end
+            offset = 0
+        truncated = index < end_limit
+        next_action = None
+        if truncated:
+            next_arguments = {
+                "path": resolved.display, "start_line": index + 1,
+                "max_lines": max_lines, "max_bytes": max_bytes,
+                "line_byte_offset": offset, "expected_sha256": digest,
+            }
+            if end_line is not None:
+                next_arguments["end_line"] = end_line
+            next_action = {"tool": "read_file", "arguments": next_arguments}
         return {
             "path": resolved.display,
-            "content": content,
+            "content": selected.decode("utf-8"),
             "start_line": start_line,
-            "end_line": end_line,
-            "total_lines": len(lines),
+            "end_line": last_line,
+            "line_byte_offset": line_byte_offset,
+            "total_lines": total_lines,
             "total_bytes": len(data),
+            "sha256": digest,
+            "revision": digest,
+            "revision_algorithm": "sha256",
             "truncated": truncated,
-            "next_start_line": index + 1 if index < len(lines) else None,
+            "next_start_line": index + 1 if truncated else None,
+            "next_line_byte_offset": offset if truncated else None,
+            "next_action": next_action,
         }
 
     def list_files(
@@ -657,111 +721,8 @@ def discover_dangerous_toolchain_roots(
     ).discovered_roots
 
 
-class AtomicNativeEditor:
-    def __init__(self, workspace: NativeWorkspace) -> None:
-        self.workspace = workspace
-        self._lock = threading.Lock()
-
-    def apply(self, operations: Iterable[Mapping[str, Any]], *, dry_run: bool = False) -> dict[str, Any]:
-        normalized = [dict(operation) for operation in operations]
-        if not normalized:
-            raise invalid_argument("operations must be a non-empty array")
-        with self._lock:
-            staged: list[tuple[str, NativePath, str | None, str | None]] = []
-            seen: set[Path] = set()
-            for operation in normalized:
-                kind = str(operation.get("op") or "")
-                path = str(operation.get("path") or "")
-                if kind not in {"add", "update", "delete"}:
-                    raise invalid_argument("op must be add, update, or delete", op=kind)
-                resolved = (
-                    self.workspace.resolve_for_write(path)
-                    if kind == "add"
-                    else self.workspace.resolve_existing(path)
-                )
-                if resolved.path in seen:
-                    raise invalid_argument("the same path cannot be staged twice", path=path)
-                seen.add(resolved.path)
-                if resolved.path.is_dir():
-                    raise ReCTMError("IS_DIRECTORY", "Patch target is a directory.", category="validation")
-                existing_hash = _sha256_file(resolved.path) if resolved.existed else None
-                expected = operation.get("expected_sha256")
-                if expected is not None and expected != existing_hash:
-                    raise ReCTMError(
-                        "PATCH_CONFLICT",
-                        "File changed since the caller's baseline.",
-                        category="conflict",
-                        retryable=True,
-                        details={"path": resolved.display, "expected": expected, "actual": existing_hash},
-                    )
-                if kind == "add" and resolved.existed:
-                    raise ReCTMError("PATCH_CONFLICT", "Add target already exists.", category="conflict")
-                content = None if kind == "delete" else str(operation.get("content") or "")
-                staged.append((kind, resolved, content, existing_hash))
-            if not dry_run:
-                self._commit(staged)
-        return {
-            "dry_run": dry_run,
-            "affected_files": [
-                {"operation": kind, "path": resolved.display}
-                for kind, resolved, _content, _hash in staged
-            ],
-        }
-
-    def _commit(self, staged: list[tuple[str, NativePath, str | None, str | None]]) -> None:
-        prepared: dict[Path, Path] = {}
-        backups: dict[Path, Path] = {}
-        installed: set[Path] = set()
-        try:
-            for kind, resolved, content, _baseline in staged:
-                if kind != "delete":
-                    resolved.path.parent.mkdir(parents=True, exist_ok=True)
-                    fd, raw = tempfile.mkstemp(prefix=".re-ctm-patch-", dir=resolved.path.parent)
-                    temp = Path(raw)
-                    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                        handle.write(content or "")
-                        handle.flush()
-                        os.fsync(handle.fileno())
-                    prepared[resolved.path] = temp
-            for _kind, resolved, _content, baseline in staged:
-                current = _sha256_file(resolved.path) if resolved.path.exists() else None
-                if current != baseline:
-                    raise ReCTMError(
-                        "PATCH_CONFLICT",
-                        "File changed while the patch was being prepared.",
-                        category="conflict",
-                        retryable=True,
-                        details={"path": resolved.display},
-                    )
-            for _kind, resolved, _content, _baseline in staged:
-                if resolved.path.exists():
-                    fd, raw = tempfile.mkstemp(prefix=".re-ctm-backup-", dir=resolved.path.parent)
-                    os.close(fd)
-                    backup = Path(raw)
-                    backup.unlink()
-                    os.replace(resolved.path, backup)
-                    backups[resolved.path] = backup
-            for kind, resolved, _content, _baseline in staged:
-                if kind != "delete":
-                    os.replace(prepared[resolved.path], resolved.path)
-                    installed.add(resolved.path)
-        except Exception:
-            for _kind, resolved, _content, _baseline in reversed(staged):
-                try:
-                    if resolved.path in installed and resolved.path.exists():
-                        resolved.path.unlink()
-                    backup = backups.get(resolved.path)
-                    if backup is not None and backup.exists():
-                        os.replace(backup, resolved.path)
-                except OSError:
-                    pass
-            raise
-        finally:
-            for path in prepared.values():
-                path.unlink(missing_ok=True)
-            for path in backups.values():
-                path.unlink(missing_ok=True)
-
+# Compatibility name for internal exports; one transaction engine owns all writes.
+AtomicNativeEditor = NativeTransaction
 
 class NativeRuntime:
     def __init__(
@@ -777,7 +738,8 @@ class NativeRuntime:
         self.debug = debug
         self.exec_backend = exec_backend or DisabledExecBackend()
         self.editor = AtomicNativeEditor(workspace)
-        self.command_manager = CommandManager()
+        self.command_manager = CommandManager(on_terminal=self._terminal_observed)
+        self.replay = NativeReplay()
 
     def server_info(self) -> dict[str, Any]:
         raw_attestation = getattr(self.exec_backend, "attestation", None)
@@ -818,9 +780,14 @@ class NativeRuntime:
                     "resolved_read_only_root_count": 0,
                 }
             ),
-            "ctm_native_tool_compatibility": "18_of_18_surface",
+            "ctm_native_tool_compatibility": "19_of_19_surface",
+            "tool_contract_version": "mtm-tools-v11",
+            "native_tool_count": 19,
+            "native_mutation_policy": "workspace_confined_revision_bound_transactions",
             "command_lifecycle": {
                 "max_active_commands": MAX_ACTIVE_COMMANDS,
+                "retention_ttl_seconds": 300,
+                "max_retained_commands": 32,
                 "write_stdin": True,
                 "read_output": True,
                 "kill_command": True,
@@ -881,23 +848,17 @@ class NativeRuntime:
         }
 
     def read_file(self, **arguments: Any) -> dict[str, Any]:
-        encoding = str(arguments.get("encoding", "utf-8"))
+        encoding = arguments.get("encoding", "utf-8")
         if encoding != "utf-8":
             raise ReCTMError("UNSUPPORTED_ENCODING", "Only utf-8 is supported.", category="validation")
-        start_line = int(arguments.get("start_line", 1))
-        end_line = arguments.get("end_line")
-        max_lines = arguments.get("max_lines")
-        if end_line is not None and max_lines is not None:
-            expected_end = start_line + int(max_lines) - 1
-            if int(end_line) != expected_end:
-                raise invalid_argument("end_line and max_lines select different ranges")
-        if end_line is not None:
-            max_lines = max(1, int(end_line) - start_line + 1)
         return self.workspace.read_file(
-            str(arguments.get("path") or ""),
-            start_line=start_line,
-            max_lines=int(max_lines or 500),
-            max_bytes=int(arguments.get("max_bytes", 131_072)),
+            arguments.get("path", ""),
+            start_line=arguments.get("start_line", 1),
+            end_line=arguments.get("end_line"),
+            max_lines=arguments.get("max_lines", 500),
+            max_bytes=arguments.get("max_bytes", 131_072),
+            line_byte_offset=arguments.get("line_byte_offset", 0),
+            expected_sha256=arguments.get("expected_sha256"),
         )
 
     def list_dir(self, **arguments: Any) -> dict[str, Any]:
@@ -909,18 +870,31 @@ class NativeRuntime:
     def search_text(self, **arguments: Any) -> dict[str, Any]:
         return ctm_compat.search_text(self.workspace, arguments)
 
-    def apply_patch(self, **arguments: Any) -> dict[str, Any]:
-        if isinstance(arguments.get("patch"), str):
-            editor_ops, metadata = ctm_compat.patch_to_editor_operations(
-                self.workspace,
-                str(arguments["patch"]),
-            )
-            result = self.editor.apply(editor_ops, dry_run=bool(arguments.get("dry_run", False)))
-            return {"clean": True, **metadata, **result, "warnings": []}
-        operations = arguments.get("operations")
-        if not isinstance(operations, list):
-            raise invalid_argument("patch must be a patch envelope")
-        return self.editor.apply(operations, dry_run=bool(arguments.get("dry_run", False)))
+    def apply_patch(
+        self, *, principal_scope: Mapping[str, Any] | None = None, **arguments: Any,
+    ) -> dict[str, Any]:
+        def operation() -> dict[str, Any]:
+            if "patch" in arguments:
+                return self.editor.apply_patch(arguments)
+            operations = arguments.get("operations")
+            if not isinstance(operations, list) or set(arguments) - {"operations", "dry_run"}:
+                raise invalid_argument("patch must be a patch envelope")
+            return self.editor.apply(operations, dry_run=arguments.get("dry_run", False))
+        return self.replay.execute(principal_scope, "apply_patch", arguments, operation)
+
+    def apply_changes(
+        self, *, principal_scope: Mapping[str, Any] | None = None, **arguments: Any,
+    ) -> dict[str, Any]:
+        return self.replay.execute(
+            principal_scope, "apply_changes", arguments,
+            lambda: self.editor.apply_changes(arguments),
+        )
+
+    def _terminal_observed(self, lifecycle: dict[str, Any]) -> None:
+        self.debug.emit(
+            "native.command_terminal", "native_runtime", decision="observed",
+            reason=lifecycle["operation_outcome"], details=lifecycle,
+        )
 
     def git_status(self, **arguments: Any) -> dict[str, Any]:
         return ctm_compat.git_status(self.workspace, arguments)
@@ -1139,99 +1113,94 @@ class NativeRuntime:
         return {**result, "path": resolved.display, "sha256": digest, "bytes": len(content.encode("utf-8"))}
 
     def exec_command(self, **arguments: Any) -> dict[str, Any]:
-        trace_id = str(arguments.get("trace_id") or new_trace_id())
-        cmd = str(arguments.get("cmd") or "")
-        argv = arguments.get("argv")
-        if cmd:
-            child_argv = ["/bin/sh", "-lc", cmd]
-        elif isinstance(argv, list) and argv and all(isinstance(item, str) for item in argv):
-            child_argv = list(argv)
-            cmd = " ".join(child_argv)
-        else:
-            raise invalid_argument("cmd is required")
-        workdir_arg = arguments.get("workdir", arguments.get("cwd", "."))
-        if "workdir" in arguments and "cwd" in arguments and str(arguments["workdir"]) != str(arguments["cwd"]):
-            raise invalid_argument("workdir and cwd refer to different directories")
-        workdir = str(workdir_arg or ".")
-        resolved = self.workspace.resolve_existing(workdir)
+        trace_id = arguments.pop("trace_id", None) or new_trace_id()
+        invocation = ExecInvocation.parse(arguments)
+        resolved = self.workspace.resolve_existing(invocation.workdir)
         if not resolved.path.is_dir():
             raise ReCTMError("NOT_A_DIRECTORY", "workdir is not a directory.", category="validation")
-        timeout_ms = int(arguments.get("timeout_ms", 30_000))
-        yield_time_ms = int(arguments.get("yield_time_ms", 10_000))
-        max_output_bytes = int(arguments.get("max_output_bytes", 65_536))
-        preview_bytes = int(arguments.get("preview_bytes", 4096))
-        verbosity = arguments.get("verbosity")
-        stdin_text = str(arguments.get("stdin", ""))
-        tty = bool(arguments.get("tty", False))
-        extra_env = arguments.get("env", {})
-        if not isinstance(extra_env, Mapping) or not all(
-            isinstance(key, str) and isinstance(value, str) for key, value in extra_env.items()
+        policy_text = invocation.cmd if invocation.cmd is not None else " ".join(invocation.argv)
+        ctm_compat.check_command_policy(self.mode.value, policy_text, invocation.environment)
+        if isinstance(self.exec_backend, DisabledExecBackend):
+            return self.exec_backend.execute(
+                workspace=self.workspace.root, argv=invocation.argv, workdir=resolved.display,
+                timeout_ms=invocation.timeout_ms, mode=self.mode,
+            )
+        attestation = getattr(self.exec_backend, "attestation", None)
+        if not (
+            isinstance(attestation, Mapping)
+            and attestation.get("hard_isolation") is True
+            and attestation.get("private_vault_mounted") is False
         ):
-            raise invalid_argument("env must be an object whose values are strings")
-        if not isinstance(self.exec_backend, DisabledExecBackend):
-            attestation = getattr(self.exec_backend, "attestation", None)
-            if not (
-                isinstance(attestation, Mapping)
-                and attestation.get("hard_isolation") is True
-                and attestation.get("private_vault_mounted") is False
-            ):
-                raise ReCTMError(
-                    "NATIVE_ISOLATION_REQUIRED",
-                    "Native execution backend has not completed a valid hard-isolation attestation.",
-                    category="security",
-                    details={"backend": type(self.exec_backend).__name__},
-                )
-        ctm_compat.check_command_policy(
-            self.mode.value,
-            cmd,
-            {str(key): str(value) for key, value in extra_env.items()},
+            raise ReCTMError(
+                "NATIVE_ISOLATION_REQUIRED",
+                "Native execution backend has not completed a valid hard-isolation attestation.",
+                category="security", details={"backend": type(self.exec_backend).__name__},
+            )
+        sandbox_path = getattr(self.exec_backend, "host_path", None) or DEFAULT_SANDBOX_PATH
+        read_roots = tuple(getattr(self.exec_backend, "extra_read_roots", ()))
+        forbidden = (self.workspace.private_root, *tuple(getattr(self.exec_backend, "forbidden_paths", ())))
+        facts = collect_executable_facts(
+            invocation, self.workspace, sandbox_path=sandbox_path,
+            read_only_roots=read_roots, forbidden_paths=forbidden,
         )
         self.debug.emit(
-            "native.exec_requested",
-            "native_runtime",
-            trace_id=trace_id,
-            decision="allow",
-            reason="delegating_to_hard_isolation_backend",
-            details={
+            "native.exec_requested", "native_runtime", trace_id=trace_id, decision="allow",
+            reason="delegating_to_hard_isolation_backend", details={
                 "mode": self.mode.value,
-                "command_sha256": hashlib.sha256(cmd.encode("utf-8")).hexdigest(),
-                "argv_sha256": hashlib.sha256(
-                    json.dumps(child_argv, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-                ).hexdigest(),
-                "workdir": resolved.display,
-                "timeout_ms": timeout_ms,
-                "tty": tty,
+                "command_sha256": hashlib.sha256(policy_text.encode("utf-8")).hexdigest(),
+                "argv_sha256": hashlib.sha256(json.dumps(invocation.argv, ensure_ascii=False,
+                    separators=(",", ":")).encode("utf-8")).hexdigest(),
+                "workdir": resolved.display, "timeout_ms": invocation.timeout_ms, "tty": invocation.tty,
             },
         )
+        command_argv = None
         if isinstance(self.exec_backend, BubblewrapExecBackend):
             command_argv = _bubblewrap_command(
-                workspace=self.workspace.root,
-                workdir=resolved.display,
-                mode=self.mode.value,
-                argv=child_argv,
-                extra_env={str(key): str(value) for key, value in extra_env.items()},
-                host_path=self.exec_backend.host_path,
-                extra_read_roots=self.exec_backend.extra_read_roots,
-                forbidden_paths=self.exec_backend.forbidden_paths,
+                workspace=self.workspace.root, workdir=resolved.display, mode=self.mode.value,
+                argv=invocation.argv, extra_env=invocation.environment, host_path=sandbox_path,
+                extra_read_roots=read_roots, forbidden_paths=forbidden,
             )
-            return self.command_manager.start(
-                command_argv,
-                env=_helper_child_env(),
-                timeout_ms=timeout_ms,
-                yield_time_ms=yield_time_ms,
-                max_output_bytes=max_output_bytes,
-                stdin_text=stdin_text,
-                tty=tty,
-                verbosity=str(verbosity) if verbosity is not None else None,
-                preview_bytes=preview_bytes,
+        elif invocation.environment or invocation.stdin or invocation.tty:
+            raise ReCTMError(
+                "NATIVE_EXEC_OPTIONS_UNSUPPORTED",
+                "This external helper cannot honor environment, stdin or tty options; use the attested Bubblewrap lifecycle backend.",
+                category="validation",
             )
-        return self.exec_backend.execute(
-            workspace=self.workspace.root,
-            argv=child_argv,
-            workdir=resolved.display,
-            timeout_ms=timeout_ms,
-            mode=self.mode,
+        current = collect_executable_facts(
+            invocation, self.workspace, sandbox_path=sandbox_path,
+            read_only_roots=read_roots, forbidden_paths=forbidden,
         )
+        if current != facts:
+            raise ReCTMError("NATIVE_EXECUTABLE_CHANGED", "Command executable metadata changed before start.", category="security")
+        if command_argv is not None:
+            return self.command_manager.start(
+                command_argv, env=_helper_child_env(), timeout_ms=invocation.timeout_ms,
+                yield_time_ms=invocation.yield_time_ms, max_output_bytes=invocation.max_output_bytes,
+                stdin_text=invocation.stdin, tty=invocation.tty, verbosity=invocation.verbosity,
+                preview_bytes=invocation.preview_bytes,
+            )
+        result = self.exec_backend.execute(
+            workspace=self.workspace.root, argv=invocation.argv, workdir=resolved.display,
+            timeout_ms=invocation.timeout_ms, mode=self.mode,
+        )
+        # A successful observation remains successful even for a nonzero child.
+        status, exit_code = result.get("status"), result.get("exit_code")
+        if status == "running":
+            outcome = "running"
+        elif result.get("timed_out") is True:
+            outcome = "timeout"
+        elif result.get("signal") is not None:
+            outcome = "signal"
+        elif type(exit_code) is int:
+            outcome = "exited_0" if exit_code == 0 else "exited_nonzero"
+        else:
+            raise ReCTMError("NATIVE_HELPER_PROTOCOL_ERROR", "Helper returned an indeterminate command lifecycle.", category="runtime")
+        result = {**result, "operation_outcome": outcome}
+        if outcome != "running":
+            self._terminal_observed({key: result.get(key) for key in (
+                "command_id", "operation_outcome", "status", "exit_code", "signal", "timed_out", "elapsed_ms", "termination",
+            )})
+        return result
 
     def write_stdin(self, **arguments: Any) -> dict[str, Any]:
         return self.command_manager.poll(
@@ -1262,6 +1231,63 @@ class NativeRuntime:
             offset=int(arguments.get("offset", 0)),
             limit=int(arguments.get("limit", 4096)),
         )
+
+
+def _read_file_changed() -> ReCTMError:
+    return ReCTMError(
+        "READ_FILE_CHANGED",
+        "File changed; restart the read instead of combining pages from different contents.",
+        category="conflict",
+    )
+
+
+def _read_file_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    return (
+        metadata.st_dev, metadata.st_ino, metadata.st_mode, metadata.st_size,
+        metadata.st_mtime_ns, metadata.st_ctime_ns,
+    )
+
+
+def _read_file_snapshot(path: Path, *, root: Path) -> bytes:
+    # Resolve_existing validates aliases first; traverse its resolved path without
+    # following any newly introduced symlink, including parent components.
+    parts = path.relative_to(root).parts
+    if not parts:
+        raise ReCTMError("IS_DIRECTORY", "Path is a directory.", category="validation")
+    parent_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    descriptor = None
+    try:
+        for part in parts[:-1]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+            os.close(parent_fd)
+            parent_fd = child
+        before = os.stat(parts[-1], dir_fd=parent_fd, follow_symlinks=False)
+        if stat.S_ISDIR(before.st_mode):
+            raise ReCTMError("IS_DIRECTORY", "Path is a directory.", category="validation")
+        if not stat.S_ISREG(before.st_mode):
+            raise ReCTMError("NOT_A_REGULAR_FILE", "Only regular text files can be paged.", category="validation")
+        if before.st_size > MAX_READ_FILE_BYTES:
+            raise ReCTMError("FILE_TOO_LARGE", "read_file supports files up to 64 MiB.", category="validation")
+        descriptor = os.open(parts[-1], os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=parent_fd)
+        identity = _read_file_identity(before)
+        if _read_file_identity(os.fstat(descriptor)) != identity:
+            raise _read_file_changed()
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            data = handle.read(MAX_READ_FILE_BYTES + 1)
+        if len(data) > MAX_READ_FILE_BYTES:
+            raise ReCTMError("FILE_TOO_LARGE", "File exceeded the 64 MiB read limit.", category="validation")
+        after = os.stat(parts[-1], dir_fd=parent_fd, follow_symlinks=False)
+        if _read_file_identity(os.fstat(descriptor)) != identity or _read_file_identity(after) != identity:
+            raise _read_file_changed()
+        return data
+    except OSError as exc:
+        if exc.errno in {errno.ELOOP, errno.ENOENT, errno.ENOTDIR}:
+            raise _read_file_changed() from exc
+        raise
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        os.close(parent_fd)
 
 
 def _helper_command(helper: Path | list[str] | tuple[str, ...]) -> list[str]:

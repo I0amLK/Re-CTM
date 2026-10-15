@@ -13,7 +13,22 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
+
+
+EXPECTED_TOOL_NAMES = (
+    "server_info", "check_exec_environment", "read_file", "list_dir", "list_files",
+    "search_text", "apply_patch", "apply_changes", "exec_command", "write_stdin",
+    "kill_command", "read_output", "git_status", "git_diff", "git_log", "git_show",
+    "git_blame", "request_permissions", "view_image", "rethlas_start",
+    "rethlas_step", "rethlas_inspect", "rethlas_retrieve", "rethlas_control",
+    "rethlas_artifact",
+)
+RETIRED_TOOL_NAMES = (
+    "rethlas_next", "rethlas_read", "rethlas_write", "rethlas_search",
+    "rethlas_commit", "rethlas_status", "rethlas_steer", "rethlas_resume",
+    "rethlas_cancel", "rethlas_get_artifact", "rethlas_export_final",
+)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -21,7 +36,10 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(
+    argv: list[str] | None = None, *, password: str | None = None,
+    exercise: Callable[[str, str, str], Mapping[str, Any]] | None = None,
+) -> int:
     parser = argparse.ArgumentParser(
         description="Redacted OAuth DCR/PKCE to legacy+modern MCP smoke for a running Re-CTM server."
     )
@@ -38,22 +56,26 @@ def main(argv: list[str] | None = None) -> int:
 
     base = args.base_url.rstrip("/")
     parsed_base = urllib.parse.urlsplit(base)
-    if parsed_base.scheme not in {"http", "https"} or not parsed_base.netloc:
-        parser.error("--base-url must be an absolute HTTP(S) URL")
+    if (parsed_base.scheme not in {"http", "https"} or not parsed_base.netloc
+            or parsed_base.username or parsed_base.password or parsed_base.query
+            or parsed_base.fragment or parsed_base.path):
+        parser.error("--base-url must be an HTTP(S) origin without credentials, path, query or fragment")
     if parsed_base.scheme == "http" and parsed_base.hostname not in {
         "127.0.0.1",
         "localhost",
         "::1",
     }:
         parser.error("non-loopback smoke must use HTTPS")
-    password = os.environ.get(args.password_env) or getpass.getpass(
+    password = password or os.environ.get(args.password_env) or getpass.getpass(
         f"OAuth authorization password ({args.password_env} is unset): "
     )
     if not password:
         parser.error("OAuth authorization password is required")
 
     report: dict[str, Any] = {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
+        "tool_contract_version": "mtm-tools-v11",
+        "scope": "HTTP OAuth/MCP control plane; does not validate browser interaction or Native isolation",
         "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "base_url": base,
         "callback": args.callback,
@@ -86,6 +108,22 @@ def main(argv: list[str] | None = None) -> int:
             protected.get("resource") == base,
             resource=protected.get("resource"),
         )
+
+        path_protected = _json_request(
+            f"{base}/.well-known/oauth-protected-resource/mcp", timeout=args.timeout,
+        )
+        resource = f"{base}/mcp"
+        _record(report, "path_protected_resource_metadata",
+                path_protected.get("resource") == resource,
+                resource=path_protected.get("resource"))
+        unauth = _expect_http_error(lambda: _json_request(
+            f"{base}/mcp", method="POST",
+            json_body={"jsonrpc": "2.0", "id": 0, "method": "ping"},
+            timeout=args.timeout))
+        _record(report, "unauthorized_resource_challenge",
+                unauth["status"] == 401 and unauth["code"] == "OAUTH_UNAUTHORIZED"
+                and f'{base}/.well-known/oauth-protected-resource/mcp' in unauth["challenge"],
+                status=unauth["status"], code=unauth["code"])
 
         client = _json_request(
             f"{base}/oauth/register",
@@ -120,9 +158,22 @@ def main(argv: list[str] | None = None) -> int:
             "code_challenge": challenge,
             "code_challenge_method": "S256",
             "state": state,
-            "resource": base,
+            "resource": resource,
             "password": password,
         }
+        page_request = urllib.request.Request(
+            f"{base}/oauth/authorize?" + urllib.parse.urlencode(
+                {key: value for key, value in authorize_fields.items() if key != "password"}
+            )
+        )
+        with urllib.request.urlopen(page_request, timeout=args.timeout) as page_response:
+            page = page_response.read(1024 * 1024).decode("utf-8")
+            page_type = page_response.headers.get_content_type()
+        _record(report, "authorization_html_form",
+                page_type == "text/html" and 'type="password"' in page
+                and 'action="/oauth/authorize"' in page and password not in page,
+                content_type=page_type)
+
         location = _form_redirect(
             f"{base}/oauth/authorize",
             authorize_fields,
@@ -140,18 +191,20 @@ def main(argv: list[str] | None = None) -> int:
             state_matched=returned_state == state,
         )
 
-        token = _form_json(
-            f"{base}/oauth/token",
-            {
+        token_fields = {
                 "grant_type": "authorization_code",
                 "code": code,
                 "redirect_uri": args.callback,
                 "code_verifier": verifier,
                 "client_id": client_id,
-                "resource": base,
-            },
-            timeout=args.timeout,
-        )
+                "resource": resource,
+        }
+        token = _form_json(f"{base}/oauth/token", token_fields, timeout=args.timeout)
+        replay = _expect_http_error(lambda: _form_json(
+            f"{base}/oauth/token", token_fields, timeout=args.timeout))
+        _record(report, "authorization_code_replay_denied",
+                replay["status"] == 403 and replay["code"] == "OAUTH_INVALID_GRANT",
+                status=replay["status"], code=replay["code"])
         access_token = _required_text(token, "access_token")
         _record(
             report,
@@ -196,59 +249,31 @@ def main(argv: list[str] | None = None) -> int:
         _record(
             report,
             "fixed_tool_catalog",
-            len(names) == 24
-            and all(
-                tool in names
-                for tool in (
-                    "check_exec_environment",
-                    "list_dir",
-                    "write_stdin",
-                    "kill_command",
-                    "read_output",
-                    "git_status",
-                    "git_diff",
-                    "git_log",
-                    "git_show",
-                    "git_blame",
-                    "request_permissions",
-                    "view_image",
-                )
-            )
-            and "exec_command" in names
-            and "rethlas_retrieve" in names
-            and "rethlas_step" in names
-            and "rethlas_inspect" in names
-            and "rethlas_control" in names
-            and "rethlas_artifact" in names
-            and "rethlas_export_final" not in names,
+            names == list(EXPECTED_TOOL_NAMES),
             tool_count=len(names),
             tool_names=names,
         )
 
-        legacy_alias = _mcp(
-            base,
-            access_token,
-            {
-                "jsonrpc": "2.0",
-                "id": 21,
-                "method": "tools/call",
-                "params": {
-                    "name": "rethlas_status",
-                    "arguments": {"run_id": "smoke-nonexistent-run"},
-                },
-            },
-            timeout=args.timeout,
-        )
-        legacy_structured = legacy_alias.get("result", {}).get("structuredContent", {})
-        _record(
-            report,
-            "hidden_legacy_rethlas_alias",
-            "rethlas_status" not in names
-            and isinstance(legacy_structured, dict)
-            and legacy_structured.get("error", {}).get("code") == "RUN_NOT_FOUND",
-            advertised=False,
-            accepted_as_tool=isinstance(legacy_alias.get("result"), dict),
-        )
+        rejected = []
+        for index, name in enumerate(RETIRED_TOOL_NAMES, start=30):
+            response = _mcp(
+                base, access_token,
+                {"jsonrpc": "2.0", "id": index, "method": "tools/call",
+                 "params": {"name": name, "arguments": {}}},
+                timeout=args.timeout,
+            )
+            error = response.get("error", {})
+            if (name not in names and error.get("code") == -32602
+                    and error.get("data", {}).get("reason") == "unknown_tool"):
+                rejected.append(name)
+        _record(report, "retired_aliases_rejected",
+                rejected == list(RETIRED_TOOL_NAMES), rejected=rejected)
+        denied_origin = _expect_http_error(lambda: _mcp(
+            base, access_token, {"jsonrpc": "2.0", "id": 50, "method": "ping"},
+            timeout=args.timeout, extra_headers={"Origin": "https://untrusted.invalid"}))
+        _record(report, "unapproved_browser_origin_denied",
+                denied_origin["status"] == 403 and denied_origin["code"] == "ORIGIN_DENIED",
+                status=denied_origin["status"], code=denied_origin["code"])
 
         meta = {
             "io.modelcontextprotocol/protocolVersion": "2026-07-28",
@@ -289,13 +314,20 @@ def main(argv: list[str] | None = None) -> int:
             non_inheritance_axiom=axioms.get("non_inheritance"),
             native_exec_backend=native_info.get("native_exec_backend"),
         )
+        if exercise is not None:
+            # Test-only in-memory handoff. The callback must return a redacted summary,
+            # never credentials, capabilities or problem/proof contents.
+            evidence = dict(exercise(base, access_token, client_id))
+            _record(report, "workflow_http_fixture", evidence.get("passed") is True,
+                    evidence=evidence)
     except Exception as exc:  # noqa: BLE001 - manual report must preserve failure evidence
         _record(
             report,
             "unhandled_smoke_failure",
             False,
             exception_type=type(exc).__name__,
-            message=str(exc),
+            http_status=exc.code if isinstance(exc, urllib.error.HTTPError) else None,
+            message="Smoke failed; exception text omitted because it can contain authorization material.",
         )
     finally:
         access_token = ""
@@ -303,9 +335,28 @@ def main(argv: list[str] | None = None) -> int:
 
     report["passed"] = bool(report["checks"]) and all(item["passed"] for item in report["checks"])
     output = Path(args.output).expanduser().resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(json.dumps({"ok": report["passed"], "report": str(output)}, indent=2))
     return 0 if report["passed"] else 1
+
+
+def _expect_http_error(action) -> dict[str, Any]:
+    try:
+        action()
+    except urllib.error.HTTPError as exc:
+        with exc:
+            try:
+                payload = json.loads(exc.read(1024 * 1024))
+            except (ValueError, UnicodeError):
+                payload = {}
+            error = payload.get("error", {}) if isinstance(payload, dict) else {}
+            return {
+                "status": exc.code,
+                "code": error.get("code") if isinstance(error, dict) else None,
+                "challenge": exc.headers.get("WWW-Authenticate", ""),
+            }
+    return {"status": None, "code": None, "challenge": ""}
 
 
 def _mcp(
@@ -384,10 +435,11 @@ def _form_redirect(url: str, fields: Mapping[str, str], *, timeout: int) -> str:
     except urllib.error.HTTPError as exc:
         if exc.code != 302:
             raise
-        location = str(exc.headers.get("Location") or "")
-        if not location:
-            raise ValueError("authorization endpoint returned 302 without Location")
-        return location
+        with exc:
+            location = str(exc.headers.get("Location") or "")
+            if not location:
+                raise ValueError("authorization endpoint returned 302 without Location")
+            return location
     raise ValueError("authorization endpoint did not redirect")
 
 

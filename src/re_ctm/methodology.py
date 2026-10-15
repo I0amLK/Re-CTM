@@ -46,7 +46,7 @@ def _invalid_methodology_task(state_name: Any, reason: str) -> ReCTMError:
     )
 
 
-def task_for_state(state: WorkflowState) -> dict[str, Any]:
+def task_for_state(state: WorkflowState, protocol_version: int = 2) -> dict[str, Any]:
     task = _catalog()["tasks"].get(state.value)
     if not isinstance(task, dict):
         raise ReCTMError(
@@ -78,4 +78,32 @@ def task_for_state(state: WorkflowState) -> dict[str, Any]:
             "Successful writes listed as retained must not be replayed unless the current task explicitly requires a new record."
         ),
     }
+    if protocol_version >= 3:
+        overlay_protocol3_research(result, state)
     return result
+
+
+@lru_cache(maxsize=1)
+def _protocol3_catalog() -> dict[str, Any]:
+    resource = files("re_ctm").joinpath("resources/methodology_protocol3.json")
+    return json.loads(resource.read_text(encoding="utf-8"))["overlays"]
+
+
+def overlay_protocol3_research(task: dict[str, Any], state: WorkflowState) -> None:
+    """Apply after protocol-2 runtime overlays; older contracts remain byte-for-byte intact."""
+    catalog = _protocol3_catalog()
+    for update in [*catalog["all"], *catalog.get(state.value, [])]:
+        current = task
+        for key in update["path"][:-1]:
+            current = current.setdefault(key, {})
+        current[update["path"][-1]] = copy.deepcopy(update["value"])
+    # The pinned upstream replan example lacks the causal change its own validator
+    # requires. Supply the same bounded focus field exposed by that contract.
+    if state == WorkflowState.REPLAN:
+        task["minimal_submission"]["payload"]["decision"]["selected_focus_node_id"] = "target"
+    if state == WorkflowState.BRANCH_RUN:
+        task["minimal_submission"]["payload"] = {
+            "status": "solved", "summary": "All assigned subgoals admit a complete route.",
+            "proof_route": "A self-contained route for every assigned subgoal.",
+            "proved_subgoals": [], "unproved_subgoals": [], "failure_evidence": [],
+        }

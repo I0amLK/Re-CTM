@@ -13,6 +13,9 @@ from pathlib import Path
 from re_ctm.debug import DebugEventBus
 from re_ctm.enums import NativeMode
 from re_ctm.native import BubblewrapExecBackend, NativeRuntime, NativeWorkspace
+from re_ctm.native_catalog import NATIVE_TOOL_DECLARATIONS, TOOL_CONTRACT_VERSION
+from re_ctm.tools import validate_tool_arguments
+from re_ctm.errors import ReCTMError
 from re_ctm.tools import (
     CTM_NATIVE_TOOL_NAMES,
     LEGACY_RETHLAS_TOOL_NAMES,
@@ -51,30 +54,42 @@ class CTMNativeCompatibilityTestCase(unittest.TestCase):
         return NativeRuntime(workspace, NativeMode.DANGEROUS, self.debug, exec_backend=backend)
 
     def test_fixed_catalog_is_ctm_superset(self) -> None:
-        self.assertEqual(len(CTM_NATIVE_TOOL_NAMES), 18)
+        self.assertEqual(CTM_NATIVE_TOOL_NAMES, (
+            "server_info", "check_exec_environment", "read_file", "list_dir", "list_files",
+            "search_text", "apply_patch", "apply_changes", "exec_command", "write_stdin", "kill_command",
+            "read_output", "git_status", "git_diff", "git_log", "git_show", "git_blame",
+            "request_permissions", "view_image",
+        ))
+        self.assertEqual(RETHLAS_TOOL_NAMES, (
+            "rethlas_start", "rethlas_step", "rethlas_inspect", "rethlas_retrieve",
+            "rethlas_control", "rethlas_artifact",
+        ))
+        self.assertEqual(LEGACY_RETHLAS_TOOL_NAMES, (
+            "rethlas_start", "rethlas_next", "rethlas_read", "rethlas_write", "rethlas_search",
+            "rethlas_retrieve", "rethlas_commit", "rethlas_status", "rethlas_steer",
+            "rethlas_resume", "rethlas_cancel", "rethlas_get_artifact", "rethlas_export_final",
+        ))
+        self.assertEqual(len(CTM_NATIVE_TOOL_NAMES), 19)
         self.assertEqual(len(RETHLAS_TOOL_NAMES), 6)
-        self.assertEqual(len(PUBLIC_TOOL_NAMES), 24)
-        self.assertEqual(PUBLIC_TOOL_NAMES[:18], CTM_NATIVE_TOOL_NAMES)
+        self.assertEqual(len(PUBLIC_TOOL_NAMES), 25)
+        self.assertEqual(PUBLIC_TOOL_NAMES[:19], CTM_NATIVE_TOOL_NAMES)
         self.assertEqual(len(LEGACY_RETHLAS_TOOL_NAMES), 13)
-        self.assertTrue(all(name in TOOL_SPECS for name in LEGACY_RETHLAS_TOOL_NAMES))
+        retired = set(LEGACY_RETHLAS_TOOL_NAMES) - set(RETHLAS_TOOL_NAMES)
+        self.assertTrue(retired.isdisjoint(TOOL_SPECS))
+        self.assertEqual(TOOL_CONTRACT_VERSION, "mtm-tools-v11")
         contract = [TOOL_SPECS[name].definition(name) for name in CTM_NATIVE_TOOL_NAMES]
-        contract_digest = hashlib.sha256(
-            json.dumps(
-                contract,
-                sort_keys=True,
-                separators=(",", ":"),
-                ensure_ascii=False,
-            ).encode("utf-8")
-        ).hexdigest()
-        self.assertEqual(
-            contract_digest,
-            "17896146c5c024a2f81174b5869e9861b452419066500ac4e0a0c1b32d442ab4",
-        )
+        self.assertEqual(contract, NATIVE_TOOL_DECLARATIONS)
+        for definition in contract:
+            output = definition["outputSchema"]
+            self.assertEqual(output["required"], ["ok"])
+            self.assertTrue(output["additionalProperties"])
+            self.assertGreater(len(output["properties"]), 2)
 
         expected_required = {
             "read_file": {"path"},
             "apply_patch": {"patch"},
-            "exec_command": {"cmd"},
+            "apply_changes": {"changes"},
+            "exec_command": set(),
             "write_stdin": {"command_id"},
             "kill_command": {"command_id"},
             "read_output": {"output_ref"},
@@ -83,6 +98,23 @@ class CTMNativeCompatibilityTestCase(unittest.TestCase):
         }
         for name, required in expected_required.items():
             self.assertEqual(set(TOOL_SPECS[name].input_schema.get("required", [])), required)
+
+    def test_v11_keeps_workspace_extensions_and_exclusive_command_forms(self) -> None:
+        read = TOOL_SPECS["read_file"].input_schema["properties"]
+        self.assertEqual(read["line_byte_offset"]["minimum"], 0)
+        self.assertEqual(read["max_lines"]["default"], 500)
+        for digest in ("a" * 64, "A" * 64):
+            validate_tool_arguments("read_file", {"path": "hello.txt", "expected_sha256": digest})
+        for name in ("git_status", "git_diff", "git_log", "git_show", "git_blame"):
+            self.assertIn("repo_path", TOOL_SPECS[name].input_schema["properties"])
+        self.assertIn("paths", TOOL_SPECS["git_log"].input_schema["properties"])
+        validate_tool_arguments("exec_command", {"argv": ["printf", ""]})
+        validate_tool_arguments("exec_command", {"cmd": "printf ok"})
+        for arguments in ({"cmd": "true", "argv": ["true"]}, {"argv": [""]}):
+            with self.assertRaises(ReCTMError):
+                validate_tool_arguments("exec_command", arguments)
+        self.assertEqual(TOOL_SPECS["exec_command"].input_schema["properties"]["timeout_ms"]["default"], 300000)
+        self.assertTrue(TOOL_SPECS["git_diff"].input_schema["properties"]["include_untracked"]["default"])
 
     def test_ctm_file_directory_search_patch_and_git_surfaces(self) -> None:
         runtime = self._runtime()
@@ -183,7 +215,7 @@ class CTMNativeCompatibilityTestCase(unittest.TestCase):
         finally:
             runtime.close()
 
-    def test_ctm_permission_modes_keep_safe_trusted_dangerous_distinct(self) -> None:
+    def test_internal_adapter_modes_remain_distinct_from_public_dangerous_profile(self) -> None:
         workspace = NativeWorkspace(self.workspace, private_root=self.private)
         safe = NativeRuntime(workspace, NativeMode.SAFE, self.debug)
         trusted = NativeRuntime(workspace, NativeMode.TRUSTED, self.debug)

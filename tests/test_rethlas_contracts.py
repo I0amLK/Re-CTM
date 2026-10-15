@@ -182,12 +182,12 @@ class RethlasFacadeContractTestCase(unittest.TestCase):
             PUBLIC_TOOL_NAMES,
             CTM_NATIVE_TOOL_NAMES + RETHLAS_TOOL_NAMES,
         )
-        self.assertEqual(len(PUBLIC_TOOL_NAMES), 24)
+        self.assertEqual(len(PUBLIC_TOOL_NAMES), 25)
         for name in RETHLAS_TOOL_NAMES:
             with self.subTest(name=name):
                 self.assertEqual(TOOL_SPECS[name].input_schema, facade_schema(name))
 
-    def test_hidden_aliases_have_explicit_facade_semantics_and_stay_hidden(self) -> None:
+    def test_retired_aliases_are_documented_but_not_callable(self) -> None:
         self.assertEqual(HIDDEN_LEGACY_ALIAS_SEMANTICS, EXPECTED_HIDDEN_ALIAS_SEMANTICS)
         native = MagicMock()
         workflow = MagicMock()
@@ -195,8 +195,11 @@ class RethlasFacadeContractTestCase(unittest.TestCase):
         runtime = ToolRuntime(native, workflow, debug)
         for alias, (facade, semantic) in HIDDEN_LEGACY_ALIAS_SEMANTICS.items():
             with self.subTest(alias=alias, semantic=semantic):
-                self.assertIn(alias, TOOL_SPECS)
-                self.assertIn(alias, runtime._handlers)
+                self.assertNotIn(alias, TOOL_SPECS)
+                self.assertNotIn(alias, runtime._handlers)
+                with self.assertRaises(ReCTMError) as denied:
+                    runtime.call(alias, {}, OAuthPrincipal("client-1", "client-1", "mcp"))
+                self.assertEqual(denied.exception.code, "UNKNOWN_TOOL")
                 self.assertNotIn(alias, PUBLIC_TOOL_NAMES)
                 self.assertIn(facade, RETHLAS_TOOL_NAMES)
 
@@ -224,6 +227,8 @@ class RethlasFacadeContractTestCase(unittest.TestCase):
     def test_every_discriminated_variant_enforces_required_and_forbidden_fields(self) -> None:
         for tool_name, samples in FACADE_VARIANT_SAMPLES.items():
             schema = facade_schema(tool_name)
+            if tool_name == "rethlas_step":
+                continue  # Its version-11 shape is an object with dependentRequired, tested below.
             variants = schema["oneOf"]
             self.assertEqual(len(samples), len(variants), tool_name)
             known_fields = set(schema["properties"])
@@ -242,6 +247,26 @@ class RethlasFacadeContractTestCase(unittest.TestCase):
                         bad[field] = KNOWN_ARGUMENT_VALUES[field]
                         with self.assertRaises(ReCTMError, msg=f"{tool_name}:{index}:{field}"):
                             validate_tool_arguments(tool_name, bad)
+
+    def test_step_dependent_required_and_recover_only_contract(self) -> None:
+        schema = facade_schema("rethlas_step")
+        self.assertNotIn("oneOf", schema)
+        self.assertEqual(schema["dependentRequired"], {
+            "capability": ["action"], "action": ["capability"],
+            "payload": ["capability", "action"], "writes": ["capability", "action"],
+            "recover_only": ["capability", "action"],
+        })
+        self.assertFalse(schema["properties"]["recover_only"]["default"])
+        for sample in FACADE_VARIANT_SAMPLES["rethlas_step"]:
+            validate_tool_arguments("rethlas_step", sample)
+        for field, value in (("capability", CAPABILITY), ("action", "assessment_complete"), ("payload", {}), ("writes", []), ("recover_only", True), ("recover_only", False)):
+            with self.subTest(field=field), self.assertRaises(ReCTMError):
+                validate_tool_arguments("rethlas_step", {"run_id": "run-1", field: value})
+        for recover_only in (True, False):
+            validate_tool_arguments("rethlas_step", {"run_id": "run-1", "capability": CAPABILITY,
+                                                    "action": "assessment_complete", "recover_only": recover_only})
+        with self.assertRaises(ReCTMError):
+            validate_tool_arguments("rethlas_step", {"run_id": "run-1", "capability": CAPABILITY, "action": "assessment_complete", "recover_only": "true"})
 
     def test_schema_default_annotations_match_runtime_constants(self) -> None:
         start = facade_schema("rethlas_start")["properties"]
@@ -287,6 +312,7 @@ class RethlasFacadeContractTestCase(unittest.TestCase):
         self.assertEqual(start_kwargs["problem_id"], START_DEFAULT_PROBLEM_ID)
         self.assertEqual(start_kwargs["workflow_mode"], START_DEFAULT_WORKFLOW_MODE)
         self.assertEqual(start_kwargs["register_result"], START_DEFAULT_REGISTER_RESULT)
+        self.assertEqual(start_kwargs["workflow_protocol_version"], 3)
 
         workflow.retrieve.return_value = {"ok": True}
         runtime.call(

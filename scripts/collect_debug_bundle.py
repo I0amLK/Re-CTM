@@ -16,7 +16,7 @@ from re_ctm.errors import ReCTMError  # noqa: E402
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Create a redacted Re-CTM diagnostic bundle for post-push manual validation."
+        description="Create a redacted Re-CTM diagnostic bundle for target-host and browser manual validation."
     )
     parser.add_argument("run_id")
     parser.add_argument("--data-root", default="~/.re-ctm")

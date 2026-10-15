@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import codecs
+import io
+import os
 import queue
 import sys
 import threading
@@ -16,6 +19,7 @@ _VISIBLE_EVENTS = frozenset(
         "tool.call_started",
         "tool.call_finished",
         "tool.call_failed",
+        "tool.call_submission_rejected",
         "oauth.authorization_code_issued",
         "oauth.access_token_issued",
         "oauth.access_token_accepted",
@@ -28,10 +32,23 @@ _STOP = object()
 class TerminalSession:
     """Append-only, non-blocking terminal observer for an interactive server."""
 
-    def __init__(self, *, stream: TextIO | None = None, queue_size: int = 256) -> None:
+    def __init__(
+        self, *, stream: TextIO | None = None, queue_size: int = 256, verbose: bool = False
+    ) -> None:
         if queue_size < 1:
             raise ValueError("queue_size must be positive")
-        self.stream = stream or sys.stderr
+        self.stream = stream if stream is not None else sys.stderr
+        # Only the untouched default stderr uses unbuffered writes. A failed
+        # buffered stderr write can otherwise be retried by Python at shutdown,
+        # changing the server's intentional exit status to 120 (OPT-023).
+        self._direct_stderr = (
+            stream is None
+            and self.stream is sys.__stderr__
+            and type(self.stream) is io.TextIOWrapper
+        )
+        self._stderr_encoder: codecs.IncrementalEncoder | None = None
+        self._stderr_codec: tuple[str, str] | None = None
+        self.verbose = verbose
         self._queue: queue.Queue[DebugEvent | object] = queue.Queue(maxsize=queue_size)
         self._thread: threading.Thread | None = None
         self._started = threading.Event()
@@ -51,6 +68,13 @@ class TerminalSession:
             or not self._started.is_set()
             or self._stopping.is_set()
             or self._output_failed.is_set()
+        ):
+            return
+        # Drop routine success before enqueueing, but never hide a denial.
+        if (
+            not self.verbose
+            and event.event_type == "tool.call_finished"
+            and event.decision not in {"deny", "error"}
         ):
             return
         try:
@@ -164,15 +188,23 @@ class TerminalSession:
         if event.event_type == "tool.call_started":
             marker = ">"
             suffix = ""
-        elif event.event_type == "tool.call_finished":
+        elif event.event_type == "tool.call_submission_rejected":
+            marker = "FIX"
+            code = _error_code(event.details.get("error"))
+            suffix = f"  {code}" if code else ""
+            suffix += "  submission rejected; inspect current task and retained writes"
+        elif event.event_type == "tool.call_finished" and event.decision not in {"deny", "error"}:
+            if not self.verbose:
+                return
             marker = "OK"
             suffix = ""
         else:
             marker = "ERR"
             code = _error_code(event.details.get("error"))
             suffix = f"  {code}" if code else ""
+        trace_display = f"[{trace}] " if self.verbose or marker in {"ERR", "FIX"} else ""
         self._safe_write(
-            f"{_time_label(event)}  {marker:<3} [{trace}] "
+            f"{_time_label(event)}  {marker:<3} {trace_display}"
             f"{_terminal_text(tool)}{_terminal_text(suffix)}\n"
         )
 
@@ -192,12 +224,29 @@ class TerminalSession:
     def _safe_write(self, text: str) -> None:
         if self._output_failed.is_set():
             return
-        try:
-            with self._write_lock:
-                self.stream.write(text)
-                self.stream.flush()
-        except Exception:
-            self._output_failed.set()
+        with self._write_lock:
+            if self._output_failed.is_set():
+                return
+            try:
+                if self._direct_stderr and self.stream.fileno() == 2:
+                    # Resolve the descriptor each time so a normally closed
+                    # stream cannot leave a cached descriptor pointing elsewhere.
+                    codec = (self.stream.encoding, self.stream.errors)
+                    if self._stderr_encoder is None or self._stderr_codec != codec:
+                        self._stderr_encoder = codecs.getincrementalencoder(codec[0])(codec[1])
+                        self._stderr_codec = codec
+                    encoded = self._stderr_encoder.encode(text)
+                    remaining = memoryview(encoded)
+                    while remaining:
+                        written = os.write(2, remaining)
+                        if written <= 0:
+                            raise OSError("Terminal output made no progress.")
+                        remaining = remaining[written:]
+                else:
+                    self.stream.write(text)
+                    self.stream.flush()
+            except Exception:
+                self._output_failed.set()
 
 
 def _error_code(value: object) -> str:

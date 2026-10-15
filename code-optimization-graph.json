@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "graph_id": "re-ctm-code-optimization",
   "title": "Re-CTM 功能优先代码优化图",
-  "updated_at": "2026-08-31T23:37:23-07:00",
+  "updated_at": "2026-10-15T07:19:00Z",
   "one_sentence_rule": "只做能够以功能正确性、安全边界、可靠性、可维护性或可验证性能收益证明价值的最小代码改进。",
   "purpose": "记录代码清理与重构的原因、功能收益、依赖、执行顺序、验收条件和不可覆盖的执行回执，防止为了优化而优化。",
   "governance": {
@@ -759,6 +759,406 @@
         "OPT-015"
       ],
       "receipt_required": true
+    },
+    {
+      "id": "OPT-017",
+      "kind": "compatibility_reliability",
+      "title": "移植 MTM 的 workspace、OAuth 与交互可靠性能力",
+      "status": "superseded",
+      "priority": "P0",
+      "problem": "Re-CTM 0.3.0 仍有 MTM 已修复的长行 UTF-8 分页停滞、Git 仓库选择/边界不一致、并发首启密钥覆盖以及 /mcp OAuth resource discovery 缺口；日常 TUI 重复显示成功行。",
+      "functional_outcome": "在保留 Python 产品、24 个公开工具、11 个隐藏别名、schema 2、protocol 2 和三种 Native 模式的前提下，提供无损且可校验续读、显式 workspace 内 Git 仓库选择、无覆盖密钥初始化、path-aware OAuth 和简洁/详细 TUI。",
+      "evidence": [
+        "MTM b5dbd2577869d2aaf7b0933373df6671d104581c: docs/MTM-016-WORKSPACE-REPAIR.md and actual workspace_read/workspace_git implementations.",
+        "MTM docs/MTM-015-CAPABILITY-REPAIR.md and crates/mtm-runtime/src/config.rs document non-overwriting publication and path-aware OAuth.",
+        "Re-CTM NativeWorkspace.read_file truncates a first long line without a byte continuation, ctm_compat Git tools inconsistently use workspace.root, config._load_or_create_secret uses exists then os.replace, server exposes only origin-level resource metadata.",
+        "MTM crates/mtm-runtime/src/operator.rs provides quiet default and verbose lifecycle diagnostics.",
+        "MTM MTM-018-ERROR-REVIEW-20261002 and latex_scan.rs fix verbatim false positives and digit-adjacent TeX control-word misses in inherited static scans.",
+        "Baseline python3 scripts/run_local_checks.py ran 142 tests: 3 failures and 5 errors from unavailable Bubblewrap isolation/required compilation; other deterministic checks passed. Full failure evidence retained in /tmp/re-ctm-baseline-validation.json for comparison.",
+        "Independent local review reproduced repository filter.<driver>.clean/process execution by read-only Git diff/blame outside Native isolation. The existing root-only path had the same risk; nested repo support must not extend it without a fail-closed check.",
+        "A disposable promisor repository with a missing blob and an ext:: helper remote reproduced lazy-fetch command execution through git_show. Read-only Git must also fail closed on promisor/partial-clone configuration and prohibit remote transports/lazy fetch."
+      ],
+      "scope": [
+        "src/re_ctm/native.py, ctm_compat.py and tools.py: additive lossless read continuation and Git repository selection with regressions.",
+        "src/re_ctm/config.py, oauth.py and server.py: secret publication and /mcp resource compatibility with negative and integration tests.",
+        "src/re_ctm/terminal_ui.py and cli.py: default one-line tool starts plus failures, opt-in verbose lifecycle.",
+        "User-facing backport matrix, README/deployment notes, project progress and deterministic local validation.",
+        "src/re_ctm/latex.py and bounded lexical scanner tests: adopt MTM literal-aware static safety checking, retaining isolated compilation and finalizer gates.",
+        "Prevent configured Git clean/process helpers from executing via read-only tools; retain fail-closed Native execution boundary and add marker-based regressions."
+      ],
+      "non_goals": [
+        "No MTM Rust rewrite, apply_changes tool, schema/protocol migration, fact graph, persistent submission receipts, permission-mode removal or hidden-alias removal.",
+        "No changes to Native execution lifecycle/isolation, workflow ownership/capabilities, verifier/finalizer authority or mathematical artifacts.",
+        "No installation, deployment, commit, push, production state access or claim of real browser/target-host qualification.",
+        "No broad refactoring, formatting or performance claims."
+      ],
+      "acceptance_criteria": [
+        "All existing public tool names/aliases and persisted schema/protocol remain unchanged.",
+        "UTF-8 long-line pages reconstruct exact original text and changed files fail closed; continuations validate through public schemas.",
+        "All five Git tools select explicit nested repositories and cannot discover repositories or Git metadata outside the workspace.",
+        "Concurrent secret initialization returns a single persisted key; invalid/symlink keys fail closed without replacement.",
+        "Origin-level OAuth remains compatible; /mcp metadata, challenges, PKCE/resource binding and bearer validation work with rejection of wrong origins/resources.",
+        "TUI compact mode suppresses successful completion/trace noise and verbose mode remains redacted.",
+        "Targeted regressions, optimization/documentation validators and python3 scripts/run_local_checks.py pass; manual validation stays pending.",
+        "Literal appendices can pass the bounded scanner while active \\openout1/\\openin1 and executable literal options remain rejected; no mathematical/compiled-LaTeX qualification claim.",
+        "Read-only Git operations reject active clean/process helper configuration before helper execution, with no marker side effect; do not silently grant arbitrary Native execution.",
+        "Promisor/partial-clone repositories and remote transport helpers cannot initiate execution/network through read-only Git; ext-helper marker regression remains absent."
+      ],
+      "validation_commands": [
+        "python3 scripts/validate_code_optimization_graph.py",
+        "PYTHONPATH=src python3 -m unittest discover -s tests -v",
+        "python3 scripts/run_local_checks.py"
+      ],
+      "rollback": "Revert only OPT-017 source/test/documentation changes after reviewing the diff. No database migration or key rotation is performed; preserve the existing persisted secret and runtime data.",
+      "risk": "Medium: paging and Git accept additive arguments; OAuth adds a second exact audience while preserving issuer checks. Security-negative and full compatibility tests are required.",
+      "dependencies": [],
+      "receipt_required": true,
+      "superseded_by": [
+        "OPT-018",
+        "OPT-019",
+        "OPT-020",
+        "OPT-021"
+      ],
+      "superseded_reason": "Compatible implementation retained; the user subsequently authorized the breaking MTM contracts. Its current-source 24-tool gate becomes historical. Full target-host acceptance was never claimed."
+    },
+    {
+      "id": "OPT-018",
+      "kind": "functional_contract_migration",
+      "title": "MTM v11 Native 契约与受控结构化编辑",
+      "status": "blocked",
+      "priority": "P0",
+      "problem": "Native tool/parser/output and mutation replay gaps to MTM 19-tool foundation.",
+      "functional_outcome": "Implement apply_changes transactions/revisions, patch improvements, argv/PATH semantics, bounded process outcomes and current Native contracts without weakening isolation.",
+      "evidence": [
+        "MTM docs/MTM-018-CTM-050-INTEGRATION.md and crates/mtm-runtime workspace mutation/replay sources.",
+        "User explicitly approved migration to the new contracts on 2026-10-14 after being told that new tools/protocol3/database formats break the previous frozen interface."
+      ],
+      "scope": [
+        "Native runtime, structured mutation/replay modules, process/policy/catalog tests."
+      ],
+      "non_goals": [
+        "No workflow state/database authority; no live mode/settings changes or deployment.",
+        "No Work/Codex launch, push, installation, selector change, production database access or target qualification claim."
+      ],
+      "acceptance_criteria": [
+        "Actual behavior and error/recovery boundaries match the mapped MTM source contract; no version-only completion.",
+        "Focused positive/negative/restart/transaction tests pass and old-state upgrade paths are exercised on disposable copies.",
+        "Run full local checks without hiding inherited host failures; record source versus target-host validation boundaries.",
+        "Integrate one production authority for each invariant and append exact implementation/test receipt."
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src python3 -m unittest discover -s tests -v",
+        "python3 scripts/run_local_checks.py",
+        "python3 scripts/validate_code_optimization_graph.py"
+      ],
+      "rollback": "Keep pre-migration source and schema-2 fixture copies. Roll back source only with reviewed diffs; newer databases require a preserved pre-upgrade copy, never decrement user_version or delete receipts.",
+      "risk": "High: coordinated breaking contract and additive state upgrades; no live data migration. Keep authority and replay failures closed.",
+      "dependencies": [
+        "OPT-017"
+      ],
+      "receipt_required": true,
+      "blockers": [
+        "Current cloud host cannot complete Bubblewrap attestation (NETLINK_ROUTE Operation not permitted), leaving five real Native isolation/lifecycle errors and one required LaTeX failure. Target-host/browser/external-source/mathematical acceptance is not established. No test is skipped and the production isolation gate remains fail-closed."
+      ],
+      "implementation_status": "implemented_and_locally_reviewed_target_validation_blocked"
+    },
+    {
+      "id": "OPT-019",
+      "kind": "functional_contract_migration",
+      "title": "版本化 schema 3–8 与持久提交恢复存储",
+      "status": "blocked",
+      "priority": "P0",
+      "problem": "Re-CTM schema 2 lacks creation/step receipts, write journals, atomic-action enrollment and fact tables needed by current MTM contracts.",
+      "functional_outcome": "Provide transactional additive schema upgrades and narrow storage APIs for receipts/checkpoints/atomic transitions with restart/recovery evidence.",
+      "evidence": [
+        "MTM crates/mtm-storage/src/schema.rs and step_receipts/step_checkpoints/creation_receipts/step_write_journal/atomic_actions sources.",
+        "User explicitly approved migration to the new contracts on 2026-10-14 after being told that new tools/protocol3/database formats break the previous frozen interface."
+      ],
+      "scope": [
+        "storage_schema.py, storage.py and dedicated receipt/recovery modules and migration tests."
+      ],
+      "non_goals": [
+        "No opening real user databases, destructive migration, arbitrary callback/file/network work inside SQL transactions, or blind replay of unknown legacy operations.",
+        "No Work/Codex launch, push, installation, selector change, production database access or target qualification claim."
+      ],
+      "acceptance_criteria": [
+        "Actual behavior and error/recovery boundaries match the mapped MTM source contract; no version-only completion.",
+        "Focused positive/negative/restart/transaction tests pass and old-state upgrade paths are exercised on disposable copies.",
+        "Run full local checks without hiding inherited host failures; record source versus target-host validation boundaries.",
+        "Integrate one production authority for each invariant and append exact implementation/test receipt."
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src python3 -m unittest discover -s tests -v",
+        "python3 scripts/run_local_checks.py",
+        "python3 scripts/validate_code_optimization_graph.py"
+      ],
+      "rollback": "Keep pre-migration source and schema-2 fixture copies. Roll back source only with reviewed diffs; newer databases require a preserved pre-upgrade copy, never decrement user_version or delete receipts.",
+      "risk": "High: coordinated breaking contract and additive state upgrades; no live data migration. Keep authority and replay failures closed.",
+      "dependencies": [
+        "OPT-017"
+      ],
+      "receipt_required": true,
+      "blockers": [
+        "Current cloud host cannot complete Bubblewrap attestation (NETLINK_ROUTE Operation not permitted), leaving five real Native isolation/lifecycle errors and one required LaTeX failure. Target-host/browser/external-source/mathematical acceptance is not established. No test is skipped and the production isolation gate remains fail-closed."
+      ],
+      "implementation_status": "implemented_and_locally_reviewed_target_validation_blocked"
+    },
+    {
+      "id": "OPT-020",
+      "kind": "functional_contract_migration",
+      "title": "protocol 3 研究契约与运行状态",
+      "status": "blocked",
+      "priority": "P0",
+      "problem": "Protocol 2 does not have MTM typed research graph, causal attempt records, bounded advice/task views or protocol3 write/action normalization.",
+      "functional_outcome": "Implement real protocol3 state/normalization/methodology with old persisted protocol1/2 behavior maintained and strict verifier domain firewall.",
+      "evidence": [
+        "MTM crates/mtm-workflow/src/research_state and methodology.rs; actual engine protocol3 integration.",
+        "User explicitly approved migration to the new contracts on 2026-10-14 after being told that new tools/protocol3/database formats break the previous frozen interface."
+      ],
+      "scope": [
+        "Research-state pure modules, methodology/task overlays, workflow integration and full/compact/branch recovery tests."
+      ],
+      "non_goals": [
+        "No version-only relabeling, fabricated model evidence, verifier shortcut or finalizer authority expansion.",
+        "No Work/Codex launch, push, installation, selector change, production database access or target qualification claim."
+      ],
+      "acceptance_criteria": [
+        "Actual behavior and error/recovery boundaries match the mapped MTM source contract; no version-only completion.",
+        "Focused positive/negative/restart/transaction tests pass and old-state upgrade paths are exercised on disposable copies.",
+        "Run full local checks without hiding inherited host failures; record source versus target-host validation boundaries.",
+        "Integrate one production authority for each invariant and append exact implementation/test receipt."
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src python3 -m unittest discover -s tests -v",
+        "python3 scripts/run_local_checks.py",
+        "python3 scripts/validate_code_optimization_graph.py"
+      ],
+      "rollback": "Keep pre-migration source and schema-2 fixture copies. Roll back source only with reviewed diffs; newer databases require a preserved pre-upgrade copy, never decrement user_version or delete receipts.",
+      "risk": "High: coordinated breaking contract and additive state upgrades; no live data migration. Keep authority and replay failures closed.",
+      "dependencies": [
+        "OPT-017"
+      ],
+      "receipt_required": true,
+      "blockers": [
+        "Current cloud host cannot complete Bubblewrap attestation (NETLINK_ROUTE Operation not permitted), leaving five real Native isolation/lifecycle errors and one required LaTeX failure. Target-host/browser/external-source/mathematical acceptance is not established. No test is skipped and the production isolation gate remains fail-closed."
+      ],
+      "implementation_status": "implemented_and_locally_reviewed_target_validation_blocked"
+    },
+    {
+      "id": "OPT-021",
+      "kind": "functional_contract_migration",
+      "title": "验证事实图与项目长期记忆",
+      "status": "blocked",
+      "priority": "P0",
+      "problem": "Current project registry does not persist verified fact DAGs or advisory cross-run findings.",
+      "functional_outcome": "Add content-addressed immutable facts, dependency/revocation invariants, bounded advisory memory and finalizer-gated atomic project promotion plus operator CLI.",
+      "evidence": [
+        "MTM docs/MTM-017-DANGEROUS-ONLY-AND-FACT-MEMORY.md and fact_memory/memory graph sources.",
+        "User explicitly approved migration to the new contracts on 2026-10-14 after being told that new tools/protocol3/database formats break the previous frozen interface."
+      ],
+      "scope": [
+        "Pure fact/graph/memory projection modules, storage integration, workflow promotion/task view and local CLI tests."
+      ],
+      "non_goals": [
+        "No model-controlled verified facts, Native project authority, live user revocation or backfilled unverifiable legacy proof facts.",
+        "No Work/Codex launch, push, installation, selector change, production database access or target qualification claim."
+      ],
+      "acceptance_criteria": [
+        "Actual behavior and error/recovery boundaries match the mapped MTM source contract; no version-only completion.",
+        "Focused positive/negative/restart/transaction tests pass and old-state upgrade paths are exercised on disposable copies.",
+        "Run full local checks without hiding inherited host failures; record source versus target-host validation boundaries.",
+        "Integrate one production authority for each invariant and append exact implementation/test receipt."
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src python3 -m unittest discover -s tests -v",
+        "python3 scripts/run_local_checks.py",
+        "python3 scripts/validate_code_optimization_graph.py"
+      ],
+      "rollback": "Keep pre-migration source and schema-2 fixture copies. Roll back source only with reviewed diffs; newer databases require a preserved pre-upgrade copy, never decrement user_version or delete receipts.",
+      "risk": "High: coordinated breaking contract and additive state upgrades; no live data migration. Keep authority and replay failures closed.",
+      "dependencies": [
+        "OPT-017",
+        "OPT-019"
+      ],
+      "receipt_required": true,
+      "blockers": [
+        "Current cloud host cannot complete Bubblewrap attestation (NETLINK_ROUTE Operation not permitted), leaving five real Native isolation/lifecycle errors and one required LaTeX failure. Target-host/browser/external-source/mathematical acceptance is not established. No test is skipped and the production isolation gate remains fail-closed."
+      ],
+      "implementation_status": "implemented_and_locally_reviewed_target_validation_blocked"
+    },
+    {
+      "id": "OPT-022",
+      "kind": "release_validation",
+      "title": "目标机隔离部署与发布验收",
+      "status": "blocked",
+      "priority": "P0",
+      "problem": "The migrated 0.4.0 source has only cloud-host validation; real isolation/LaTeX checks remain blocked and release smoke/manual instructions still contain obsolete 24-tool/hidden-alias expectations.",
+      "functional_outcome": "Validate the requested target deployment in isolated disposable instances, correct demonstrated release-tooling defects, and produce an evidence-based release readiness decision without disturbing the existing MTM service.",
+      "evidence": [
+        "User explicitly requested deployment and validation on this MTM host to reach release quality on 2026-10-14, retaining the no Work/Codex constraint; GitHub actions remain user-owned.",
+        "scripts/smoke_oauth_mcp.py expects 24 tools and accepted rethlas_status alias despite the current 25-tool v11 contract.",
+        "MTM execution attestation reports nested_user_namespaces_disabled=true; target-native testing must identify this boundary rather than weakening it.",
+        "Target connector full gate now runs 497 tests:491 pass,1failure+5errors, unchanged six real-isolation/required-LaTeX checks blocked by nested namespace ENOSPC.",
+        "Installed wheel exposed a real validate-graph defect; the validator is now packaged with a drift-checked graph resource. Source distribution is self-contained and offline-built into a clean installed wheel.",
+        "Scripted local OAuth/MCP33 tests and strict host-driver12 regressions pass. Ordinary terminal strict acceptance remains necessary."
+      ],
+      "scope": [
+        "Target environment/dependency preflight, complete tests, installed-package checks, temporary OAuth/MCP/protocol3/schema8/LaTeX recovery exercises and browser gates where supported.",
+        "Bounded fixes to release scripts, contradictory active documentation, regression tests and truthful target evidence."
+      ],
+      "non_goals": [
+        "No Work/Codex/cloud task launch, git push or public release.",
+        "No replacement of running MTM, real credential changes, live security-policy reduction, production database migration or unapproved dependency installation."
+      ],
+      "acceptance_criteria": [
+        "Full source and installed-package gates pass without skipped isolation tests, or concrete environment/authorization blockers remain explicitly recorded.",
+        "Current 25-tool/protocol3/schema8 release probes reject retired aliases and preserve old persisted protocol1/2 behavior.",
+        "Temporary OAuth/MCP end-to-end and real LaTeX/Native isolation have separate evidence; browser and methodology quality are never inferred from unit or build success.",
+        "Historical reports remain intact; append-only receipt records exact target commands, results, fixes and unresolved release gates."
+      ],
+      "validation_commands": [
+        "python3 scripts/run_local_checks.py",
+        "python3 scripts/manual_native_isolation_test.py --workspace <disposable-workspace> --data-root <disposable-data> --private-root <disposable-private> --output <new-target-report>",
+        "python3 scripts/smoke_oauth_mcp.py --base-url <temporary-loopback-instance> --output <new-target-report>",
+        "python3 scripts/validate_code_optimization_graph.py"
+      ],
+      "rollback": "Keep delivered source/hash evidence and all historical reports; revert only reviewed source fixes. Dispose only this task's temporary instances after stopping its owned processes. Never downgrade or alter live state.",
+      "risk": "Real deployment/security validation is high-risk; use disposable isolated state and existing trusted dependencies. A connector namespace restriction is a release blocker, never permission to escape or disable it.",
+      "dependencies": [],
+      "receipt_required": true,
+      "blockers": [
+        "MTM connector deliberately disables nested user namespaces; six real Bubblewrap/required-LaTeX tests need ordinary-host execution.",
+        "Actual intended browser/client, real external source quality, interactive terminal and mathematical/operator acceptance remain pending."
+      ]
+    },
+    {
+      "id": "OPT-023",
+      "kind": "reliability_fix",
+      "title": "Prevent broken terminal output from corrupting CLI shutdown status",
+      "status": "blocked",
+      "priority": "P0",
+      "problem": "Real closed-PTY and closed-pipe source diagnostics preserve OAuth/MCP service but convert the intended SIGINT exit 130 into Python exit 120 because failed TerminalSession writes leave buffered standard stderr pending at interpreter shutdown.",
+      "functional_outcome": "Keep terminal observation presentation-only, including process shutdown: broken default stderr must not corrupt the server's exit status, responses, durable events or owned-resource cleanup.",
+      "evidence": [
+        ".release-validation/terminal-probe-20261014/source-diagnostic-result-20261014T173017Z-6e373d.json: paused PTY passes 1024 requests with 2748 drops; closed PTY and pipe each preserve 64 requests but exit 120.",
+        ".release-validation/terminal-probe-20261014/source-flush-diagnostic-result-20261014T173142Z-c51915.json: atexit stderr.flush fails with EIO (5) for closed PTY and EPIPE (32) for closed pipe.",
+        "User-authorized target deployment and release validation includes bounded necessary repairs; parent authorized this reproduced source defect fix. Native-disabled diagnostics are source-only, not isolation or installed-host acceptance."
+      ],
+      "scope": [
+        "Only default standard-stderr terminal-observer writing, fail-closed write handling and targeted real-process PTY/pipe regressions.",
+        "Append truthful optimization/progress evidence and operator documentation; retain all frozen source/package/report history."
+      ],
+      "non_goals": [
+        "No fd2 close/replacement, process-global stderr mutation, suppression of unrelated errors, or caller-owned stream behavior change.",
+        "No new tool, protocol, schema, Native/backend isolation change, production state, public ingress, package rebuild or publication."
+      ],
+      "acceptance_criteria": [
+        "Real source-process closed PTY and pipe retain working OAuth/MCP and durable events, then close owned listeners on SIGINT with exit 130.",
+        "Actual paused-PTY pressure still drops display events without blocking requests and renders again after draining.",
+        "Custom and replaced streams retain write/flush behavior; partial writes complete and non-progress failures stop subsequent observer writes.",
+        "Run affected tests and full local checks without concealing connector physical-gate blockers; rebuilt installed candidate and ordinary-host acceptance remain pending."
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src:tests python3 -m unittest test_terminal_ui test_terminal_process test_cli -v",
+        "python3 scripts/validate_code_optimization_graph.py",
+        "python3 scripts/run_local_checks.py"
+      ],
+      "rollback": "Revert only OPT-023 source/test/doc changes after review; preserve additive diagnostic and governance history. No database migration or persistent user state changes.",
+      "risk": "Bypassing buffering is limited to untouched standard stderr fd2. Preserve explicit/replaced streams, encoding/error semantics and partial writes; never mutate or close the process-wide descriptor. Real installed host acceptance must be repeated after candidate replacement.",
+      "dependencies": [],
+      "receipt_required": true,
+      "stop_condition": "Stop if the fix requires global descriptor mutation, changes authorization/isolation, masks unrelated failures or expands beyond terminal presentation.",
+      "implementation_status": "fixed_and_source_regressions_passed_rebuilt_host_acceptance_pending",
+      "blockers": [
+        "Full local gate runs 510 tests with 504 passed, zero skips, and the same six real Bubblewrap/required-LaTeX tests blocked by the connector's nested-user-namespace boundary.",
+        "The runtime fix supersedes the prior installed candidate. A rebuilt installed package must repeat strict ordinary-host terminal/physical acceptance; no previous candidate report qualifies the repaired source."
+      ]
+    },
+    {
+      "id": "OPT-024",
+      "kind": "reliability_fix",
+      "title": "Keep Native command parent threads alive beyond HTTP requests",
+      "status": "completed",
+      "priority": "P0",
+      "problem": "Actual Re-CMT4 browser-connector testing returned running, then SIGKILL within 63 ms for a 600 ms Native command. The same command completed when the HTTP call waited. Short-lived ThreadingHTTPServer handlers directly create bwrap with --die-with-parent; Linux parent-death signals track the creating thread.",
+      "functional_outcome": "Native commands remain alive after their issuing HTTP request ends, until normal completion, explicit termination, timeout or service shutdown, without removing parent-death or namespace protection.",
+      "evidence": [
+        ".local-install/workspace/human-authorized-test-20261015T0434Z/human-authorized-test-report.json SHA256 100e7e21387431f2cbc1afd50f030cf116250f342dd34a470760a12c4ca2674f; paired real connector execution: sync exit0/615ms, async SIGKILL/63ms.",
+        "Installed processes.py/native.py/server.py/native_helper_bwrap.py and Linux PR_SET_PDEATHSIG manual identify the creating-thread lifetime hazard.",
+        "User explicitly authorized repair in messages Sentinel_98be26f142588191ac21e0f240663740 and Sentinel_ff58e8215b548191b59a507ef0a769a9.",
+        "Ordinary-host acceptance-20261015T052516Z-0af202a2/report.json SHA256 50f4abf7b3da521b8530bad0e03f9404f694b887fd2ce277485aad54690b0599; host-20261015T052516Z-6c9bdedf all five machine gates passed, lifecycle harness startup failed."
+      ],
+      "scope": [
+        "Bounded process-spawn ownership lifetime and startup/shutdown race handling only where needed.",
+        "Regression tests for real HTTP request termination and an actual attested-Bubblewrap host harness.",
+        "New candidate packaging and safe side-by-side reinstall instructions; no automatic online replacement."
+      ],
+      "non_goals": [
+        "Do not remove --die-with-parent or weaken namespaces, capabilities, credential isolation or toolchain policy.",
+        "Do not change OAuth, tool schemas, workflow protocols, database formats, production state or active service/tunnel.",
+        "No Work, Codex, push, publication or unrelated refactoring."
+      ],
+      "acceptance_criteria": [
+        "A child created from an HTTP handler survives that handler's exit and produces its complete output.",
+        "Async stdin/TTY, explicit kill, timeout, failure and service-close paths preserve ownership and bounded cleanup.",
+        "Old implementation fails the targeted parent-thread regression and patched implementation passes.",
+        "Real ordinary-host OAuth/MCP HTTP plus attested bwrap lifecycle tests pass against the rebuilt installed candidate.",
+        "Source aggregate, packaging identity and independent review are completed; any nested-isolation or user-restart boundary remains explicit."
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src:tests python3 -m unittest test_command_parent_lifetime test_command_v11 test_native_exec_v11 -v",
+        "python3 scripts/validate_code_optimization_graph.py",
+        "python3 scripts/run_local_checks.py",
+        "python3 scripts/manual_native_http_lifecycle_test.py"
+      ],
+      "rollback": "Restore only OPT-024 changes or use the previous preserved install after review; retain all failing and passing evidence. No schema migration or credential rotation.",
+      "risk": "Thread/process handoff must preserve spawn exceptions, PTY descriptor ownership, process-group signaling, timeouts, manager-close behavior and crash cleanup. Real HTTP+bwrap evidence is mandatory; a mock or direct in-process test is insufficient.",
+      "dependencies": [],
+      "receipt_required": true,
+      "stop_condition": "Stop if remediation requires removing parent-death/isolation protection, touching live state, bypassing connector denial or automatically restarting the user's running service.",
+      "implementation_status": "qualified_runtime_installed_live_connector_verified",
+      "blockers": []
+    },
+    {
+      "id": "OPT-025",
+      "kind": "reliability_fix",
+      "title": "Activate the accepted 0.4.1 command with preserved launch defaults",
+      "status": "blocked",
+      "priority": "P1",
+      "problem": "Bare re-ctm currently resolves to 0.3.0 and the accepted 0.4.1 requires a long explicit environment command.",
+      "functional_outcome": "One reversible operator activation makes the existing bare command use the already qualified 0.4.1 installation and the exact accepted workspace/data/isolation defaults.",
+      "evidence": [
+        "MTM command cmd-1661160-1f2-18dea178ee24f725 reported re-ctm 0.3.0.",
+        ".local-install-0.4.1/install-report.json records the verified 0.4.1 wheel and installation.",
+        "User requested final release and replacement of the bare launch command with 0.4."
+      ],
+      "scope": [
+        "Workspace-only activation helper, regression tests, deployment documentation and evidence."
+      ],
+      "non_goals": [
+        "No runtime source change, live state access, service restart, host installation mutation through MTM, credential changes or publication."
+      ],
+      "acceptance_criteria": [
+        "Verify installed runtime bytes against the pinned qualified wheel before launcher replacement.",
+        "Preserve exact accepted workspace/data/private roots, Bubblewrap, required LaTeX, loopback and ephemeral port.",
+        "Atomic launcher replacement preserves the old launcher and provides guarded rollback.",
+        "Rehearse launch arguments, environment isolation and failure paths in disposable workspace roots."
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src:tests python3 -B -m unittest test_activate_release_launcher -v",
+        "python3 scripts/validate_code_optimization_graph.py",
+        "python3 scripts/run_local_checks.py"
+      ],
+      "rollback": "Restore only the launcher backup with the guarded rollback helper; never downgrade or mutate state. Retain the accepted venv and evidence.",
+      "risk": "PATH shadowing and old environment values must not select stale code/state. Activation must not start services or read private data. Host activation needs the ordinary terminal.",
+      "dependencies": [],
+      "receipt_required": true,
+      "stop_condition": "Stop if runtime/state/security changes or bypassing the connector boundary are required.",
+      "blockers": [
+        "Ordinary host must rerun final package checks after a test-only mounted-path correction, then physical launcher rehearsal and activation. The pinned finalization driver stops before activation on package failure.",
+        "Actual short-command operator use and publication remain unperformed."
+      ],
+      "implementation_status": "helper_review_and_regressions_passed_host_activation_pending"
     }
   ],
   "edges": [
@@ -894,6 +1294,41 @@
       "target": "OPT-015",
       "relation": "depends_on",
       "reason": "0.3.0 版本更新必须建立在已完成并验证的一键 Quick Tunnel 用户功能上。"
+    },
+    {
+      "id": "EDGE-020",
+      "source": "OPT-018",
+      "target": "OPT-017",
+      "relation": "depends_on",
+      "reason": "Preserve completed compatible source safety work and integrate new contracts through the required storage authority."
+    },
+    {
+      "id": "EDGE-021",
+      "source": "OPT-019",
+      "target": "OPT-017",
+      "relation": "depends_on",
+      "reason": "Preserve completed compatible source safety work and integrate new contracts through the required storage authority."
+    },
+    {
+      "id": "EDGE-022",
+      "source": "OPT-020",
+      "target": "OPT-017",
+      "relation": "depends_on",
+      "reason": "Preserve completed compatible source safety work and integrate new contracts through the required storage authority."
+    },
+    {
+      "id": "EDGE-023",
+      "source": "OPT-021",
+      "target": "OPT-017",
+      "relation": "depends_on",
+      "reason": "Preserve completed compatible source safety work and integrate new contracts through the required storage authority."
+    },
+    {
+      "id": "EDGE-024",
+      "source": "OPT-021",
+      "target": "OPT-019",
+      "relation": "depends_on",
+      "reason": "Preserve completed compatible source safety work and integrate new contracts through the required storage authority."
     }
   ],
   "todo_list": [
@@ -916,6 +1351,117 @@
         "明确仍待人工验收的部署环境。"
       ],
       "stop_condition": "任一隔离属性、CAS 可用性或生命周期语义退化时立即回退。"
+    },
+    {
+      "order": 2,
+      "optimization_id": "OPT-018",
+      "phase": "User-authorized MTM new-contract migration",
+      "functional_goal": "Implement apply_changes transactions/revisions, patch improvements, argv/PATH semantics, bounded process outcomes and current Native contracts without weakening isolation.",
+      "start_condition": "Exact source interfaces are inventoried; user approval overrides the prior repository contract freeze for this milestone.",
+      "tasks": [
+        "Map authoritative source interfaces/invariants and define module ownership.",
+        "Implement real behavior with regression/fault-injection tests; integrate through reviewed APIs.",
+        "Run exact targeted/full gates and record remaining target or product blockers."
+      ],
+      "receipt_expectations": [
+        "Document actual source changes, migration paths, command exit codes and truthful validation limits."
+      ],
+      "stop_condition": "Stop any live-state/security-setting change, dual authority, irreversible migration, guessed recovery success or failed security boundary; repair or report before continuing."
+    },
+    {
+      "order": 3,
+      "optimization_id": "OPT-019",
+      "phase": "User-authorized MTM new-contract migration",
+      "functional_goal": "Provide transactional additive schema upgrades and narrow storage APIs for receipts/checkpoints/atomic transitions with restart/recovery evidence.",
+      "start_condition": "Exact source interfaces are inventoried; user approval overrides the prior repository contract freeze for this milestone.",
+      "tasks": [
+        "Map authoritative source interfaces/invariants and define module ownership.",
+        "Implement real behavior with regression/fault-injection tests; integrate through reviewed APIs.",
+        "Run exact targeted/full gates and record remaining target or product blockers."
+      ],
+      "receipt_expectations": [
+        "Document actual source changes, migration paths, command exit codes and truthful validation limits."
+      ],
+      "stop_condition": "Stop any live-state/security-setting change, dual authority, irreversible migration, guessed recovery success or failed security boundary; repair or report before continuing."
+    },
+    {
+      "order": 4,
+      "optimization_id": "OPT-020",
+      "phase": "User-authorized MTM new-contract migration",
+      "functional_goal": "Implement real protocol3 state/normalization/methodology with old persisted protocol1/2 behavior maintained and strict verifier domain firewall.",
+      "start_condition": "Exact source interfaces are inventoried; user approval overrides the prior repository contract freeze for this milestone.",
+      "tasks": [
+        "Map authoritative source interfaces/invariants and define module ownership.",
+        "Implement real behavior with regression/fault-injection tests; integrate through reviewed APIs.",
+        "Run exact targeted/full gates and record remaining target or product blockers."
+      ],
+      "receipt_expectations": [
+        "Document actual source changes, migration paths, command exit codes and truthful validation limits."
+      ],
+      "stop_condition": "Stop any live-state/security-setting change, dual authority, irreversible migration, guessed recovery success or failed security boundary; repair or report before continuing."
+    },
+    {
+      "order": 5,
+      "optimization_id": "OPT-021",
+      "phase": "User-authorized MTM new-contract migration",
+      "functional_goal": "Add content-addressed immutable facts, dependency/revocation invariants, bounded advisory memory and finalizer-gated atomic project promotion plus operator CLI.",
+      "start_condition": "Exact source interfaces are inventoried; user approval overrides the prior repository contract freeze for this milestone.",
+      "tasks": [
+        "Map authoritative source interfaces/invariants and define module ownership.",
+        "Implement real behavior with regression/fault-injection tests; integrate through reviewed APIs.",
+        "Run exact targeted/full gates and record remaining target or product blockers."
+      ],
+      "receipt_expectations": [
+        "Document actual source changes, migration paths, command exit codes and truthful validation limits."
+      ],
+      "stop_condition": "Stop any live-state/security-setting change, dual authority, irreversible migration, guessed recovery success or failed security boundary; repair or report before continuing."
+    },
+    {
+      "order": 6,
+      "optimization_id": "OPT-022",
+      "phase": "Target deployment and release validation",
+      "functional_goal": "Produce a truthful target release decision with actual installed/runtime/browser evidence and fix bounded demonstrated defects.",
+      "start_condition": "User requested target deployment; source copy is present and initial tool/README guidance has been inspected.",
+      "tasks": [
+        "Preflight target dependencies and connector execution boundary.",
+        "Run the full gate, fix concrete defects with regressions and run isolated installed-package/OAuth/MCP checks.",
+        "Record passing evidence separately from environment, browser and methodology blockers."
+      ],
+      "receipt_expectations": [
+        "Exact commands/exit codes, protected existing service/state boundary and no invented acceptance."
+      ],
+      "stop_condition": "Pause any new credential/security setting/unrecognized install action; never weaken a failed security gate or declare release-ready with outstanding required evidence."
+    },
+    {
+      "order": 7,
+      "optimization_id": "OPT-023",
+      "phase": "bounded_terminal_shutdown_repair",
+      "functional_goal": "Keep terminal observation presentation-only, including process shutdown: broken default stderr must not corrupt the server's exit status, responses, durable events or owned-resource cleanup.",
+      "start_condition": "Actual closed-PTY/pipe exit-120 failures are reproduced and the repair scope is authorized.",
+      "tasks": [
+        "Implement the smallest default-stderr unbuffered observer path without changing fd ownership.",
+        "Add real-process PTY/pipe and partial-write/custom-stream regressions.",
+        "Run focused/full gates and record pending rebuilt-candidate host acceptance."
+      ],
+      "receipt_expectations": [
+        "Record commands, exact results, old/new behavior, files, risks and remaining physical acceptance."
+      ],
+      "stop_condition": "Stop if the fix requires global descriptor mutation, changes authorization/isolation, masks unrelated failures or expands beyond terminal presentation."
+    },
+    {
+      "order": 8,
+      "optimization_id": "OPT-025",
+      "phase": "accepted_launcher_activation",
+      "functional_goal": "One reversible operator activation makes the existing bare command use the already qualified 0.4.1 installation and the exact accepted workspace/data/isolation defaults.",
+      "start_condition": "Final release follow-on and simple launch requested by user.",
+      "tasks": [
+        "Implement bounded operator activation and regression tests.",
+        "Validate package and unchanged runtime identity; preserve human release gates."
+      ],
+      "receipt_expectations": [
+        "Exact evidence, paths, hashes and explicit operator activation boundary."
+      ],
+      "stop_condition": "Stop if runtime/state/security changes or bypassing the connector boundary are required."
     }
   ],
   "receipt_contract": {
@@ -1688,6 +2234,768 @@
         "The intentionally untouched user artifact pushout_abelianization_exact_sequence.tex remains untracked and must not be included in the release commit."
       ],
       "decision": "accepted"
+    },
+    {
+      "receipt_id": "REC-2026-10-14-017",
+      "optimization_id": "OPT-017",
+      "started_at": "2026-10-14T12:06:30Z",
+      "completed_at": "2026-10-14T12:30:57.536473Z",
+      "status_before": "in_progress",
+      "status_after": "superseded",
+      "functional_goal": "在保留 Python 产品、24 个公开工具、11 个隐藏别名、schema 2、protocol 2 和三种 Native 模式的前提下，提供无损且可校验续读、显式 workspace 内 Git 仓库选择、无覆盖密钥初始化、path-aware OAuth 和简洁/详细 TUI。",
+      "files_changed": [
+        "AGENTS.md",
+        "NOTICE",
+        "README.md",
+        "code-optimization-graph.json",
+        "docs/DEPLOYMENT.md",
+        "docs/MTM_BACKPORT.md",
+        "docs/validation/OPT-017-local-validation.json",
+        "local-validation.json",
+        "project-progress.json",
+        "src/re_ctm/cli.py",
+        "src/re_ctm/config.py",
+        "src/re_ctm/ctm_compat.py",
+        "src/re_ctm/latex.py",
+        "src/re_ctm/latex_scan.py",
+        "src/re_ctm/native.py",
+        "src/re_ctm/native_replay.py",
+        "src/re_ctm/oauth.py",
+        "src/re_ctm/server.py",
+        "src/re_ctm/storage.py",
+        "src/re_ctm/storage_schema.py",
+        "src/re_ctm/terminal_ui.py",
+        "src/re_ctm/tools.py",
+        "tests/test_cli.py",
+        "tests/test_config_secrets.py",
+        "tests/test_ctm_native_compat.py",
+        "tests/test_http.py",
+        "tests/test_http_oauth_resources.py",
+        "tests/test_latex_scan.py",
+        "tests/test_mcp.py",
+        "tests/test_oauth.py",
+        "tests/test_operator_outcomes.py",
+        "tests/test_terminal_ui.py",
+        "tests/test_workspace_git.py",
+        "tests/test_workspace_read.py"
+      ],
+      "commands": [
+        {
+          "command": "python3 scripts/run_local_checks.py",
+          "exit_code": 1,
+          "result": "Final compatible snapshot ran 247 tests: 239 passed, 3 failures and 5 errors exactly match the pre-change Bubblewrap/required-LaTeX host blocker set. compileall, engineering/optimization graphs, error-contract and documentation checks passed. Preserved in docs/validation/OPT-017-local-validation.json."
+        },
+        {
+          "command": "PYTHONPATH=src python3 -m unittest tests.test_workspace_read tests.test_config_secrets tests.test_oauth tests.test_http_oauth_resources tests.test_latex_scan tests.test_terminal_ui tests.test_operator_outcomes tests.test_workspace_git tests.test_mcp",
+          "exit_code": 0,
+          "result": "Independent review final targeted snapshot: 128 tests passed. Additional security tests and final full suite ran afterward; no new deterministic failures."
+        },
+        {
+          "command": "PYTHONPATH=src python3 scripts/benchmark_terminal_ui.py",
+          "exit_code": 0,
+          "result": "20,000 observed events; P95 836ns, zero drops, within existing 20,000ns producer threshold. This is only a local regression bound, not a product performance claim."
+        },
+        {
+          "command": "python3 scripts/validate_code_optimization_graph.py && python3 scripts/validate_documentation_consistency.py && git diff --check",
+          "exit_code": 0,
+          "result": "Governance/document links and whitespace checks passed during compatible-batch review."
+        }
+      ],
+      "tests": [
+        "Lossless content/revision-bound UTF-8/CRLF pagination and public MCP continuations; upper/mixed-case digest validation.",
+        "Explicit bounded repositories, NUL status, literal filters, linked worktrees, history and blame continuation; actual helper-marker tests for filters, lazy-fetch/ext transport, signature and submodule paths.",
+        "Concurrent owner-only secret publication, no-clobber winner/restart continuity, bounded invalid/unsafe-file rejection.",
+        "Legacy and exact /mcp OAuth resource/issuer/audience binding through fixed/local/forwarded loopback HTTP DCR+PKCE.",
+        "Compact/verbose output preserves failures and rejected logical submissions without raw payload/capability output.",
+        "Conservative dual-view LaTeX permits structural literal appendices but retains all literal bodies in forbidden-operation scans; known masking/redefinition reproducers rejected.",
+        "No complete browser/Native-host/compiled-LaTeX/mathematical independence or arbitrary hostile Git/TeX claim."
+      ],
+      "behavior_before": "Re-CTM baseline could loop/drop UTF-8 partial lines, discover unintended repositories, race signing keys on first initialization, omit path-aware MCP OAuth discovery and misclassify routine/rejected tool outcomes; LaTeX digit-adjacent file operations and literal structure had known gaps.",
+      "behavior_after": "Compatible changes implemented and reviewed; direct Git helper execution routes fail closed, and literal structure parsing never hides prohibited operations. Existing public identities and schema/protocol counts were retained for this snapshot. The user-approved new-contract migration now proceeds separately on top of it.",
+      "risk_review": "Full source gate remains false because the same eight target-dependent tests fail in the cloud container. No tests or isolation checks were disabled. Git filter/promisor repos and indexed-submodule status/diff are conservatively refused. Literal forbidden-operation examples remain refused. Historical receipts, manual pending status and production state are untouched.",
+      "rollback": "Revert only OPT-017 source/test/documentation changes after reviewing the diff. No database migration or key rotation is performed; preserve the existing persisted secret and runtime data.",
+      "unresolved": [
+        "Repeat full gate on a Bubblewrap-capable target, including required LaTeX and real browser OAuth acceptance.",
+        "User-authorized new-contract implementation OPT-018 through OPT-021 is in progress; this compatibility snapshot does not qualify those later changes."
+      ],
+      "decision": "partial"
+    },
+    {
+      "receipt_id": "REC-2026-10-14-018",
+      "optimization_id": "OPT-018",
+      "started_at": "2026-10-14T12:30:57Z",
+      "completed_at": "2026-10-14T13:00:23.879518Z",
+      "status_before": "in_progress",
+      "status_after": "blocked",
+      "functional_goal": "Native v11 structured changes, authenticated bounded replay and truthful process contracts",
+      "files_changed": [
+        "src/re_ctm/native_catalog.py",
+        "src/re_ctm/native_changes.py",
+        "src/re_ctm/native_patch.py",
+        "src/re_ctm/native_replay.py",
+        "src/re_ctm/native_exec.py",
+        "src/re_ctm/native.py",
+        "src/re_ctm/processes.py",
+        "src/re_ctm/ctm_compat.py",
+        "src/re_ctm/config.py",
+        "src/re_ctm/tools.py",
+        "docs/MTM_MIGRATION.md",
+        "docs/validation/MTM-0.4-local-validation.json",
+        "project-progress.json"
+      ],
+      "commands": [
+        {
+          "command": "python3 scripts/run_local_checks.py",
+          "exit_code": 1,
+          "result": "459 tests: 453 passed, 1 failure and 5 errors, all six in unchanged real Bubblewrap/required-LaTeX target-dependent checks. Compile, engineering graph, optimization graph, error audit and documentation pass."
+        },
+        {
+          "command": "PYTHONPATH=src:tests python3 -m unittest test_native_review_v11 test_native_changes_v11 test_workspace_read test_native_exec_v11 test_native_catalog_v11 test_git_untracked_v11 test_workflow_review_v11 test_submission_recovery_integration -q",
+          "exit_code": 0,
+          "result": "Independent final scoped review: 101 passed, zero failures/errors/skips before final output-shape metadata refinement; full suite separately covers refinement."
+        },
+        {
+          "command": "python3 scripts/validate_code_optimization_graph.py && python3 scripts/validate_documentation_consistency.py && git diff --check",
+          "exit_code": 0,
+          "result": "Governance, current contract/version facts, documentation links and whitespace checks passed."
+        }
+      ],
+      "tests": [
+        "Six action transaction/revision/rollback tests, current patch matcher and idempotency/unknown-slot tests.",
+        "Independent installed-file ownership, private-parent read and cleanup race regressions.",
+        "All 19 actual Native success/error outputs validate against canonical output schemas; argv/PATH/nonzero/timeout/terminal-once and Git untracked bounds."
+      ],
+      "behavior_before": "Baseline 0.3.0 public contract was Native18 plus six workflow facades, hidden aliases, schema2 and protocol2; the compatible OPT017 snapshot is preserved separately.",
+      "behavior_after": "Native v11 structured changes, authenticated bounded replay and truthful process contracts. Implemented through the existing OAuth, StateStore, capability and mechanical-finalizer authority rather than a parallel runtime. Current v0.4.0 is unreleased source, not a target deployment.",
+      "risk_review": "Current cloud host cannot complete Bubblewrap attestation (NETLINK_ROUTE Operation not permitted), leaving five real Native isolation/lifecycle errors and one required LaTeX failure. Target-host/browser/external-source/mathematical acceptance is not established. No test is skipped and the production isolation gate remains fail-closed. Native/helper/private/vault tests exercise specific adversarial races; this is not a comprehensive security audit or arbitrary power-loss proof.",
+      "rollback": "Keep pre-migration source and schema-2 fixture copies. Roll back source only with reviewed diffs; newer databases require a preserved pre-upgrade copy, never decrement user_version or delete receipts.",
+      "unresolved": [
+        "Repeat full gate on a Bubblewrap-capable host with real LaTeX and browser OAuth acceptance.",
+        "Operator must back up live private state before a real upgrade; no live migration, revoke, deployment, commit or push was performed."
+      ],
+      "decision": "partial"
+    },
+    {
+      "receipt_id": "REC-2026-10-14-019",
+      "optimization_id": "OPT-019",
+      "started_at": "2026-10-14T12:30:57Z",
+      "completed_at": "2026-10-14T13:00:23.879518Z",
+      "status_before": "in_progress",
+      "status_after": "blocked",
+      "functional_goal": "Durable authority-bound creation and submission receipts with nonexecuting recovery",
+      "files_changed": [
+        "src/re_ctm/storage_schema.py",
+        "src/re_ctm/storage.py",
+        "src/re_ctm/storage_creation.py",
+        "src/re_ctm/storage_receipts.py",
+        "src/re_ctm/storage_recovery.py",
+        "src/re_ctm/storage_actions.py",
+        "src/re_ctm/workflow_creation.py",
+        "src/re_ctm/workflow_submission.py",
+        "src/re_ctm/workflow_actions.py",
+        "src/re_ctm/vault_effects.py",
+        "src/re_ctm/capabilities.py",
+        "src/re_ctm/vault.py",
+        "docs/MTM_MIGRATION.md",
+        "docs/validation/MTM-0.4-local-validation.json",
+        "project-progress.json"
+      ],
+      "commands": [
+        {
+          "command": "python3 scripts/run_local_checks.py",
+          "exit_code": 1,
+          "result": "459 tests: 453 passed, 1 failure and 5 errors, all six in unchanged real Bubblewrap/required-LaTeX target-dependent checks. Compile, engineering graph, optimization graph, error audit and documentation pass."
+        },
+        {
+          "command": "PYTHONPATH=src:tests python3 -m unittest test_native_review_v11 test_native_changes_v11 test_workspace_read test_native_exec_v11 test_native_catalog_v11 test_git_untracked_v11 test_workflow_review_v11 test_submission_recovery_integration -q",
+          "exit_code": 0,
+          "result": "Independent final scoped review: 101 passed, zero failures/errors/skips before final output-shape metadata refinement; full suite separately covers refinement."
+        },
+        {
+          "command": "python3 scripts/validate_code_optimization_graph.py && python3 scripts/validate_documentation_consistency.py && git diff --check",
+          "exit_code": 0,
+          "result": "Governance, current contract/version facts, documentation links and whitespace checks passed."
+        }
+      ],
+      "tests": [
+        "Every supported schema migration preserves legacy state; SQL fault-injection and two-connection reservation fencing.",
+        "Creation key/input/workspace binding, no-clobber initialization and durable replay; exact step replay returns historical no-authority evidence.",
+        "Caller-file/SQL checkpoints, interrupted action evidence, changed-payload refusal, verifier retry idempotence and next-task failure after commit.",
+        "Recovery never runs missing work; equal-byte/opaque/missing evidence stays unknown, callbacks execute after private locks."
+      ],
+      "behavior_before": "Baseline 0.3.0 public contract was Native18 plus six workflow facades, hidden aliases, schema2 and protocol2; the compatible OPT017 snapshot is preserved separately.",
+      "behavior_after": "Durable authority-bound creation and submission receipts with nonexecuting recovery. Implemented through the existing OAuth, StateStore, capability and mechanical-finalizer authority rather than a parallel runtime. Current v0.4.0 is unreleased source, not a target deployment.",
+      "risk_review": "Current cloud host cannot complete Bubblewrap attestation (NETLINK_ROUTE Operation not permitted), leaving five real Native isolation/lifecycle errors and one required LaTeX failure. Target-host/browser/external-source/mathematical acceptance is not established. No test is skipped and the production isolation gate remains fail-closed. Native/helper/private/vault tests exercise specific adversarial races; this is not a comprehensive security audit or arbitrary power-loss proof.",
+      "rollback": "Keep pre-migration source and schema-2 fixture copies. Roll back source only with reviewed diffs; newer databases require a preserved pre-upgrade copy, never decrement user_version or delete receipts.",
+      "unresolved": [
+        "Repeat full gate on a Bubblewrap-capable host with real LaTeX and browser OAuth acceptance.",
+        "Operator must back up live private state before a real upgrade; no live migration, revoke, deployment, commit or push was performed."
+      ],
+      "decision": "partial"
+    },
+    {
+      "receipt_id": "REC-2026-10-14-020",
+      "optimization_id": "OPT-020",
+      "started_at": "2026-10-14T12:30:57Z",
+      "completed_at": "2026-10-14T13:00:23.879518Z",
+      "status_before": "in_progress",
+      "status_after": "blocked",
+      "functional_goal": "Protocol 3 typed mathematical research with bounded role-safe projections",
+      "files_changed": [
+        "src/re_ctm/research_state/__init__.py",
+        "src/re_ctm/research_state/protocol.py",
+        "src/re_ctm/research_state/model.py",
+        "src/re_ctm/research_state/normalize.py",
+        "src/re_ctm/methodology.py",
+        "src/re_ctm/resources/methodology_protocol3.json",
+        "src/re_ctm/workflow.py",
+        "src/re_ctm/rethlas_contracts.py",
+        "src/re_ctm/tools.py",
+        "docs/MTM_MIGRATION.md",
+        "docs/validation/MTM-0.4-local-validation.json",
+        "project-progress.json"
+      ],
+      "commands": [
+        {
+          "command": "python3 scripts/run_local_checks.py",
+          "exit_code": 1,
+          "result": "459 tests: 453 passed, 1 failure and 5 errors, all six in unchanged real Bubblewrap/required-LaTeX target-dependent checks. Compile, engineering graph, optimization graph, error audit and documentation pass."
+        },
+        {
+          "command": "PYTHONPATH=src:tests python3 -m unittest test_native_review_v11 test_native_changes_v11 test_workspace_read test_native_exec_v11 test_native_catalog_v11 test_git_untracked_v11 test_workflow_review_v11 test_submission_recovery_integration -q",
+          "exit_code": 0,
+          "result": "Independent final scoped review: 101 passed, zero failures/errors/skips before final output-shape metadata refinement; full suite separately covers refinement."
+        },
+        {
+          "command": "python3 scripts/validate_code_optimization_graph.py && python3 scripts/validate_documentation_consistency.py && git diff --check",
+          "exit_code": 0,
+          "result": "Governance, current contract/version facts, documentation links and whitespace checks passed."
+        }
+      ],
+      "tests": [
+        "Typed server-stamped events/counterexamples and reserved-field rejection; canonical plans/node dependencies/obstructions/replan.",
+        "Bounded DAG/frontier/advisory projection and generator/repair-only broad research context.",
+        "Real persisted protocol1/2 reopen/resume retains legacy requirements; default protocol3 MCP flow reaches verification/finalization/export."
+      ],
+      "behavior_before": "Baseline 0.3.0 public contract was Native18 plus six workflow facades, hidden aliases, schema2 and protocol2; the compatible OPT017 snapshot is preserved separately.",
+      "behavior_after": "Protocol 3 typed mathematical research with bounded role-safe projections. Implemented through the existing OAuth, StateStore, capability and mechanical-finalizer authority rather than a parallel runtime. Current v0.4.0 is unreleased source, not a target deployment.",
+      "risk_review": "Current cloud host cannot complete Bubblewrap attestation (NETLINK_ROUTE Operation not permitted), leaving five real Native isolation/lifecycle errors and one required LaTeX failure. Target-host/browser/external-source/mathematical acceptance is not established. No test is skipped and the production isolation gate remains fail-closed. Native/helper/private/vault tests exercise specific adversarial races; this is not a comprehensive security audit or arbitrary power-loss proof.",
+      "rollback": "Keep pre-migration source and schema-2 fixture copies. Roll back source only with reviewed diffs; newer databases require a preserved pre-upgrade copy, never decrement user_version or delete receipts.",
+      "unresolved": [
+        "Repeat full gate on a Bubblewrap-capable host with real LaTeX and browser OAuth acceptance.",
+        "Operator must back up live private state before a real upgrade; no live migration, revoke, deployment, commit or push was performed."
+      ],
+      "decision": "partial"
+    },
+    {
+      "receipt_id": "REC-2026-10-14-021",
+      "optimization_id": "OPT-021",
+      "started_at": "2026-10-14T12:30:57Z",
+      "completed_at": "2026-10-14T13:00:23.879518Z",
+      "status_before": "in_progress",
+      "status_after": "blocked",
+      "functional_goal": "Finalizer-gated immutable verified fact DAG, bounded advisory memory and operator tools",
+      "files_changed": [
+        "src/re_ctm/fact_memory.py",
+        "src/re_ctm/fact_graph.py",
+        "src/re_ctm/fact_store.py",
+        "src/re_ctm/storage.py",
+        "src/re_ctm/workflow.py",
+        "src/re_ctm/cli.py",
+        "docs/MTM_MIGRATION.md",
+        "docs/validation/MTM-0.4-local-validation.json",
+        "project-progress.json"
+      ],
+      "commands": [
+        {
+          "command": "python3 scripts/run_local_checks.py",
+          "exit_code": 1,
+          "result": "459 tests: 453 passed, 1 failure and 5 errors, all six in unchanged real Bubblewrap/required-LaTeX target-dependent checks. Compile, engineering graph, optimization graph, error audit and documentation pass."
+        },
+        {
+          "command": "PYTHONPATH=src:tests python3 -m unittest test_native_review_v11 test_native_changes_v11 test_workspace_read test_native_exec_v11 test_native_catalog_v11 test_git_untracked_v11 test_workflow_review_v11 test_submission_recovery_integration -q",
+          "exit_code": 0,
+          "result": "Independent final scoped review: 101 passed, zero failures/errors/skips before final output-shape metadata refinement; full suite separately covers refinement."
+        },
+        {
+          "command": "python3 scripts/validate_code_optimization_graph.py && python3 scripts/validate_documentation_consistency.py && git diff --check",
+          "exit_code": 0,
+          "result": "Governance, current contract/version facts, documentation links and whitespace checks passed."
+        }
+      ],
+      "tests": [
+        "MTM golden IDs, exact verified proof provenance, local dependency DAG and target-only revision dependencies.",
+        "Atomic facts/edges/revision/finding promotion rollback; owner/revoked/foreign/legacy-null dependency rejection.",
+        "Bounded full predecessor closure, finding projection and role-safe project memory; nonfatal promotion/finding failure preserves final proof.",
+        "Read-only/no-migrate/no-clobber fact export and append-only cascading revoke on disposable fixtures only."
+      ],
+      "behavior_before": "Baseline 0.3.0 public contract was Native18 plus six workflow facades, hidden aliases, schema2 and protocol2; the compatible OPT017 snapshot is preserved separately.",
+      "behavior_after": "Finalizer-gated immutable verified fact DAG, bounded advisory memory and operator tools. Implemented through the existing OAuth, StateStore, capability and mechanical-finalizer authority rather than a parallel runtime. Current v0.4.0 is unreleased source, not a target deployment.",
+      "risk_review": "Current cloud host cannot complete Bubblewrap attestation (NETLINK_ROUTE Operation not permitted), leaving five real Native isolation/lifecycle errors and one required LaTeX failure. Target-host/browser/external-source/mathematical acceptance is not established. No test is skipped and the production isolation gate remains fail-closed. Native/helper/private/vault tests exercise specific adversarial races; this is not a comprehensive security audit or arbitrary power-loss proof.",
+      "rollback": "Keep pre-migration source and schema-2 fixture copies. Roll back source only with reviewed diffs; newer databases require a preserved pre-upgrade copy, never decrement user_version or delete receipts.",
+      "unresolved": [
+        "Repeat full gate on a Bubblewrap-capable host with real LaTeX and browser OAuth acceptance.",
+        "Operator must back up live private state before a real upgrade; no live migration, revoke, deployment, commit or push was performed."
+      ],
+      "decision": "partial"
+    },
+    {
+      "receipt_id": "REC-2026-10-14-022",
+      "optimization_id": "OPT-022",
+      "started_at": "2026-10-14T15:50:26.541Z",
+      "completed_at": "2026-10-14T16:07:33.716Z",
+      "status_before": "in_progress",
+      "status_after": "blocked",
+      "functional_goal": "Validate the requested target deployment in isolated disposable instances, correct demonstrated release-tooling defects, and produce an evidence-based release readiness decision without disturbing the existing MTM service.",
+      "files_changed": [
+        "src/re_ctm/cli.py",
+        "src/re_ctm/engineering_graph.py",
+        "src/re_ctm/resources/engineering-graph.json",
+        "src/re_ctm/server.py",
+        "scripts/validate_engineering_graph.py",
+        "scripts/release_package_checks.py",
+        "scripts/release_target_checks.py",
+        "scripts/smoke_oauth_mcp.py",
+        "scripts/collect_debug_bundle.py",
+        "scripts/validate_documentation_consistency.py",
+        "tests/test_packaged_engineering_graph.py",
+        "tests/test_release_package_checks.py",
+        "tests/test_release_target_checks.py",
+        "tests/test_smoke_oauth_mcp.py",
+        "tests/test_documentation_consistency.py",
+        "MANIFEST.in",
+        "README.md",
+        "AGENTS.md",
+        "docs/DEPLOYMENT.md",
+        "docs/TARGET_VALIDATION.md",
+        "manual-validation.json",
+        ".github/workflows/ci.yml",
+        "project-progress.json"
+      ],
+      "commands": [
+        {
+          "command": "python3 scripts/run_local_checks.py",
+          "exit_code": 1,
+          "result": "497 tests:491passed,1failure,5errors,0skips. All six unchanged real Bubblewrap/required-LaTeX checks blocked in the MTM connector; compile, engineering/optimization graphs, error audit and documentation pass. Evidence:docs/validation/target-20261014-source-validation.json."
+        },
+        {
+          "command": "PYTHONPATH=src:tests python3 -m unittest test_oauth test_http test_http_oauth_resources test_config_secrets test_smoke_oauth_mcp -q",
+          "exit_code": 0,
+          "result": "33/33 passed; scripted loopback only. Evidence:docs/validation/target-20261014-oauth-validation.json."
+        },
+        {
+          "command": "python3 scripts/release_package_checks.py --output-dir .release-validation/package-20261014/sdist-01",
+          "exit_code": 0,
+          "result": "Pre-freeze target sdist-to-wheel build, exactsource/resources, cleanvenv,50moduleimports, actualCLI commands and142installed fixtures passed. Final fresh evidence stored separately under .release-validation; no inference of realNative/LaTeX/browser acceptance."
+        },
+        {
+          "command": "PYTHONPATH=src:tests python3 -m unittest test_release_target_checks -q",
+          "exit_code": 0,
+          "result": "12 regressions pass including actual authenticated HTTP protocol3 proof/finalization/fact/export, synthetic/static-only explicitly labelled, strict nofallback and disposableenvironment/output protections."
+        },
+        {
+          "command": "PYTHONPATH=src:tests python3 -m unittest test_packaged_engineering_graph test_release_package_checks test_cli -q",
+          "exit_code": 0,
+          "result": "33 source package/helper/CLI regressions pass."
+        }
+      ],
+      "tests": [
+        "Installed validate-graph reproducer fixed in shared packaged validator; graph resource drift regression and actual console validation.",
+        "Self-contained sdist exact snapshot, validators after extraction, offline sdist-to-wheel install and source-free runtime fixtures.",
+        "Current25-tool OAuthsmoke, all11retiredaliasesdenied, pathresource/challenge/audience/replay/Origin tests and no secret-bearing exception text.",
+        "Hostdriver uniqueevidence/disposable snapshot/state, environment allowlist, nofollow symlinks, no overwrite, timeoutownedprocesscleanup, strictfailclosed and liveHTTPworkflowfixture.",
+        "Current RC001..011 manual checklist and original historical manifest retained unchanged; evidence-free acceptance rejected."
+      ],
+      "behavior_before": "Source migration was not target-qualified; standalone smoke still expected24tools andacceptedretiredalias; installed validate-graph referenced an absent source-tree script, and sdist omitted validation inputs.",
+      "behavior_after": "Demonstrated package/acceptance tooling defects corrected and tested on target; exact command now available to finish physical isolation/LaTeX gates from ordinary terminal. Local scripted OAuth/MCP has independent passing evidence.",
+      "risk_review": "No existing MTM service, live database, credentials, security setting or public ingress changed. No Work/Codex launch, gitpush or publication. Connector nested namespaces remain a hard environment boundary; tests were not skipped and no isolation fallback was introduced. Static-only synthetic fixtures cannot qualify requiredLaTeX, browser or mathematicalquality.",
+      "rollback": "Retain original delivered source and historical reports; revert only reviewed OPT022 source/tooling/docs changes. Do not move generatedvenvs or downgrade liveSQLite; no live migration was performed.",
+      "unresolved": [
+        "Run scripts/release_target_checks.py in the ordinary target terminal; return its report.json for review.",
+        "Real intended browser/client interaction, provider/source quality, interactive terminal/approvedingress and mathematical corpus/operator acceptance remain distinct gates.",
+        "New final package/control-plane reports are validation evidence only, not automaticrelease approval."
+      ],
+      "decision": "partial"
+    },
+    {
+      "receipt_id": "REC-2026-10-14-023",
+      "optimization_id": "OPT-023",
+      "started_at": "2026-10-14T17:33:39Z",
+      "completed_at": "2026-10-14T17:41:29Z",
+      "status_before": "in_progress",
+      "status_after": "blocked",
+      "functional_goal": "Keep terminal observation presentation-only, including process shutdown: broken default stderr must not corrupt the server's exit status, responses, durable events or owned-resource cleanup.",
+      "files_changed": [
+        "src/re_ctm/terminal_ui.py",
+        "tests/test_terminal_ui.py",
+        "tests/test_terminal_process.py",
+        "docs/DEPLOYMENT.md",
+        "code-optimization-graph.json",
+        "project-progress.json"
+      ],
+      "commands": [
+        {
+          "command": "PYTHONPATH=.release-validation/host-20261014T164238Z-dc97b90e/package/source/src:tests python3 -m unittest test_terminal_process -q",
+          "exit_code": 1,
+          "result": "New regression tests reproduce exit 120 instead of 130 in all four frozen-source closed-PTY/pipe before/after-start cases. Expected failing baseline; command cmd-1661160-12c-18de7606926a5e7e."
+        },
+        {
+          "command": "PYTHONPATH=src:tests python3 -m unittest test_terminal_ui test_terminal_process test_cli -v",
+          "exit_code": 0,
+          "result": "48 tests passed, including four actual buffered CLI subprocess tests and nine new stream-boundary tests; command cmd-1661160-138-18de761d56e059ec."
+        },
+        {
+          "command": "python3 -I -B .release-validation/terminal-probe-20261014/diagnose_terminal_stress_final_source.py",
+          "exit_code": 0,
+          "result": "All three actual PTY/pipe source-only stress cases pass. Slow reader:1024 successful requests,2748 display events dropped,rendering recovers. Closed PTY/pipe:64 successful requests each. All exit130 and closeport. Native disabled/static_only is diagnostic, never host-isolation acceptance. Report source-final-diagnostic-result-20261014T174027Z-acdc72.json; command cmd-1661160-140-18de7629fc59f192."
+        },
+        {
+          "command": "python3 -c \"import importlib.util; from pathlib import Path; s=importlib.util.spec_from_file_location('opt023_full_gate', 'scripts/run_local_checks.py'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); m.REPORT=Path('.release-validation/terminal-probe-20261014/OPT023-local-validation.json').resolve(); raise SystemExit(m.main())\"",
+          "exit_code": 1,
+          "result": "Full unchanged gate:510tests,504passed,1failure+5errors,0skips. Only the six established connector nested-namespace physical gates fail. Compile,engineering/optimization graphs,error audit,documentation consistency pass. Redirected report preserves the earlier root report. command cmd-1661160-141-18de762bdd29d80b."
+        }
+      ],
+      "tests": [
+        "Real buffered CLI process: closed PTY and pipe both before and after startup; DCR/PKCE/authenticated MCP survives and SIGINT closesport with130.",
+        "Partial rawwrites,zero progress,closed-stream fd revalidation,custom/replaced/falsey streams,concurrent failed writers,KeyboardInterrupt propagation,UTF-16 incremental state and encoding changes.",
+        "Actual paused-PTY queue saturation/drop notice and renderer recovery; closedPTY/pipe health,tool responses,durable events,secret absence and ownedcleanup."
+      ],
+      "behavior_before": "Failed observer writes left default stderr buffered; EIO/EPIPE repeated at interpreter shutdown changed intended SIGINT130 into exit120 despite healthy service.",
+      "behavior_after": "Only untouched default standard stderr fd2 uses unbuffered partial-write-safe observation with a per-session incremental encoder. No descriptor is closed,replaced,duplicated or reconfigured; explicit/replaced streams keep write/flush behavior. Failing writer state is synchronized.",
+      "risk_review": "No change to OAuth,Native execution,hard-isolation defaults,workflow,schemas,credentials or production state. Source-only tests intentionally disableNative and realcompile solely to isolate terminalI/O, and are explicitly not target acceptance. Current source supersedes previously qualified installed bytes.",
+      "rollback": "Revert only OPT-023 source/test/doc changes after review; preserve additive diagnostic and governance history. No database migration or persistent user state changes.",
+      "unresolved": [
+        "Full local gate runs 510 tests with 504 passed, zero skips, and the same six real Bubblewrap/required-LaTeX tests blocked by the connector's nested-user-namespace boundary.",
+        "The runtime fix supersedes the prior installed candidate. A rebuilt installed package must repeat strict ordinary-host terminal/physical acceptance; no previous candidate report qualifies the repaired source."
+      ],
+      "decision": "partial"
+    },
+    {
+      "receipt_id": "REC-2026-10-15-024",
+      "optimization_id": "OPT-024",
+      "started_at": "2026-10-15T04:42:35Z",
+      "completed_at": "2026-10-15T05:14:00Z",
+      "status_before": "in_progress",
+      "status_after": "blocked",
+      "functional_goal": "Native commands remain alive after their issuing HTTP request ends, until normal completion, explicit termination, timeout or service shutdown, without removing parent-death or namespace protection.",
+      "files_changed": [
+        "src/re_ctm/processes.py",
+        "src/re_ctm/__init__.py",
+        "pyproject.toml",
+        "tests/test_command_parent_lifetime.py",
+        "tests/test_documentation_consistency.py",
+        "scripts/manual_native_http_lifecycle_test.py",
+        "scripts/release_package_checks.py",
+        "README.md",
+        "docs/DEPLOYMENT.md",
+        "docs/TARGET_VALIDATION.md",
+        "manual-validation.json",
+        "code-optimization-graph.json",
+        "project-progress.json"
+      ],
+      "commands": [
+        {
+          "command": "PYTHONPATH=src python3 -B -m unittest discover -s tests -p test_command_parent_lifetime.py -v (before production fix)",
+          "exit_code": 1,
+          "result": "Expected failing baseline:8tests,4failed/4passed. Actual HTTP handler join after armed Linux PDEATHSIG reproduces SIGKILL in async/stdin/TTY/timeout. cmd-1661160-182-18de9a861a160445."
+        },
+        {
+          "command": "PYTHONPATH=src python3 -B -m unittest discover -s tests -p test_command_parent_lifetime.py -v (final source)",
+          "exit_code": 0,
+          "result": "18/18passed:12 actualHTTP/prctl/lifecycle/thread/failure/race tests plus6 pure real-host-harness contract tests. cmd-1661160-1a5-18de9be619fe422a."
+        },
+        {
+          "command": "PYTHONPATH=src:tests python3 -B -m unittest test_command_parent_lifetime test_command_v11 test_native_exec_v11 test_http test_http_oauth_resources test_cli test_terminal_ui test_terminal_process -q",
+          "exit_code": 0,
+          "result": "90/90passed at12-test lifecycle checkpoint, before6purehelper tests were added. cmd-1661160-18f-18de9abe3f3b388b."
+        },
+        {
+          "command": "PYTHONPATH=src:tests python3 -B -m unittest test_release_package_checks test_documentation_consistency -q",
+          "exit_code": 0,
+          "result": "15/15passed. Installed package fixtures now include command v11 and parent-lifetime tests. cmd-1661160-195-18de9acda94fec45."
+        },
+        {
+          "command": "python3 -I -B .release-validation/opt024-20261015/test_helpers.py",
+          "exit_code": 0,
+          "result": "15/15mechanical helper tests passed, including complete synthetic evidence qualification and negative interpreter/module/case/cleanup checks; no realinstalled app executed. cmd-1661160-1ab-18de9bf968c3b758."
+        },
+        {
+          "command": "python3 -B -c \"import importlib.util; from pathlib import Path; s=importlib.util.spec_from_file_location('opt024_full_gate','scripts/run_local_checks.py'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); m.REPORT=Path('.release-validation/opt024-20261015/local-validation.json').resolve(); raise SystemExit(m.main())\"",
+          "exit_code": 1,
+          "result": "528tests:522passed,1failure+5errors,0skips. Only existing connector-blocked realBubblewrap/requiredLaTeX cases fail. Compile,engineering/optimization graphs,errorcontract,documentation pass. ReportSHA396db51ea9986e34daea58fa4ef647bf8792e06a4bc07463d28c18e942080344; cmd-1661160-1a8-18de9bf46a993b8e."
+        }
+      ],
+      "tests": [
+        "Actual Linux parent-death child armed before completed HTTP handler exits; normal completion, initialpipe stdin, laterPTY stdin, explicitkill, timeout and managerclose.",
+        "Spawnfailure andThread.start failure propagate; injectedownerwait error keepschildalive; close/start and activecapacity admission are atomic; creator threads finish after childexit.",
+        "Real-host harness enforces installed interpreter and mandatory bwrap; includes atomicstartupready,closedHTTPconnections,READY/release,OAuthPKCE,graceful/abruptserverdescendantcleanup and matchingcandidateidentity. Its physical acceptance is not yet run.",
+        "Independent source/test/helper review found no must-fix; no security audit or completeproductrelease claim."
+      ],
+      "behavior_before": "A request handler itself created bwrap; --die-with-parent could kill the native child when that handler returned running.",
+      "behavior_after": "A per-command daemon owner creates and waits for the child, with backoff on observation errors. Queue handshake preserves original spawn failures; locked admission/spawn/registration prevents close or another start from missing enrollment. No bwrap option, public schema, timeout/kill signal or workflow authority changes.",
+      "risk_review": "Preserves parent-death hardening, namespaces, process-group/PTY descriptor ownership, L0/L1/L2 separation and all state formats. Only version and Native process ownership behavior changed. No live installation,service,tunnel,private database,credential orhostsecurity changes. Existing 0.4.0 has the reproduced defect and is not repaired by source edits.",
+      "rollback": "Restore only OPT-024 changes or use the previous preserved install after review; retain all failing and passing evidence. No schema migration or credential rotation.",
+      "unresolved": [
+        "Full source aggregate has 528 tests: 522 passed, one failure and five errors solely in the existing real Bubblewrap/required-LaTeX gates blocked by the connector's nested-user-namespace boundary.",
+        "A freshly rebuilt installed 0.4.1 candidate must pass the ordinary-host real OAuth/HTTP/Bubblewrap lifecycle harness and strict target gates, then receive independent evidence review before side-by-side installation/explicit operator activation."
+      ],
+      "decision": "partial"
+    },
+    {
+      "receipt_id": "REC-2026-10-15-025",
+      "optimization_id": "OPT-024",
+      "started_at": "2026-10-15T05:29:30Z",
+      "completed_at": "2026-10-15T05:39:00Z",
+      "status_before": "in_progress",
+      "status_after": "blocked",
+      "functional_goal": "Native commands remain alive after their issuing HTTP request ends, until normal completion, explicit termination, timeout or service shutdown, without removing parent-death or namespace protection.",
+      "files_changed": [
+        "scripts/manual_native_http_lifecycle_test.py",
+        "tests/test_command_parent_lifetime.py",
+        "code-optimization-graph.json",
+        "project-progress.json"
+      ],
+      "commands": [
+        {
+          "command": "Ordinary-host run_host_acceptance.py --manifest-sha256 ce370dd7da5539cc2f801995718bba037b1e3d2f121a0775bf97bdf84eefbf8d",
+          "exit_code": 1,
+          "result": "05:25:16-05:26:03 UTC user-run: complete source528/528, installed178/178,5machinegates,realbwrap7/7,OAuth15/15,requiredLaTeXpassed. Dedicatedharnessstartupfailedbefore13cases; reportSHA50f4abf7b3da521b8530bad0e03f9404f694b887fd2ce277485aad54690b0599. Originalestimated179 correctedtoobserved178."
+        },
+        {
+          "command": "PYTHONPATH=src python3 -B -m unittest discover -s tests -p test_command_parent_lifetime.py -v",
+          "exit_code": 0,
+          "result": "22/22passed after4newtests; cmd-1661160-1cb-18de9d4ace7aef3b. ActualSettings/build_application/CapabilityAuthority/OAuthHTTP/CommandManager exercised; only testbwrapattest/buildmocked. This is not realhostisolation evidence."
+        },
+        {
+          "command": "python3 -I -B scripts/manual_native_http_lifecycle_test.py --help",
+          "exit_code": 0,
+          "result": "cmd-1661160-1cc-18de9d54de748f40 passed; nohostharnessstarted."
+        }
+      ],
+      "tests": [
+        "Corrected complete SERVER_CHILD bootstrap provides independent32byte random memory-only signingkeys; no persisted credentials or secret reporting.",
+        "Actual OAuthHTTP public API contract rehearsal covers eight normal/stdin/TTY/kill/timeout checks plus two serviceexit contracts with explicitly mockedtestbackend only.",
+        "Safe startup code/type/frame diagnostics persist before disposablecleanup; cleanupfailuredoesnotoverrideoriginalfailure."
+      ],
+      "behavior_before": "Disposable harness used Settings.from_env with empty signingsecrets then build_application, which correctly failed CAPABILITY_SECRET_REQUIRED before bwrap/HTTP readiness.",
+      "behavior_after": "Harness independently supplies temporary memory-only secrets, retains mandatoryrealbwrap, and reports allowlisted structuralstartup diagnostics; productruntime55filesunchanged.",
+      "risk_review": "No live service/private state/credential/security changes. Source528 andinstalled178 are reused only fromtheir exactpriorcandidate evidence; correctedharness andnewtests needtheirown qualification. Reusingunchangedruntime evidence doesnotmean rerunningthefullsuite.",
+      "rollback": "Restore only OPT-024 changes or use the previous preserved install after review; retain all failing and passing evidence. No schema migration or credential rotation.",
+      "unresolved": [
+        "Actual installed 0.4.1 HTTP/Bubblewrap 13-case lifecycle supplement remains unrun after correcting the disposable harness signing-secret bootstrap. Existing full 528/528, installed 178/178 and five machine gates are preserved as candidate-bound baseline evidence, not relabeled as a new run.",
+        "The deployable wheel's 55 runtime/package files and all unchanged source inputs must match the previously qualified candidate. Only harness/test/governance source differences may be accepted by the scoped supplement; no production activation before independent review."
+      ],
+      "decision": "partial"
+    },
+    {
+      "receipt_id": "REC-2026-10-15-026",
+      "optimization_id": "OPT-024",
+      "started_at": "2026-10-15T05:39:00Z",
+      "completed_at": "2026-10-15T07:09:59Z",
+      "status_before": "blocked",
+      "status_after": "in_progress",
+      "functional_goal": "Native commands remain alive after their issuing HTTP request ends, until normal completion, explicit termination, timeout or service shutdown, without removing parent-death or namespace protection.",
+      "files_changed": [
+        "code-optimization-graph.json",
+        "project-progress.json",
+        "manual-validation.json",
+        "docs/TARGET_VALIDATION.md",
+        "docs/validation/release-0.4.1-evidence.json"
+      ],
+      "commands": [
+        {
+          "command": "Ordinary-host corrected supplement and installed 0.4.1 acceptance; bounded actual connected Native lifecycle tests",
+          "exit_code": 0,
+          "result": "Prior strict 528/178 baseline reused for identical 55 runtime files; fresh supplement 22/22 and real HTTP/Bubblewrap 13/13 passed. Six actual connector lifecycle checks passed; reports and SHA-256 in docs/validation/release-0.4.1-evidence.json. No new full-suite claim."
+        }
+      ],
+      "tests": [
+        "Async same-ID survival, initial stdin, PTY input, explicit kill, timeout, graceful/abrupt owned descendants and concurrent commands at stated scopes."
+      ],
+      "behavior_before": "Actual 0.4.0 async request returned running then SIGKILL.",
+      "behavior_after": "Installed 0.4.1 survives request end; actual connector 4-second command completed normally and six lifecycle checks passed.",
+      "risk_review": "No isolation or authority relaxation; unchanged 55 runtime members verified against accepted wheel. Historical failing and passing records retained.",
+      "rollback": "Restore only OPT-024 changes or use the previous preserved install after review; retain all failing and passing evidence. No schema migration or credential rotation.",
+      "unresolved": [
+        "Reconcile verified supplement and connected lifecycle evidence into final runtime acceptance."
+      ],
+      "decision": "partial"
+    },
+    {
+      "receipt_id": "REC-2026-10-15-027",
+      "optimization_id": "OPT-024",
+      "started_at": "2026-10-15T05:39:00Z",
+      "completed_at": "2026-10-15T07:10:00Z",
+      "status_before": "in_progress",
+      "status_after": "completed",
+      "functional_goal": "Native commands remain alive after their issuing HTTP request ends, until normal completion, explicit termination, timeout or service shutdown, without removing parent-death or namespace protection.",
+      "files_changed": [
+        "code-optimization-graph.json",
+        "project-progress.json",
+        "manual-validation.json",
+        "docs/TARGET_VALIDATION.md",
+        "docs/validation/release-0.4.1-evidence.json"
+      ],
+      "commands": [
+        {
+          "command": "Ordinary-host corrected supplement and installed 0.4.1 acceptance; bounded actual connected Native lifecycle tests",
+          "exit_code": 0,
+          "result": "Prior strict 528/178 baseline reused for identical 55 runtime files; fresh supplement 22/22 and real HTTP/Bubblewrap 13/13 passed. Six actual connector lifecycle checks passed; reports and SHA-256 in docs/validation/release-0.4.1-evidence.json. No new full-suite claim."
+        }
+      ],
+      "tests": [
+        "Async same-ID survival, initial stdin, PTY input, explicit kill, timeout, graceful/abrupt owned descendants and concurrent commands at stated scopes."
+      ],
+      "behavior_before": "Actual 0.4.0 async request returned running then SIGKILL.",
+      "behavior_after": "Installed 0.4.1 survives request end; actual connector 4-second command completed normally and six lifecycle checks passed.",
+      "risk_review": "No isolation or authority relaxation; unchanged 55 runtime members verified against accepted wheel. Historical failing and passing records retained.",
+      "rollback": "Restore only OPT-024 changes or use the previous preserved install after review; retain all failing and passing evidence. No schema migration or credential rotation.",
+      "unresolved": [
+        "New PATH launcher activation and final source packaging are OPT-025, not runtime ownership defects.",
+        "Broader mathematical quality, fresh-context routing and live-source quality remain unvalidated."
+      ],
+      "decision": "accepted"
+    },
+    {
+      "receipt_id": "REC-2026-10-15-028",
+      "optimization_id": "OPT-025",
+      "started_at": "2026-10-15T06:56:00Z",
+      "completed_at": "2026-10-15T07:10:00Z",
+      "status_before": "in_progress",
+      "status_after": "blocked",
+      "functional_goal": "One reversible operator activation makes the existing bare command use the already qualified 0.4.1 installation and the exact accepted workspace/data/isolation defaults.",
+      "files_changed": [
+        "scripts/activate_release_launcher.py",
+        "tests/test_activate_release_launcher.py",
+        "scripts/release_package_checks.py",
+        ".gitignore",
+        "README.md",
+        "docs/DEPLOYMENT.md",
+        "docs/TARGET_VALIDATION.md",
+        "manual-validation.json",
+        "project-progress.json",
+        "code-optimization-graph.json",
+        "docs/validation/release-0.4.1-evidence.json"
+      ],
+      "commands": [
+        {
+          "command": "PYTHONPATH=src:tests python3 -B -m unittest test_activate_release_launcher -v",
+          "exit_code": 0,
+          "result": "18/18 passed; cmd-1661160-227-18dea25072419e6e. Includes actual CLI/config/OAuth/TUI/interrupt contract with only physical nested attestation mocked; not real host startup acceptance."
+        },
+        {
+          "command": "python3 -I -B scripts/activate_release_launcher.py --check-only",
+          "exit_code": 0,
+          "result": "Existing installed version 0.4.1 and all 55 runtime files equal pinned wheel; cmd-1661160-219-18dea2250bd68b36. Host PATH entry untouched."
+        },
+        {
+          "command": "python3 scripts/run_local_checks.py with separate OPT-025 report path",
+          "exit_code": 1,
+          "result": "First aggregate 543 tests: 537 passed and known six connector-blocked physical bwrap/required-LaTeX cases; all other aggregate validators passed. Later seven new tests passed focused; final aggregate remains separately recorded."
+        }
+      ],
+      "tests": [
+        "Exact env/argv, Unicode and shell-quoted paths, old launcher symlink preservation, atomic replacement/receipt failure rollback, PATH shadow and missing PATH, pinned runtime identity, same-template startup/discovery/handled SIGINT 130."
+      ],
+      "behavior_before": "Bare command reports 0.3.0; accepted 0.4.1 launch requires a long explicit env command.",
+      "behavior_after": "Prepared reviewed activation replaces only PATH launcher and preserves exact accepted roots/settings; not activated through MTM.",
+      "risk_review": "Runtime bytes unchanged, no private data read/migration, no credential/security changes, no existing service/tunnel restart. Fixture output never persisted because it can contain temporary OAuth key.",
+      "rollback": "Restore only the launcher backup with the guarded rollback helper; never downgrade or mutate state. Retain the accepted venv and evidence.",
+      "unresolved": [
+        "Ordinary-host atomic launcher activation and disposable physical startup rehearsal require operator terminal; MTM cannot mutate the host PATH entry.",
+        "Final package/source evidence remains a separate frozen artifact manifest."
+      ],
+      "decision": "partial"
+    },
+    {
+      "optimization_id": "OPT-025",
+      "started_at": "2026-10-15T07:12:00Z",
+      "completed_at": "2026-10-15T07:19:00Z",
+      "functional_goal": "One reversible operator activation makes the existing bare command use the already qualified 0.4.1 installation and the exact accepted workspace/data/isolation defaults.",
+      "files_changed": [
+        "tests/test_command_parent_lifetime.py",
+        "docs/validation/release-0.4.1-evidence.json",
+        "project-progress.json",
+        "code-optimization-graph.json"
+      ],
+      "commands": [
+        {
+          "command": "Final source aggregate through scripts/run_local_checks.py",
+          "exit_code": 1,
+          "result": "550 tests: 544 passed, unchanged six nested bwrap/required-LaTeX blocks. Other five validators passed. cmd-1661160-232-18dea27523b7884e."
+        },
+        {
+          "command": "scripts/release_package_checks.py final2-package",
+          "exit_code": 1,
+          "result": "Source build, validators, wheel install/imports/CLI passed. Installed fixtures 199/200; false-positive mounted /workspace assertion in existing test fixture. Failed report retained; cmd-1661160-233-18dea275c7c6ce55."
+        },
+        {
+          "command": "Ordinary source test_command_parent_lifetime.py after exact-filename assertion repair",
+          "exit_code": 0,
+          "result": "Independent 23/23 passed, including mounted source-root fixture; cmd-1661160-23c-18dea2b3ec54f7c8. Runtime unchanged."
+        }
+      ],
+      "tests": [
+        "Existing OAuth/HTTP/async assertions preserved; only original exact sandbox filename checks replace broad prefix check.",
+        "Final driver mechanical tests 6/6 passed; package failure and fingerprint mismatch prevent activation."
+      ],
+      "behavior_before": "Correctly rewritten host temporary path was rejected if it still began /workspace.",
+      "behavior_after": "Only exact original sandbox filename literals are rejected; actual workspace-mounted root fixture passes.",
+      "risk_review": "Test-only correction, no product or isolation weakening; direct denied venv execution was not retried through alternate route.",
+      "rollback": "Restore only the launcher backup with the guarded rollback helper; never downgrade or mutate state. Retain the accepted venv and evidence.",
+      "unresolved": [
+        "Ordinary host must rerun final package checks after a test-only mounted-path correction, then physical launcher rehearsal and activation. The pinned finalization driver stops before activation on package failure.",
+        "Actual short-command operator use and publication remain unperformed."
+      ],
+      "decision": "partial",
+      "receipt_id": "REC-2026-10-15-029",
+      "status_before": "blocked",
+      "status_after": "in_progress"
+    },
+    {
+      "optimization_id": "OPT-025",
+      "started_at": "2026-10-15T07:12:00Z",
+      "completed_at": "2026-10-15T07:19:00Z",
+      "functional_goal": "One reversible operator activation makes the existing bare command use the already qualified 0.4.1 installation and the exact accepted workspace/data/isolation defaults.",
+      "files_changed": [
+        "tests/test_command_parent_lifetime.py",
+        "docs/validation/release-0.4.1-evidence.json",
+        "project-progress.json",
+        "code-optimization-graph.json"
+      ],
+      "commands": [
+        {
+          "command": "Final source aggregate through scripts/run_local_checks.py",
+          "exit_code": 1,
+          "result": "550 tests: 544 passed, unchanged six nested bwrap/required-LaTeX blocks. Other five validators passed. cmd-1661160-232-18dea27523b7884e."
+        },
+        {
+          "command": "scripts/release_package_checks.py final2-package",
+          "exit_code": 1,
+          "result": "Source build, validators, wheel install/imports/CLI passed. Installed fixtures 199/200; false-positive mounted /workspace assertion in existing test fixture. Failed report retained; cmd-1661160-233-18dea275c7c6ce55."
+        },
+        {
+          "command": "Ordinary source test_command_parent_lifetime.py after exact-filename assertion repair",
+          "exit_code": 0,
+          "result": "Independent 23/23 passed, including mounted source-root fixture; cmd-1661160-23c-18dea2b3ec54f7c8. Runtime unchanged."
+        }
+      ],
+      "tests": [
+        "Existing OAuth/HTTP/async assertions preserved; only original exact sandbox filename checks replace broad prefix check.",
+        "Final driver mechanical tests 6/6 passed; package failure and fingerprint mismatch prevent activation."
+      ],
+      "behavior_before": "Correctly rewritten host temporary path was rejected if it still began /workspace.",
+      "behavior_after": "Only exact original sandbox filename literals are rejected; actual workspace-mounted root fixture passes.",
+      "risk_review": "Test-only correction, no product or isolation weakening; direct denied venv execution was not retried through alternate route.",
+      "rollback": "Restore only the launcher backup with the guarded rollback helper; never downgrade or mutate state. Retain the accepted venv and evidence.",
+      "unresolved": [
+        "Ordinary host must rerun final package checks after a test-only mounted-path correction, then physical launcher rehearsal and activation. The pinned finalization driver stops before activation on package failure.",
+        "Actual short-command operator use and publication remain unperformed."
+      ],
+      "decision": "partial",
+      "receipt_id": "REC-2026-10-15-030",
+      "status_before": "in_progress",
+      "status_after": "blocked"
     }
   ]
 }

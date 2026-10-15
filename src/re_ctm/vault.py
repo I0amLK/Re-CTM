@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from .errors import ReCTMError
+from .vault_effects import capture_write, publish, is_capturing
 
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -54,6 +55,7 @@ class PrivateVault:
         problem_tex: str,
         references: Iterable[Mapping[str, Any]] = (),
         metadata: Mapping[str, Any] | None = None,
+        replay_safe: bool = False,
     ) -> dict[str, Any]:
         root = self.run_root(run_id)
         for relative in (
@@ -71,13 +73,13 @@ class PrivateVault:
         ):
             (root / relative).mkdir(parents=True, exist_ok=True, mode=0o700)
         problem_path = root / "input" / "problem.tex"
-        _atomic_text(problem_path, problem_tex)
+        publish(problem_path, problem_tex.encode("utf-8"), exact=replay_safe)
         manifest: list[dict[str, Any]] = []
         for index, reference in enumerate(references):
             name = _safe_reference_name(str(reference.get("name") or f"reference-{index + 1}.txt"))
             content = str(reference.get("content") or "")
             target = root / "references" / name
-            _atomic_text(target, content)
+            publish(target, content.encode("utf-8"), exact=replay_safe)
             manifest.append(
                 {
                     "name": name,
@@ -86,8 +88,8 @@ class PrivateVault:
                     "source": str(reference.get("source") or "inline"),
                 }
             )
-        _atomic_json(root / "references" / "manifest.json", manifest)
-        _atomic_json(root / "run-metadata.json", dict(metadata or {}))
+        for target, value in ((root / "references" / "manifest.json", manifest), (root / "run-metadata.json", dict(metadata or {}))):
+            publish(target, (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8"), exact=replay_safe)
         return {
             "run_root": str(root),
             "problem_sha256": _sha256_text(problem_tex),
@@ -206,7 +208,8 @@ class PrivateVault:
         serialized = json.dumps(dict(payload), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
         _atomic_text(target, serialized)
         try:
-            target.chmod(0o400)
+            if not is_capturing():
+                target.chmod(0o400)
         except OSError:
             pass
         return {
@@ -244,7 +247,7 @@ class PrivateVault:
     ) -> Path:
         branch = _require_safe_id(branch_id, "branch_id")
         target = self.run_root(run_id) / "branches" / branch / "result.json"
-        if target.exists():
+        if target.exists() and not is_capturing():
             raise ReCTMError(
                 "BRANCH_ALREADY_COMMITTED",
                 f"Branch result already exists: {branch_id}",
@@ -252,7 +255,8 @@ class PrivateVault:
             )
         _atomic_json(target, dict(payload))
         try:
-            target.chmod(0o400)
+            if not is_capturing():
+                target.chmod(0o400)
         except OSError:
             pass
         return target
@@ -297,9 +301,14 @@ class PrivateVault:
         if not source.is_file():
             raise ReCTMError("PROOF_NOT_FOUND", "Draft proof.tex does not exist.", category="not_found")
         target = self.run_root(run_id) / "final" / "proof_verified.tex"
-        _atomic_text(target, source.read_text(encoding="utf-8"))
+        from .vault_effects import read_regular
+        content = read_regular(source)
+        if content is None:
+            raise ReCTMError("PROOF_NOT_FOUND", "Draft proof disappeared.", category="not_found")
+        publish(target, content, exact=True)
         try:
-            target.chmod(0o400)
+            if not is_capturing():
+                target.chmod(0o400)
         except OSError:
             pass
         return target
@@ -367,10 +376,9 @@ def _safe_reference_name(value: str) -> str:
 
 
 def _atomic_text(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    temp = path.with_name(path.name + f".{os.getpid()}.tmp")
-    temp.write_text(content, encoding="utf-8")
-    os.replace(temp, path)
+    data = content.encode("utf-8")
+    if not capture_write(path, data):
+        publish(path, data)
 
 
 def _atomic_json(path: Path, payload: Any) -> None:
@@ -381,9 +389,10 @@ def _atomic_json(path: Path, payload: Any) -> None:
 
 
 def _append_jsonl(path: Path, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(dict(payload), ensure_ascii=False, sort_keys=True) + "\n")
+    data = (json.dumps(dict(payload), ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
+    if not capture_write(path, data, append=True):
+        from .vault_effects import read_regular
+        publish(path, (read_regular(path) or b"") + data)
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:

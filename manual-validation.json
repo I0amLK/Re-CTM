@@ -1,278 +1,752 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "project": "Re-CTM",
-  "status": "pending_post_push",
-  "rule": "These checks are deliberately not claimed by local unit tests. Execute them after pushing the repository and attach the terminal run's debug manifest and relevant redacted logs.",
+  "status": "pending_target_validation",
+  "rule": "The active release checklist is RC-001 through RC-011 for the MTM v11/protocol-3/schema-8 candidate. Mark a check passed only after its stated evidence scope has been exercised on the actual candidate, with content-minimized evidence. Repository publication is separate and is not a prerequisite for local target qualification. Host-only deployment/testing does not authorize public ingress, live private-state access, security-policy changes, commits or pushes. Historical checks and reports remain historical and cannot confer current acceptance.",
+  "current_contract": {
+    "source_version": "0.4.1",
+    "tool_contract": "mtm-tools-v11",
+    "native_tool_count": 19,
+    "workflow_tool_count": 6,
+    "public_tool_count": 25,
+    "workflow_protocol_default": 3,
+    "preserved_workflow_protocols": [
+      1,
+      2
+    ],
+    "state_schema_version": 8,
+    "public_native_modes": [
+      "dangerous"
+    ],
+    "retired_native_modes": [
+      "safe",
+      "trusted"
+    ],
+    "retired_workflow_alias_count": 11
+  },
   "prerequisites": [
-    "A target PC or target container matching the intended deployment",
-    "A real webpage MCP client supporting OAuth",
-    "HTTPS or an approved loopback development URL",
-    "A configured native isolation helper/container with no private-vault mount",
-    "A real LaTeX toolchain when RE_CTM_LATEX_POLICY=required",
-    "External theorem/web retrieval connectivity if used by the reasoning workflow"
+    "A uniquely identified candidate source/package and the actual target host/runtime",
+    "Fresh disposable workspace/data/private roots with no overlap and no production state",
+    "A functioning attested hard-isolation backend for Native execution and real required LaTeX",
+    "A real intended webpage MCP client and separately authorized ingress when needed",
+    "Authorized fixed-provider network access for real retrieval checks",
+    "Operator review for mathematical quality and final release acceptance"
+  ],
+  "evidence_policy": [
+    "Record UTC time, candidate hash/version, environment, exact command or client action, exit/status, and a bounded redacted report for each conclusion.",
+    "Never save OAuth passwords, authorization codes, tokens, client secrets, capability handles, private problem/proof/reference bodies or reasoning memory in release evidence.",
+    "Preserve failed/blocked observations and historical reports; do not remove tests, suppress attestation failures or substitute static/mocked behavior to claim a pass."
   ],
   "checks": [
     {
-      "id": "MV-001",
-      "name": "OAuth discovery and dynamic registration",
+      "id": "RC-001",
+      "name": "Current source, package and deterministic gate",
       "status": "pending",
+      "evidence_scope": "deterministic",
+      "sources": [
+        "scripts/run_local_checks.py",
+        ".github/workflows/ci.yml",
+        "pyproject.toml"
+      ],
+      "commands": [
+        "python3 scripts/run_local_checks.py",
+        "python3 -m build",
+        "re-ctm --help",
+        "re-ctm-native-helper --version"
+      ],
       "steps": [
-        "Run Re-CTM on 127.0.0.1 without RE_CTM_SERVER_URL or RE_CTM_OAUTH_PASSWORD; record the generated Re-CTM OAuth authorization key shown only in the local operator terminal, then start a Cloudflare Quick Tunnel after the server is already listening and confirm no Re-CTM restart is needed when the random trycloudflare.com hostname appears.",
-        "Fetch OAuth authorization-server and protected-resource metadata through the Quick Tunnel and confirm issuer/resource/endpoint URLs use the public HTTPS trycloudflare.com origin.",
-        "Complete the browser authorization form through the Quick Tunnel and confirm its Origin-bearing POST is accepted as an OAuth route while an unapproved external Origin sent to /mcp is still rejected.",
-        "After submitting the authorization key, confirm the browser follows the 302 to the registered ChatGPT callback and Re-CTM subsequently receives POST /oauth/token rather than restarting a fresh authorization request.",
-        "Run scripts/smoke_oauth_mcp.py against the public base URL and save its redacted report.",
-        "Connect the webpage client to /.well-known/oauth-protected-resource and the MCP URL.",
-        "Confirm DCR creates a client and the browser is redirected to /oauth/authorize.",
-        "Complete PKCE authorization and token exchange.",
-        "Repeat with an explicit RE_CTM_SERVER_URL and confirm forwarded Host headers cannot replace that fixed OAuth origin."
+        "Run the complete local gate on the candidate source and record the source/package hashes, Python version, OS, exit codes, test count and every skipped test.",
+        "Build wheel and sdist, install only into a disposable target environment, and verify the installed CLI, protocol-3 resource, package metadata and public catalog.",
+        "Preserve historical validation reports separately; do not carry a previous host's passing report or source fingerprint forward."
       ],
       "expected": [
-        "No static bearer or no-auth path is offered.",
-        "When no OAuth password is configured, a high-entropy authorization key is generated for the serve session, displayed to the local operator, accepted on the first OAuth page, and absent from structured logs, reports, HTTP payloads, and persisted state.",
-        "Dynamic OAuth origin works only with a loopback-bound server and the tunnel's trusted local proxy request; non-loopback dynamic bind is rejected.",
-        "An access token issued for the public tunnel origin is rejected when replayed against a different effective origin.",
-        "The client reaches tools/list only with a valid OAuth access token.",
-        "Debug events contain fingerprints, not raw codes, secrets, passwords, or tokens."
-      ],
-      "evidence": []
-    },
-    {
-      "id": "MV-002",
-      "name": "Fixed tool catalog across native modes and workflow states",
-      "status": "pending",
-      "steps": [
-        "Confirm scripts/smoke_oauth_mcp.py reports exactly 24 public tools (18 CTM Native + 6 Rethlas façade tools) and a modern non-inheritance result.",
-        "Confirm superseded Rethlas protocol names such as rethlas_next/rethlas_status remain callable as hidden compatibility aliases but are absent from tools/list.",
-        "Capture tools/list in safe, trusted, and dangerous native modes.",
-        "Capture tools/list during generator, branch, join, verifier, and repair states."
-      ],
-      "expected": [
-        "Catalog and schemas are identical.",
-        "Authorization changes server-side call results rather than catalog visibility."
-      ],
-      "evidence": []
-    },
-    {
-      "id": "MV-003",
-      "name": "Dangerous native isolation",
-      "status": "pending",
-      "steps": [
-        "Install bubblewrap on Linux or provide an independently reviewed external helper.",
-        "Run `re-ctm attest-native --backend bubblewrap --workspace <workspace> --data-root <data-root> --private-root <private-root>` without enabling native execution.",
-        "Run `python3 scripts/manual_native_isolation_test.py --backend bubblewrap --workspace <workspace> --data-root <data-root> --private-root <private-root> --output native-isolation-validation.json` and review every check.",
-        "Run Re-CTM with native_mode=dangerous on Linux with bwrap installed and confirm the built-in Bubblewrap backend is selected automatically and startup attestation succeeds without an acknowledgement flag.",
-        "Create arbitrary non-product-named CLI toolchains in a Conda-style prefix, a bin/Executables prefix, and a PATH symlink target; confirm all are discovered without application-name configuration.",
-        "Place an additional CLI plus runtime outside PATH, expose it with RE_CTM_NATIVE_EXEC_ALLOW_ROOTS, and confirm it executes by name through the extended sandbox PATH.",
-        "Attempt to declare relative, missing, `/`, complete-home, workspace-overlapping, data-overlapping, and private-overlapping allow roots and confirm startup/check-config fails closed.",
-        "Attempt to mutate every exposed toolchain root and confirm Bubblewrap presents it read-only; point a PATH symlink into private state and confirm the target is excluded.",
-        "Run representative installed tools such as SageMath, Magma, Mathematica/wolframscript, or site-local equivalents when available, while configured Re-CTM data/private roots remain invisible.",
-        "Use exec_command to enumerate mounts and attempt direct reads of the configured Re-CTM data/private roots.",
-        "Attempt privilege escalation, parent-environment recovery, namespace creation, and access through interpreters or nested shells."
-      ],
-      "expected": [
-        "Native workspace remains usable.",
-        "Private run store is not mounted or otherwise reachable.",
-        "The helper response is nonce-bound and attests mount, user, PID, environment, capability, and network properties.",
-        "The effective toolchain view is application-agnostic, canonical, ancestor-collapsed, read-only, diagnostic, and disjoint from workspace/data/private trust domains.",
-        "Safe mode has a private network namespace; trusted/dangerous network behavior matches the selected native policy.",
-        "Dangerous never grants a rethlas_* capability or finalization authority."
-      ],
-      "evidence": []
-    },
-    {
-      "id": "MV-004",
-      "name": "Sequential branch-domain information barrier",
-      "status": "pending",
-      "steps": [
-        "Create at least three materially different decomposition plans.",
-        "Execute branch A, seal it, then enter branch B and branch C.",
-        "Try rethlas_read against prior and future branch identifiers before join.",
-        "Enter join only after all branches are sealed."
-      ],
-      "expected": [
-        "Every branch receives the same snapshot hash.",
-        "Cross-branch reads are denied until join.",
-        "Sealed capability reuse is denied.",
-        "Join receives all branch results simultaneously."
-      ],
-      "evidence": []
-    },
-    {
-      "id": "MV-005",
-      "name": "Verifier data firewall and mechanical verdict",
-      "status": "pending",
-      "steps": [
-        "Reach verifier state with a complete proof.tex.",
-        "Attempt to read generation memory, branch results, steering, and join internals.",
-        "Submit a report whose model-supplied verdict conflicts with its findings."
-      ],
-      "expected": [
-        "All generation-private reads are denied.",
-        "Server computes correct only when critical_errors and gaps are both empty.",
-        "Wrong findings route to repair and cannot create proof_verified.tex."
-      ],
-      "evidence": []
-    },
-    {
-      "id": "MV-006",
-      "name": "Browser disconnect, resume, steering, and cancellation",
-      "status": "pending",
-      "steps": [
-        "Disconnect the webpage after a task is issued.",
-        "Reconnect with the same OAuth client and call rethlas_resume.",
-        "Queue steering and confirm it appears only at a safe generator/repair checkpoint.",
-        "Cancel another run and attempt further writes with its previous capability."
-      ],
-      "expected": [
-        "State survives browser disconnect.",
-        "Steering is not exposed to verifier.",
-        "Cancelled run is sealed and previous capabilities fail."
-      ],
-      "evidence": []
-    },
-    {
-      "id": "MV-007",
-      "name": "Real LaTeX gate and verified artifact",
-      "status": "pending",
-      "steps": [
-        "Run on Linux with RE_CTM_LATEX_POLICY=required, bubblewrap, and a real latexmk installation.",
-        "Submit malformed, external-input, shell-escape, and valid self-contained documents.",
-        "Create a host-only readable LaTeX class or file outside the compiler scratch directory and confirm the proof cannot load it even by absolute path.",
-        "Complete a correct verification report for the valid document.",
-        "Advance the MCP workflow with rethlas_step until done and confirm the returned workspace_export_path exists under the native workspace without a separate export command; repeat the terminal call and confirm the identical file is reported unchanged.",
-        "Call rethlas_artifact with action=export to a new workspace-relative .tex path, then retry the same path without expected_sha256 and confirm the overwrite is denied."
-      ],
-      "expected": [
-        "Unsafe or uncompilable LaTeX routes to repair, and Re-CTM never falls back to compiling model-generated TeX directly on the host.",
-        "The compiler receives only a scratch workspace plus read-only system TeX/toolchain roots; Re-CTM private state is not mounted.",
-        "Only a compiled proof with empty findings reaches done.",
-        "The sole final delivery artifact is proof_verified.tex.",
-        "The MCP completion path automatically writes the verified bytes to rethlas-output/<run_id>/proof_verified.tex or the requested export_path, and identical retries are idempotent.",
-        "The controlled export writes exactly the finalized bytes inside the native workspace and refuses baseline-free overwrite."
-      ],
-      "evidence": []
-    },
-    {
-      "id": "MV-008",
-      "name": "Rethlas methodology behavior acceptance",
-      "status": "pending",
-      "steps": [
-        "Submit a concrete mathematical proof request in ordinary natural language without naming rethlas_start and confirm the MCP client follows the server instructions by starting and completing a Rethlas run; separately request a direct informal answer and confirm the explicit opt-out is respected.",
-        "Use representative easy, difficult, citation-heavy, counterexample-sensitive, and repair-requiring math problems.",
-        "In a fresh webpage/model context with no prior Re-CTM protocol knowledge, inspect each returned task contract and complete at least one easy end-to-end run without any JSON-shape/schema correction; confirm write_contract, commit_action, commit_payload_schema, and a valid submission example/template are present at every model-active state.",
-        "Inspect memory channels, multiple plan generation, server-issued plan/subgoal ids, incremental direct screening, one-branch-per-plan work, all-branch join, failure synthesis, replanning, verification audits, and changed-proof repair.",
-        "During direct screening intentionally submit only a subset of plan/subgoal results; confirm the server stays in direct_proving, returns exact missing ids, retains accepted progress, and advances only after coverage is complete without requiring plan status or branch_plans to be echoed.",
-        "Trigger one recoverable rethlas_step validation error during a later write after an earlier write succeeded; confirm recoverable=true, retryable=true, writes_retained=true, failed_write identifies the rejected record, the fresh capability can continue without replaying the retained record, and the superseded capability is revoked. Separately confirm a stale/foreign capability remains a hard permission failure.",
-        "Create two active runs, intentionally pair run A's capability with run B's run_id in rethlas_step, and confirm CAPABILITY_RUN_MISMATCH is returned before either run receives a logical write or a fresh task. Confirm the original capability remains usable with its original run. Also verify façade schemas reject malformed/edited capability strings and operation-specific irrelevant fields rather than silently ignoring them.",
-        "Use rethlas_retrieve for nontrivial claims; for useful results, inspect the source paper context/proof and persist definitions, applicability checks, and identifiers before relying on them."
-      ],
-      "expected": [
-        "Concrete proof/derivation/repair/verification requests route into Rethlas by default rather than ending as an unverified chat-only proof.",
-        "Core Rethlas methodology is observably preserved despite sequential domains.",
-        "A fresh model can follow the task-provided zero-guess contracts without reading server source or learning hidden JSON requirements from failures.",
-        "Failures remain queryable and influence new plans.",
-        "External results include complete statements and applicability checks.",
-        "Operator judges the target 95-percent functional-equivalence criterion."
-      ],
-      "evidence": []
-    },
-    {
-      "id": "MV-009",
-      "name": "Coding Tools MCP 18-tool compatibility",
-      "status": "pending",
-      "steps": [
-        "Capture tools/list from the reference Coding Tools MCP and Re-CTM, and compare the 18 CTM native names, order, required fields, enums, defaults, and annotations.",
-        "Exercise read_file, list_dir, list_files, search_text, apply_patch, Git tools, request_permissions, and view_image against the same disposable workspace.",
-        "With the Re-CTM bubblewrap backend enabled, run a long command that returns command_id, poll with write_stdin, page retained stdout/stderr with read_output, interact with a tty=true command, and terminate another command with kill_command.",
-        "Repeat command lifecycle checks in safe, trusted, and dangerous native modes and confirm dangerous does not grant any rethlas_* workflow capability.",
-        "Trigger one command timeout and one explicit kill_command and inspect termination.source, requested_timeout_ms, elapsed_ms, observed_signal, term_sent_by_re_ctm, and kill_sent_by_re_ctm. If a real CAS process is later killed externally, confirm Re-CTM reports external_or_unknown unless it has evidence that it sent the terminating signal."
-      ],
-      "expected": [
-        "No CTM native tool is missing from Re-CTM; tools/list exposes exactly 18 CTM native tools plus 6 Rethlas façade tools, while superseded Rethlas protocol names remain callable as hidden aliases.",
-        "Existing CTM-style calls using patch envelopes and cmd/workdir command arguments remain accepted.",
-        "Long-running command IDs remain usable through write_stdin, read_output, and kill_command for the lifetime of the Re-CTM server process.",
-        "Any documented Re-CTM differences are security-boundary adaptations rather than missing CTM lifecycle functionality.",
-        "Termination provenance is additive diagnostics and does not alter the reference CTM timeout/TERM/KILL lifecycle."
-      ],
-      "evidence": []
-    },
-    {
-      "id": "MV-010",
-      "name": "v0.2 Verified Research Workspace acceptance",
-      "status": "pending",
-      "steps": [
-        "On a disposable copy of a dev6/v0.1 private state directory containing at least one terminal run and one in-progress run, start v0.2.1, confirm the state schema migrates additively, and resume the old in-progress run under workflow protocol 1 without acquiring proof_manifest requirements.",
-        "Create a research project and OPEN claims through the public Rethlas façade, then start a project-linked protocol-2 run with workflow_mode=auto or compact. Confirm the run receives a frozen project snapshot hash and Native dangerous cannot read the private registry directly.",
-        "Complete a direct local lemma through the compact lane and confirm it still traverses LaTeX validation, independent verifier, and finalizer before one immutable VERIFIED revision is promoted. Repeat terminal delivery and confirm no duplicate revision is created.",
-        "Create a CONDITIONAL dependency carrying an explicit condition such as GRH, use its frozen revision in a later proof_manifest, and confirm the downstream promoted revision mechanically inherits the condition rather than relying on a model-supplied status label.",
-        "Start two project runs from the same claim base revision, let one promote first, then finish the other. Confirm the second mathematical run remains done/correct while registry promotion records an optimistic-concurrency conflict instead of overwriting the newer active revision.",
-        "Force one registry-promotion attempt to fail after a mathematically correct run reaches done. Confirm final_tex remains available, the run stays done/correct, promotion remains retryable/pending, and a later terminal rethlas_step retries promotion without re-running the proof.",
-        "After a VERIFIED claim revision exists, create a newer OPEN revision and start another project-linked run. Confirm the frozen snapshot still contains the historical VERIFIED revision as an eligible dependency while exposing its superseded lifecycle status.",
-        "Run a reference-using proof. Omit the material reference audit once and confirm the server mechanically inserts a verification gap; then audit the same reference as SOURCE_VERIFIED or INDEPENDENTLY_REDERIVED with assumptions/notation/source checks plus evidence_basis/evidence_locator and confirm a correct proof can finalize. Confirm a LeanSearch/OpenAlex discovery snapshot alone is rejected as SOURCE_VERIFIED original-source evidence.",
-        "Use rethlas_retrieve theorem_search plus paper_search/paper_lookup/theorem_context on real network connectivity, including an author/title/keywords-only paper search. Confirm results have stable reference ids/source provenance, paper operations use the configured fixed provider, redirects cannot leave the allowed HTTPS provider host, and no public argument permits an arbitrary URL fetch.",
-        "Inspect the verifier task for a project-linked proof and confirm it sees only the dependency revisions declared in proof_manifest, not unrelated project claims, speculative notes, generation memory, branches, steering, or generator confidence.",
-        "Retrieve proof_manifest, reference_audit, project_manifest, and project_summary_tex through rethlas_artifact; export the project manifest/summary to workspace and confirm they contain claim/revision/status/hash/dependency/condition/audit facts but no private reasoning, owner/OAuth material, or capability handles. Put an unsafe external-file command such as \\input in an OPEN claim and confirm project_summary_tex is refused while project_manifest remains available.",
-        "Force one compact proof to fail verification twice and confirm the first wrong verdict enters repair while the second changes the effective mode to full and continues at explore. Separately exercise compact assembler outcome=escalate."
-      ],
-      "expected": [
-        "Schema migration preserves old workflow state and protocol compatibility while refusing a database from a newer unsupported runtime.",
-        "Project state remains private from Native dangerous and owner isolation applies to all project/claim/artifact reads and mutations.",
-        "VERIFIED/CONDITIONAL revisions originate only from mechanically finalized correct runs, are immutable, idempotent by source run, and never overwrite a concurrent newer revision.",
-        "Registry promotion is a non-fatal second phase after mathematical finalization: promotion errors cannot invalidate verified LaTeX and are retried idempotently on later terminal calls.",
-        "Compact mode reduces exploration only; it never bypasses LaTeX, independent verification, repair, or finalization.",
-        "Frozen project snapshots make dependency resolution reproducible, retain historical VERIFIED/CONDITIONAL revisions even after later OPEN revisions supersede them, and propagate conditional hypotheses mechanically through declared dependencies.",
-        "Material references cannot silently pass without a resolved verifier audit and source/provenance evidence remains traceable.",
-        "Paper-aware retrieval is useful on the target network but remains bounded and fixed-provider rather than an arbitrary URL fetcher.",
-        "Portable project artifacts are sufficient for research/project management without exposing private chain-of-thought-like workflow memory."
-      ],
-      "evidence": []
-    },
-    {
-      "id": "MV-011",
-      "name": "Minimal terminal observer acceptance",
-      "status": "pending",
-      "steps": [
-        "On a target machine, open a terminal in a disposable project directory and run re-ctm tui with RE_CTM_OAUTH_PASSWORD unset. Confirm the displayed workspace is the current directory, the local/fixed MCP URL is correct, and the generated authorization key appears only after a successful bind.",
-        "Connect the real webpage MCP client, complete DCR/PKCE OAuth, and confirm the terminal status advances from waiting for authorization to authorization accepted/token issued/connected without repeating connected for every authenticated MCP request.",
-        "Issue several native and Rethlas tool calls and confirm the terminal shows only tool name/start/success-or-safe-error facts, never arguments, results, problem/proof contents, access tokens, authorization codes, capabilities, or client secrets.",
-        "Start the same setup with an explicit RE_CTM_OAUTH_PASSWORD and confirm the TUI prints configured externally rather than echoing the password.",
-        "Run plain re-ctm tui through an independently managed Cloudflare Quick Tunnel without RE_CTM_SERVER_URL. Confirm the TUI does not claim to own that external process and only updates the public origin after the trusted loopback proxy request resolves it.",
-        "Stress tool calls while slowing or breaking the terminal consumer and confirm MCP/tool execution remains responsive; verify no idle polling behavior is observable when no events occur.",
-        "Scan debug JSONL, SQLite state, validation reports, and project ledgers for the generated authorization key and confirm it is absent."
-      ],
-      "expected": [
-        "The TUI is optional presentation only and re-ctm serve remains behaviorally compatible for headless use.",
-        "Terminal rendering failure, queue pressure, or a closed output pipe cannot change tool success/failure or OAuth authorization semantics.",
-        "The generated OAuth key remains local-terminal-only secret material and explicitly configured passwords are never echoed by the TUI.",
-        "Plain tui adds no database/log polling, extra model/network request, token-usage estimation, public-tool change, workflow-state change, persistence-schema change, or tunnel process."
-      ],
-      "evidence": []
-    },
-    {
-      "id": "MV-012",
-      "name": "One-command Quick Tunnel TUI acceptance",
-      "status": "pending",
-      "steps": [
-        "On a target machine with cloudflared installed, open a disposable project directory and run re-ctm tui --quick-tunnel --native-mode dangerous with RE_CTM_OAUTH_PASSWORD and RE_CTM_PORT unset. Confirm Re-CTM chooses an available loopback port without fuser/pkill and displays both the generated authorization key and a real HTTPS *.trycloudflare.com/mcp URL.",
-        "Connect the real webpage MCP client to the displayed public MCP URL, complete DCR/PKCE OAuth, and exercise both a Native tool and a Rethlas workflow call while the same terminal reports authentication and tool-call state.",
-        "Repeat with an explicit --port and with RE_CTM_PORT to confirm each value is respected; repeat with a stale RE_CTM_SERVER_URL and confirm --quick-tunnel uses the dynamically resolved TryCloudflare origin for that session without rewriting the environment or persisted configuration.",
-        "Temporarily hide cloudflared from PATH and confirm --quick-tunnel reports that it is unavailable while the local MCP server remains running. Separately force cloudflared to exit early and confirm the same local-service degradation.",
-        "Set RE_CTM OAuth/token/capability secrets and Cloudflare named-tunnel credential environment variables, launch --quick-tunnel under process/environment inspection, and confirm the child receives none of those credential variables.",
-        "Press Ctrl-C after the Quick Tunnel is connected, confirm Re-CTM exits cleanly and the cloudflared child created by that TUI session is gone; confirm unrelated pre-existing cloudflared processes are untouched."
-      ],
-      "expected": [
-        "The common remote-client path is one command: re-ctm tui --quick-tunnel --native-mode dangerous.",
-        "Quick Tunnel mode is explicit opt-in; plain tui and serve create no cloudflared process and retain their previous performance profile.",
-        "Only strict HTTPS *.trycloudflare.com output becomes the public MCP URL; Quick Tunnel cannot inherit Re-CTM secrets or named-tunnel credentials.",
-        "Tunnel failure never kills the local MCP service, and shutdown only terminates the child process owned by this TUI session.",
-        "Real webpage/browser compatibility remains a manual target assertion even though deterministic lifecycle tests and a real local-network Quick Tunnel smoke pass."
+        "All deterministic checks and package/installed-command probes pass for the actual candidate.",
+        "A skipped or host-blocked real isolation/LaTeX test remains an unmet target gate; disabled execution or static_only is not equivalent evidence."
       ],
       "evidence": [
-        "Local source smoke on 2026-08-31 used the installed cloudflared with isolated /tmp Re-CTM data roots: --quick-tunnel selected an OS-assigned loopback port and produced a real HTTPS *.trycloudflare.com/mcp URL.",
-        "A real HTTPS request through that Quick Tunnel to /.well-known/oauth-protected-resource returned resource and authorization_servers bound to the same random TryCloudflare origin.",
-        "A separate timeout/SIGINT source smoke exited Re-CTM with status 130 and left no matching cloudflared process; deterministic tests cover owned TERM-to-KILL escalation. Real webpage DCR/PKCE and target dangerous-mode tool calls remain pending."
-      ]
+        {
+          "report": "docs/validation/target-20261014-source-validation.json",
+          "scope": "Partial deterministic evidence only:497tests/491pass; six physicalgates blocked. This entry does not mark the complete acceptance scope passed.",
+          "generated_at": "2026-10-14T16:07:33.716Z"
+        },
+        {
+          "report": "docs/validation/release-0.4.1-evidence.json",
+          "scope": "Baseline 528/178 machine gates reused only for byte-identical runtime; final source/package and host launcher gates remain pending.",
+          "generated_at": "2026-10-15T07:07:00Z"
+        }
+      ],
+      "bounded_release_scope": "Baseline 528/178 machine gates reused only for byte-identical runtime; final source/package and host launcher gates remain pending."
+    },
+    {
+      "id": "RC-002",
+      "name": "MTM v11 public tool and Native contract",
+      "status": "pending",
+      "evidence_scope": "target_runtime",
+      "sources": [
+        "src/re_ctm/tools.py",
+        "tests/test_native_catalog_v11.py",
+        "tests/test_native_changes_v11.py",
+        "tests/test_native_exec_v11.py",
+        "tests/test_command_v11.py",
+        "tests/test_mcp.py"
+      ],
+      "commands": [
+        "PYTHONPATH=src:tests python3 -m unittest test_native_catalog_v11 test_native_changes_v11 test_native_exec_v11 test_native_output_contract_v11 test_native_review_v11 test_command_v11 test_mcp -q"
+      ],
+      "steps": [
+        "Capture tools/list and verify the exact ordered 19 Native plus six workflow tools, including apply_changes, with the current mtm-tools-v11 schemas.",
+        "Repeat catalog capture across generator, branch, join, verifier and repair states; verify authorization is checked server-side.",
+        "Confirm all 11 retired workflow aliases are absent and rejected, and public safe/trusted configuration is rejected rather than silently promoted.",
+        "Exercise revision-bound create/write/edit/delete/move/copy and patch operations in a disposable workspace, stale revisions, dry-run, caller-scoped idempotency conflicts and unknown-outcome reconciliation.",
+        "Exercise argv versus cmd exclusivity, requested PATH/workdir executable revalidation and the unchanged command lifecycle; do not treat a Native in-memory receipt as durable exactly-once execution."
+      ],
+      "expected": [
+        "There are exactly 25 public tools with no callable retired aliases.",
+        "Native dangerous never grants workflow, project, verifier or finalizer authority.",
+        "Documented v11 behavior is confirmed without weakening the retained internal isolation-only adapters."
+      ],
+      "evidence": [
+        {
+          "report": "docs/validation/target-20261014-source-validation.json",
+          "scope": "Partial deterministic evidence only:497tests/491pass; six physicalgates blocked. This entry does not mark the complete acceptance scope passed.",
+          "generated_at": "2026-10-14T16:07:33.716Z"
+        },
+        {
+          "report": "docs/validation/release-0.4.1-evidence.json",
+          "scope": "Deterministic 19 Native plus six Rethlas catalog/contract evidence and current connected Native execution passed; broader state-by-state exercise unclaimed.",
+          "generated_at": "2026-10-15T07:07:00Z"
+        }
+      ],
+      "bounded_release_scope": "Deterministic 19 Native plus six Rethlas catalog/contract evidence and current connected Native execution passed; broader state-by-state exercise unclaimed."
+    },
+    {
+      "id": "RC-003",
+      "name": "Loopback OAuth and MCP protocol smoke",
+      "status": "passed",
+      "evidence_scope": "local_protocol",
+      "sources": [
+        "scripts/smoke_oauth_mcp.py",
+        "tests/test_oauth.py",
+        "tests/test_http.py",
+        "tests/test_http_oauth_resources.py",
+        "tests/test_config_secrets.py"
+      ],
+      "commands": [
+        "PYTHONPATH=src:tests python3 -m unittest test_oauth test_http test_http_oauth_resources test_config_secrets -q",
+        "python3 scripts/smoke_oauth_mcp.py --base-url http://127.0.0.1:<port> --output <redacted-report.json>"
+      ],
+      "steps": [
+        "Start the candidate on an approved loopback address with fresh disposable state, and complete DCR, PKCE authorization, code exchange and authenticated tools/list using the corrected 25-tool smoke.",
+        "Check origin-level and /mcp protected-resource metadata, the bearer challenge resource_metadata, legacy initialize and modern MCP mirror headers.",
+        "Reject missing/invalid tokens, unapproved MCP Origin values and token replay under a different effective origin; verify fixed-origin and loopback-only dynamic-origin rules.",
+        "Keep generated authorization keys, passwords, codes, client secrets and tokens out of all saved evidence; do not read production credentials to run this smoke."
+      ],
+      "expected": [
+        "The redacted smoke and protocol regressions pass against the candidate.",
+        "This certifies scripted local protocol behavior only and does not mark RC-004 browser acceptance passed."
+      ],
+      "evidence": [
+        {
+          "report": "docs/validation/target-20261014-oauth-validation.json",
+          "scope": "33 scripted loopback regressions against fresh disposable candidate state; no actual browser acceptance",
+          "generated_at": "2026-10-14T16:07:33.716Z"
+        },
+        {
+          "report": "docs/validation/release-0.4.1-evidence.json",
+          "scope": "Current exact-runtime strict scripted OAuth/MCP fixture and supplement passed.",
+          "generated_at": "2026-10-15T07:07:00Z"
+        }
+      ],
+      "bounded_release_scope": "Current exact-runtime strict scripted OAuth/MCP fixture and supplement passed."
+    },
+    {
+      "id": "RC-004",
+      "name": "Real webpage OAuth, client routing and resume",
+      "status": "pending",
+      "evidence_scope": "real_client",
+      "sources": [
+        "docs/DEPLOYMENT.md",
+        "tests/test_http_oauth_resources.py",
+        "tests/test_mcp.py"
+      ],
+      "commands": [],
+      "steps": [
+        "Use the actual intended webpage MCP client with an approved loopback URL or separately authorized HTTPS ingress. Host-only deployment authorization does not itself authorize creating a public tunnel.",
+        "Connect through protected-resource discovery, complete the real browser authorization form and callback, and confirm token exchange followed by authenticated tools/list without an authorization loop.",
+        "Verify dynamic issuer through a trusted loopback proxy and fixed RE_CTM_SERVER_URL behavior where those ingress modes are actually part of deployment.",
+        "In a fresh model/client context, submit a concrete proof request without naming a tool; confirm Rethlas starts and follows every task contract to completion. Separately verify explicit informal opt-out.",
+        "Disconnect after task issuance, reconnect as the same OAuth owner and resume through rethlas_step(run_id); exercise steering at a safe checkpoint and cancellation with old capabilities rejected."
+      ],
+      "expected": [
+        "The actual browser/client completes authorization and can use both Native and workflow façades.",
+        "Fresh-context routing, zero-guess submissions, reconnect and cancellation work without retired aliases.",
+        "Missing client access or ingress authorization remains pending with a recorded blocker."
+      ],
+      "evidence": [
+        {
+          "report": "docs/validation/release-0.4.1-evidence.json",
+          "scope": "Actual current browser-connected MCP operation and async Native smoke passed; broader fresh-context routing, informal opt-out and reconnect/steering unclaimed.",
+          "generated_at": "2026-10-15T07:07:00Z"
+        }
+      ],
+      "bounded_release_scope": "Actual current browser-connected MCP operation and async Native smoke passed; broader fresh-context routing, informal opt-out and reconnect/steering unclaimed."
+    },
+    {
+      "id": "RC-005",
+      "name": "Target Native isolation and command lifecycle",
+      "status": "pending",
+      "evidence_scope": "target_isolation",
+      "sources": [
+        "scripts/manual_native_isolation_test.py",
+        "tests/test_native_helper.py",
+        "tests/test_ctm_native_compat.py",
+        "docs/DEPLOYMENT.md"
+      ],
+      "commands": [
+        "re-ctm attest-native --backend bubblewrap --workspace <disposable-workspace> --data-root <disposable-data> --private-root <disposable-private>",
+        "python3 scripts/manual_native_isolation_test.py --backend bubblewrap --workspace <disposable-workspace> --data-root <disposable-data> --private-root <disposable-private> --output <native-isolation-report.json>",
+        "PYTHONPATH=src:tests python3 -m unittest test_native_helper test_ctm_native_compat -v"
+      ],
+      "steps": [
+        "Run fresh startup attestation and the adversarial harness on the actual deployment kernel/packaging; repeat --allow-root for every declared explicit product root.",
+        "Use only test-created canaries in disposable private/data roots. Verify mounts, namespace/capability/environment properties, private-state invisibility and no privilege escalation.",
+        "Verify generic PATH/symlink and explicit toolchain discovery, read-only roots, rejection of broad/relative/missing/overlapping roots and exclusion of links into private state.",
+        "Run representative installed scientific tools when available, plus command_id polling, retained-output pagination, TTY interaction, timeout and owned-command termination; inspect termination provenance.",
+        "Retain internal SAFE isolation probes for the compiler/harness even though safe/trusted public configuration is retired. Never change host security policy or weaken the sandbox merely to pass a test."
+      ],
+      "expected": [
+        "The actual target can start the attested backend, use its workspace and execute the required toolchains without exposing private state.",
+        "Failure to create nested namespaces is a target execution blocker, not evidence that the Re-CTM isolation gate passed.",
+        "Timeout/kill results distinguish server actions from external_or_unknown signals and dangerous does not confer L2 authority."
+      ],
+      "evidence": [
+        {
+          "report": "docs/validation/release-0.4.1-evidence.json",
+          "scope": "Strict adversarial native isolation, 13 real HTTP/Bubblewrap groups, and six current live connector lifecycle checks passed for bounded engineering scope.",
+          "generated_at": "2026-10-15T07:07:00Z"
+        }
+      ],
+      "bounded_release_scope": "Strict adversarial native isolation, 13 real HTTP/Bubblewrap groups, and six current live connector lifecycle checks passed for bounded engineering scope."
+    },
+    {
+      "id": "RC-006",
+      "name": "Required real LaTeX gate and final delivery",
+      "status": "pending",
+      "evidence_scope": "target_latex",
+      "sources": [
+        "tests/test_latex.py",
+        "tests/test_latex_scan.py",
+        "tests/test_mcp.py",
+        "docs/DEPLOYMENT.md"
+      ],
+      "commands": [
+        "PYTHONPATH=src:tests python3 -m unittest test_latex test_latex_scan -v"
+      ],
+      "steps": [
+        "Use RE_CTM_LATEX_POLICY=required, real latexmk/TeX Live and the attested isolated compiler on the candidate target.",
+        "Reject malformed, external-input and shell-operation documents; compile a valid self-contained document and prove a host-only class/file outside compiler scratch is unreadable even by absolute path.",
+        "Complete independent verification with empty critical_errors and gaps, then advance rethlas_step to done and inspect the automatically exported workspace_export_path.",
+        "Repeat terminal delivery and verify identical bytes are unchanged; verify conflicting automatic destinations and baseline-free explicit overwrites are refused."
+      ],
+      "expected": [
+        "Only isolated compilation plus a correct verifier report and mechanical finalization produce proof_verified.tex.",
+        "Unsafe/uncompilable input enters repair with no host compilation fallback.",
+        "Exported hashes match finalized bytes; static_only or mocked compilation does not satisfy this gate."
+      ],
+      "evidence": [
+        {
+          "report": "docs/validation/target-20261014-source-validation.json",
+          "scope": "Partial deterministic evidence only:497tests/491pass; six physicalgates blocked. This entry does not mark the complete acceptance scope passed.",
+          "generated_at": "2026-10-14T16:07:33.716Z"
+        },
+        {
+          "report": "docs/validation/release-0.4.1-evidence.json",
+          "scope": "Strict required isolated LaTeX, workflow finalization and identical terminal replay passed; procedural fixture is not mathematical quality.",
+          "generated_at": "2026-10-15T07:07:00Z"
+        }
+      ],
+      "bounded_release_scope": "Strict required isolated LaTeX, workflow finalization and identical terminal replay passed; procedural fixture is not mathematical quality."
+    },
+    {
+      "id": "RC-007",
+      "name": "Protocol-3 workflow, role barriers and repairs",
+      "status": "pending",
+      "evidence_scope": "workflow_behavior",
+      "sources": [
+        "tests/test_protocol3_workflow.py",
+        "tests/test_research_state.py",
+        "tests/test_methodology.py",
+        "tests/test_authorization_matrix.py",
+        "tests/test_workflow.py"
+      ],
+      "commands": [
+        "PYTHONPATH=src:tests python3 -m unittest test_research_state test_protocol3_workflow test_methodology test_mcp test_workflow test_operator_outcomes test_rethlas_contracts test_authorization_matrix -q"
+      ],
+      "steps": [
+        "Verify new runs default to protocol 3 and every model-active task supplies write_contract, commit_action, commit_payload_schema and a valid minimal example.",
+        "Generate three materially different plans with server-issued IDs; submit partial direct-screening coverage and confirm exact missing IDs and retained progress before branch creation.",
+        "Verify frozen snapshots, sealed capabilities, cross-branch denial through rethlas_inspect and join only after all branches are sealed.",
+        "Verify the verifier cannot read generation/branch/steering/join internals or the broad advisory research projection, and findings determine the verdict mechanically.",
+        "Exercise wrong-to-repair, changed-proof verification, compact/full escalation, recoverable later-write failure with retained prefix, and hard stale/foreign/run-mismatched capability denial."
+      ],
+      "expected": [
+        "Protocol-3 advisory research state never supplies verification authority or bypasses the independent verifier/LaTeX/finalizer.",
+        "Recovery responses revoke superseded capabilities and clearly instruct the caller not to replay retained writes.",
+        "Behavior is observed through current façades and current task envelopes rather than retired aliases or forged capabilities."
+      ],
+      "evidence": [
+        {
+          "report": "docs/validation/target-20261014-source-validation.json",
+          "scope": "Partial deterministic evidence only:497tests/491pass; six physicalgates blocked. This entry does not mark the complete acceptance scope passed.",
+          "generated_at": "2026-10-14T16:07:33.716Z"
+        },
+        {
+          "report": "docs/validation/release-0.4.1-evidence.json",
+          "scope": "Candidate-bound full and installed workflow/role/repair regressions passed; no claim of fresh-context cognitive independence.",
+          "generated_at": "2026-10-15T07:07:00Z"
+        }
+      ],
+      "bounded_release_scope": "Candidate-bound full and installed workflow/role/repair regressions passed; no claim of fresh-context cognitive independence."
+    },
+    {
+      "id": "RC-008",
+      "name": "Schema-8 migration and durable recovery",
+      "status": "pending",
+      "evidence_scope": "disposable_state_recovery",
+      "sources": [
+        "tests/test_storage_recovery.py",
+        "tests/test_submission_recovery_integration.py",
+        "tests/test_workflow_review_v11.py",
+        "tests/test_storage_boundaries.py",
+        "docs/MTM_MIGRATION.md"
+      ],
+      "commands": [
+        "PYTHONPATH=src:tests python3 -m unittest test_storage_recovery test_submission_recovery_integration test_workflow_review_v11 test_storage_boundaries test_v020 -q"
+      ],
+      "steps": [
+        "Use synthetic disposable databases for every supported source schema through 8, including terminal and in-progress protocol-1/2 runs; verify additive transactional migration, repeat startup, preserved contracts and rejection of unsupported future schemas.",
+        "Inject migration/action/receipt failures and verify transaction rollback, no partially promoted state, and preserved retained-write evidence.",
+        "Exercise keyed creation restart, exact historical receipt replay, changed-input conflict, owner/workspace/run binding and pending submissions blocking task refresh before side effects.",
+        "Exercise recover_only for prepared, between-write, atomic and restartable action checkpoints; confirm it never executes missing writes/actions, never replays a retained prefix and refuses opaque/legacy/conflicting evidence.",
+        "Record controlled exception/restart test scope honestly; before any separately authorized live upgrade require consistent backup of database, vault and signing keys with writers stopped. Do not inspect live state merely to qualify this release."
+      ],
+      "expected": [
+        "Supported historical runs remain resumable with their original protocol and no silent upgrade of their write contracts.",
+        "Recovery cannot manufacture authority or success, and historical receipts return no new task capability.",
+        "Controlled recovery fixtures do not claim universal power-loss durability; rollback uses a consistent pre-upgrade copy, never user_version edits."
+      ],
+      "evidence": [
+        {
+          "report": "docs/validation/target-20261014-source-validation.json",
+          "scope": "Partial deterministic evidence only:497tests/491pass; six physicalgates blocked. This entry does not mark the complete acceptance scope passed.",
+          "generated_at": "2026-10-14T16:07:33.716Z"
+        },
+        {
+          "report": "docs/validation/release-0.4.1-evidence.json",
+          "scope": "Candidate-bound schema/recovery regression fixtures passed; universal power-loss acceptance unclaimed.",
+          "generated_at": "2026-10-15T07:07:00Z"
+        }
+      ],
+      "bounded_release_scope": "Candidate-bound schema/recovery regression fixtures passed; universal power-loss acceptance unclaimed."
+    },
+    {
+      "id": "RC-009",
+      "name": "Projects, verified facts and reference evidence",
+      "status": "pending",
+      "evidence_scope": "project_and_external_evidence",
+      "sources": [
+        "tests/test_v020.py",
+        "tests/test_fact_memory.py",
+        "tests/test_fact_store.py",
+        "tests/test_fact_workflow.py",
+        "tests/test_fact_cli.py",
+        "docs/MTM_MIGRATION.md"
+      ],
+      "commands": [
+        "PYTHONPATH=src:tests python3 -m unittest test_v020 test_fact_memory test_fact_store test_fact_workflow test_fact_cli -q"
+      ],
+      "steps": [
+        "Create disposable owner-scoped projects/claims and verify frozen dependencies, finalizer-only immutable VERIFIED/CONDITIONAL promotion, conditional propagation, concurrent base conflicts and idempotent retry after nonfatal promotion failure.",
+        "Verify content-addressed facts, proof/target provenance, predecessor constraints, atomic fact/claim/finding rollback, advisory memory budgets and exclusion of foreign/revoked/current-run facts.",
+        "Verify historical fact_id=NULL dependencies remain historical and are not silently converted to verified fact evidence; owner and Native boundaries remain enforced.",
+        "Run a material-reference proof: missing/unresolved audit must create a mechanical gap, and SOURCE_VERIFIED must cite actual source-body inspection or a checked external source location rather than search/discovery metadata.",
+        "On authorized real network connectivity, exercise fixed-provider theorem_search, paper_search, paper_lookup and theorem_context including author/title/keyword-only search and cross-host redirect rejection.",
+        "Export portable project artifacts from test projects and verify no owner/OAuth/capability/private reasoning leaks; unsafe project-summary LaTeX is refused."
+      ],
+      "expected": [
+        "Project/fact authority remains downstream of mathematically done and cannot invalidate or overwrite a correct finalized proof on promotion conflict.",
+        "Resolved audits have traceable substantive source evidence and material references cannot silently pass.",
+        "Deterministic retrieval fixtures do not certify real provider availability or mathematical source quality; missing real-network evidence keeps this gate pending."
+      ],
+      "evidence": [
+        {
+          "report": "docs/validation/target-20261014-source-validation.json",
+          "scope": "Partial deterministic evidence only:497tests/491pass; six physicalgates blocked. This entry does not mark the complete acceptance scope passed.",
+          "generated_at": "2026-10-14T16:07:33.716Z"
+        },
+        {
+          "report": "docs/validation/release-0.4.1-evidence.json",
+          "scope": "Project/fact/reference-boundary regressions and fixture promotion passed; substantive live source/provider quality unclaimed.",
+          "generated_at": "2026-10-15T07:07:00Z"
+        }
+      ],
+      "bounded_release_scope": "Project/fact/reference-boundary regressions and fixture promotion passed; substantive live source/provider quality unclaimed."
+    },
+    {
+      "id": "RC-010",
+      "name": "Terminal observer and approved ingress lifecycle",
+      "status": "pending",
+      "evidence_scope": "target_operator",
+      "sources": [
+        "tests/test_cli.py",
+        "tests/test_terminal_ui.py",
+        "tests/test_quick_tunnel.py",
+        "docs/DEPLOYMENT.md"
+      ],
+      "commands": [
+        "PYTHONPATH=src:tests python3 -m unittest test_cli test_terminal_ui test_quick_tunnel -q"
+      ],
+      "steps": [
+        "Run serve and optional tui with disposable state; verify generated authorization-key display only after successful bind and no echo of externally configured secrets.",
+        "Check tool-start/error visibility and connected-state transitions, verbose trace identifiers, redaction, queue pressure, slow/broken terminal output and closed-pipe behavior without changing tool results.",
+        "Inspect only disposable test logs/reports/state for test secrets; no production secret scan is authorized by this checklist.",
+        "If Quick Tunnel is an intended, separately authorized deployment mode, verify OS-selected/explicit ports, strict HTTPS trycloudflare origin, credential-free child environment, missing/failed cloudflared degradation and owned-child-only shutdown.",
+        "Keep remote ingress execution pending when only local host deployment/testing has been authorized. Plain serve/tui must create no tunnel process."
+      ],
+      "expected": [
+        "The observer is optional presentation with bounded nonblocking delivery and no additional polling, model request or credential leakage.",
+        "Approved tunnel tests preserve local service on tunnel failure and never terminate unrelated processes.",
+        "Local deterministic tunnel fixtures are not real browser/ingress acceptance."
+      ],
+      "evidence": [
+        {
+          "report": "docs/validation/release-0.4.1-evidence.json",
+          "scope": "Prior accepted runtime terminal behavior retained; new short-command activation and real launcher template startup/shutdown pending.",
+          "generated_at": "2026-10-15T07:07:00Z"
+        }
+      ],
+      "bounded_release_scope": "Prior accepted runtime terminal behavior retained; new short-command activation and real launcher template startup/shutdown pending."
+    },
+    {
+      "id": "RC-011",
+      "name": "Mathematical methodology and quality acceptance",
+      "status": "pending",
+      "evidence_scope": "human_quality_review",
+      "sources": [
+        "manual-validation.json historical MV-008",
+        "docs/MTM_MIGRATION.md",
+        "docs/DEPLOYMENT.md"
+      ],
+      "commands": [],
+      "steps": [
+        "Have the operator select representative easy, difficult, citation-heavy, counterexample-sensitive and repair-requiring problems and record the evaluation method before judging the candidate.",
+        "Run the actual client/model workflow, inspect complete statements, assumptions, source applicability, retained failures, alternative plans, verification findings and changed-proof repairs.",
+        "Judge the stated 95-percent Rethlas functional-equivalence target from the agreed evidence, and explicitly record limitations of sequential domains compared with truly fresh model contexts.",
+        "Keep public evidence content-minimized using problem identifiers, status names, hashes and review conclusions rather than private proof or reasoning bodies."
+      ],
+      "expected": [
+        "An operator provides substantive mathematical/methodology acceptance for the actual candidate.",
+        "A green test suite, one easy proof, a compiled TeX file or simulated verifier does not certify mathematical quality or cognitive independence."
+      ],
+      "evidence": [
+        {
+          "report": "docs/validation/release-0.4.1-evidence.json",
+          "scope": "Mathematical quality and 95 percent methodology equivalence remain unvalidated; no new broad research gate inferred.",
+          "generated_at": "2026-10-15T07:07:00Z"
+        }
+      ],
+      "bounded_release_scope": "Mathematical quality and 95 percent methodology equivalence remain unvalidated; no new broad research gate inferred."
     }
+  ],
+  "historical_checklists": [
+    {
+      "lifecycle": "superseded",
+      "superseded_at": "2026-10-14",
+      "reason": "The active public catalog, Native configuration, workflow aliases, default protocol and storage schema changed under the authorized MTM migration. The original manifest is retained unchanged as historical acceptance instructions and evidence; no historical check is promoted to passed.",
+      "manifest": {
+        "schema_version": "1.0.0",
+        "project": "Re-CTM",
+        "status": "pending_post_push",
+        "rule": "These checks are deliberately not claimed by local unit tests. Execute them after pushing the repository and attach the terminal run's debug manifest and relevant redacted logs.",
+        "prerequisites": [
+          "A target PC or target container matching the intended deployment",
+          "A real webpage MCP client supporting OAuth",
+          "HTTPS or an approved loopback development URL",
+          "A configured native isolation helper/container with no private-vault mount",
+          "A real LaTeX toolchain when RE_CTM_LATEX_POLICY=required",
+          "External theorem/web retrieval connectivity if used by the reasoning workflow"
+        ],
+        "checks": [
+          {
+            "id": "MV-001",
+            "name": "OAuth discovery and dynamic registration",
+            "status": "pending",
+            "steps": [
+              "Run Re-CTM on 127.0.0.1 without RE_CTM_SERVER_URL or RE_CTM_OAUTH_PASSWORD; record the generated Re-CTM OAuth authorization key shown only in the local operator terminal, then start a Cloudflare Quick Tunnel after the server is already listening and confirm no Re-CTM restart is needed when the random trycloudflare.com hostname appears.",
+              "Fetch OAuth authorization-server and protected-resource metadata through the Quick Tunnel and confirm issuer/resource/endpoint URLs use the public HTTPS trycloudflare.com origin.",
+              "Complete the browser authorization form through the Quick Tunnel and confirm its Origin-bearing POST is accepted as an OAuth route while an unapproved external Origin sent to /mcp is still rejected.",
+              "After submitting the authorization key, confirm the browser follows the 302 to the registered ChatGPT callback and Re-CTM subsequently receives POST /oauth/token rather than restarting a fresh authorization request.",
+              "Run scripts/smoke_oauth_mcp.py against the public base URL and save its redacted report.",
+              "Connect the webpage client to /.well-known/oauth-protected-resource and the MCP URL.",
+              "Confirm DCR creates a client and the browser is redirected to /oauth/authorize.",
+              "Complete PKCE authorization and token exchange.",
+              "Repeat with an explicit RE_CTM_SERVER_URL and confirm forwarded Host headers cannot replace that fixed OAuth origin."
+            ],
+            "expected": [
+              "No static bearer or no-auth path is offered.",
+              "When no OAuth password is configured, a high-entropy authorization key is generated for the serve session, displayed to the local operator, accepted on the first OAuth page, and absent from structured logs, reports, HTTP payloads, and persisted state.",
+              "Dynamic OAuth origin works only with a loopback-bound server and the tunnel's trusted local proxy request; non-loopback dynamic bind is rejected.",
+              "An access token issued for the public tunnel origin is rejected when replayed against a different effective origin.",
+              "The client reaches tools/list only with a valid OAuth access token.",
+              "Debug events contain fingerprints, not raw codes, secrets, passwords, or tokens."
+            ],
+            "evidence": []
+          },
+          {
+            "id": "MV-002",
+            "name": "Fixed tool catalog across native modes and workflow states",
+            "status": "pending",
+            "steps": [
+              "Confirm scripts/smoke_oauth_mcp.py reports exactly 24 public tools (18 CTM Native + 6 Rethlas façade tools) and a modern non-inheritance result.",
+              "Confirm superseded Rethlas protocol names such as rethlas_next/rethlas_status remain callable as hidden compatibility aliases but are absent from tools/list.",
+              "Capture tools/list in safe, trusted, and dangerous native modes.",
+              "Capture tools/list during generator, branch, join, verifier, and repair states."
+            ],
+            "expected": [
+              "Catalog and schemas are identical.",
+              "Authorization changes server-side call results rather than catalog visibility."
+            ],
+            "evidence": []
+          },
+          {
+            "id": "MV-003",
+            "name": "Dangerous native isolation",
+            "status": "pending",
+            "steps": [
+              "Install bubblewrap on Linux or provide an independently reviewed external helper.",
+              "Run `re-ctm attest-native --backend bubblewrap --workspace <workspace> --data-root <data-root> --private-root <private-root>` without enabling native execution.",
+              "Run `python3 scripts/manual_native_isolation_test.py --backend bubblewrap --workspace <workspace> --data-root <data-root> --private-root <private-root> --output native-isolation-validation.json` and review every check.",
+              "Run Re-CTM with native_mode=dangerous on Linux with bwrap installed and confirm the built-in Bubblewrap backend is selected automatically and startup attestation succeeds without an acknowledgement flag.",
+              "Create arbitrary non-product-named CLI toolchains in a Conda-style prefix, a bin/Executables prefix, and a PATH symlink target; confirm all are discovered without application-name configuration.",
+              "Place an additional CLI plus runtime outside PATH, expose it with RE_CTM_NATIVE_EXEC_ALLOW_ROOTS, and confirm it executes by name through the extended sandbox PATH.",
+              "Attempt to declare relative, missing, `/`, complete-home, workspace-overlapping, data-overlapping, and private-overlapping allow roots and confirm startup/check-config fails closed.",
+              "Attempt to mutate every exposed toolchain root and confirm Bubblewrap presents it read-only; point a PATH symlink into private state and confirm the target is excluded.",
+              "Run representative installed tools such as SageMath, Magma, Mathematica/wolframscript, or site-local equivalents when available, while configured Re-CTM data/private roots remain invisible.",
+              "Use exec_command to enumerate mounts and attempt direct reads of the configured Re-CTM data/private roots.",
+              "Attempt privilege escalation, parent-environment recovery, namespace creation, and access through interpreters or nested shells."
+            ],
+            "expected": [
+              "Native workspace remains usable.",
+              "Private run store is not mounted or otherwise reachable.",
+              "The helper response is nonce-bound and attests mount, user, PID, environment, capability, and network properties.",
+              "The effective toolchain view is application-agnostic, canonical, ancestor-collapsed, read-only, diagnostic, and disjoint from workspace/data/private trust domains.",
+              "Safe mode has a private network namespace; trusted/dangerous network behavior matches the selected native policy.",
+              "Dangerous never grants a rethlas_* capability or finalization authority."
+            ],
+            "evidence": []
+          },
+          {
+            "id": "MV-004",
+            "name": "Sequential branch-domain information barrier",
+            "status": "pending",
+            "steps": [
+              "Create at least three materially different decomposition plans.",
+              "Execute branch A, seal it, then enter branch B and branch C.",
+              "Try rethlas_read against prior and future branch identifiers before join.",
+              "Enter join only after all branches are sealed."
+            ],
+            "expected": [
+              "Every branch receives the same snapshot hash.",
+              "Cross-branch reads are denied until join.",
+              "Sealed capability reuse is denied.",
+              "Join receives all branch results simultaneously."
+            ],
+            "evidence": []
+          },
+          {
+            "id": "MV-005",
+            "name": "Verifier data firewall and mechanical verdict",
+            "status": "pending",
+            "steps": [
+              "Reach verifier state with a complete proof.tex.",
+              "Attempt to read generation memory, branch results, steering, and join internals.",
+              "Submit a report whose model-supplied verdict conflicts with its findings."
+            ],
+            "expected": [
+              "All generation-private reads are denied.",
+              "Server computes correct only when critical_errors and gaps are both empty.",
+              "Wrong findings route to repair and cannot create proof_verified.tex."
+            ],
+            "evidence": []
+          },
+          {
+            "id": "MV-006",
+            "name": "Browser disconnect, resume, steering, and cancellation",
+            "status": "pending",
+            "steps": [
+              "Disconnect the webpage after a task is issued.",
+              "Reconnect with the same OAuth client and call rethlas_resume.",
+              "Queue steering and confirm it appears only at a safe generator/repair checkpoint.",
+              "Cancel another run and attempt further writes with its previous capability."
+            ],
+            "expected": [
+              "State survives browser disconnect.",
+              "Steering is not exposed to verifier.",
+              "Cancelled run is sealed and previous capabilities fail."
+            ],
+            "evidence": []
+          },
+          {
+            "id": "MV-007",
+            "name": "Real LaTeX gate and verified artifact",
+            "status": "pending",
+            "steps": [
+              "Run on Linux with RE_CTM_LATEX_POLICY=required, bubblewrap, and a real latexmk installation.",
+              "Submit malformed, external-input, shell-escape, and valid self-contained documents.",
+              "Create a host-only readable LaTeX class or file outside the compiler scratch directory and confirm the proof cannot load it even by absolute path.",
+              "Complete a correct verification report for the valid document.",
+              "Advance the MCP workflow with rethlas_step until done and confirm the returned workspace_export_path exists under the native workspace without a separate export command; repeat the terminal call and confirm the identical file is reported unchanged.",
+              "Call rethlas_artifact with action=export to a new workspace-relative .tex path, then retry the same path without expected_sha256 and confirm the overwrite is denied."
+            ],
+            "expected": [
+              "Unsafe or uncompilable LaTeX routes to repair, and Re-CTM never falls back to compiling model-generated TeX directly on the host.",
+              "The compiler receives only a scratch workspace plus read-only system TeX/toolchain roots; Re-CTM private state is not mounted.",
+              "Only a compiled proof with empty findings reaches done.",
+              "The sole final delivery artifact is proof_verified.tex.",
+              "The MCP completion path automatically writes the verified bytes to rethlas-output/<run_id>/proof_verified.tex or the requested export_path, and identical retries are idempotent.",
+              "The controlled export writes exactly the finalized bytes inside the native workspace and refuses baseline-free overwrite."
+            ],
+            "evidence": []
+          },
+          {
+            "id": "MV-008",
+            "name": "Rethlas methodology behavior acceptance",
+            "status": "pending",
+            "steps": [
+              "Submit a concrete mathematical proof request in ordinary natural language without naming rethlas_start and confirm the MCP client follows the server instructions by starting and completing a Rethlas run; separately request a direct informal answer and confirm the explicit opt-out is respected.",
+              "Use representative easy, difficult, citation-heavy, counterexample-sensitive, and repair-requiring math problems.",
+              "In a fresh webpage/model context with no prior Re-CTM protocol knowledge, inspect each returned task contract and complete at least one easy end-to-end run without any JSON-shape/schema correction; confirm write_contract, commit_action, commit_payload_schema, and a valid submission example/template are present at every model-active state.",
+              "Inspect memory channels, multiple plan generation, server-issued plan/subgoal ids, incremental direct screening, one-branch-per-plan work, all-branch join, failure synthesis, replanning, verification audits, and changed-proof repair.",
+              "During direct screening intentionally submit only a subset of plan/subgoal results; confirm the server stays in direct_proving, returns exact missing ids, retains accepted progress, and advances only after coverage is complete without requiring plan status or branch_plans to be echoed.",
+              "Trigger one recoverable rethlas_step validation error during a later write after an earlier write succeeded; confirm recoverable=true, retryable=true, writes_retained=true, failed_write identifies the rejected record, the fresh capability can continue without replaying the retained record, and the superseded capability is revoked. Separately confirm a stale/foreign capability remains a hard permission failure.",
+              "Create two active runs, intentionally pair run A's capability with run B's run_id in rethlas_step, and confirm CAPABILITY_RUN_MISMATCH is returned before either run receives a logical write or a fresh task. Confirm the original capability remains usable with its original run. Also verify façade schemas reject malformed/edited capability strings and operation-specific irrelevant fields rather than silently ignoring them.",
+              "Use rethlas_retrieve for nontrivial claims; for useful results, inspect the source paper context/proof and persist definitions, applicability checks, and identifiers before relying on them."
+            ],
+            "expected": [
+              "Concrete proof/derivation/repair/verification requests route into Rethlas by default rather than ending as an unverified chat-only proof.",
+              "Core Rethlas methodology is observably preserved despite sequential domains.",
+              "A fresh model can follow the task-provided zero-guess contracts without reading server source or learning hidden JSON requirements from failures.",
+              "Failures remain queryable and influence new plans.",
+              "External results include complete statements and applicability checks.",
+              "Operator judges the target 95-percent functional-equivalence criterion."
+            ],
+            "evidence": []
+          },
+          {
+            "id": "MV-009",
+            "name": "Coding Tools MCP 18-tool compatibility",
+            "status": "pending",
+            "steps": [
+              "Capture tools/list from the reference Coding Tools MCP and Re-CTM, and compare the 18 CTM native names, order, required fields, enums, defaults, and annotations.",
+              "Exercise read_file, list_dir, list_files, search_text, apply_patch, Git tools, request_permissions, and view_image against the same disposable workspace.",
+              "With the Re-CTM bubblewrap backend enabled, run a long command that returns command_id, poll with write_stdin, page retained stdout/stderr with read_output, interact with a tty=true command, and terminate another command with kill_command.",
+              "Repeat command lifecycle checks in safe, trusted, and dangerous native modes and confirm dangerous does not grant any rethlas_* workflow capability.",
+              "Trigger one command timeout and one explicit kill_command and inspect termination.source, requested_timeout_ms, elapsed_ms, observed_signal, term_sent_by_re_ctm, and kill_sent_by_re_ctm. If a real CAS process is later killed externally, confirm Re-CTM reports external_or_unknown unless it has evidence that it sent the terminating signal."
+            ],
+            "expected": [
+              "No CTM native tool is missing from Re-CTM; tools/list exposes exactly 18 CTM native tools plus 6 Rethlas façade tools, while superseded Rethlas protocol names remain callable as hidden aliases.",
+              "Existing CTM-style calls using patch envelopes and cmd/workdir command arguments remain accepted.",
+              "Long-running command IDs remain usable through write_stdin, read_output, and kill_command for the lifetime of the Re-CTM server process.",
+              "Any documented Re-CTM differences are security-boundary adaptations rather than missing CTM lifecycle functionality.",
+              "Termination provenance is additive diagnostics and does not alter the reference CTM timeout/TERM/KILL lifecycle."
+            ],
+            "evidence": []
+          },
+          {
+            "id": "MV-010",
+            "name": "v0.2 Verified Research Workspace acceptance",
+            "status": "pending",
+            "steps": [
+              "On a disposable copy of a dev6/v0.1 private state directory containing at least one terminal run and one in-progress run, start v0.2.1, confirm the state schema migrates additively, and resume the old in-progress run under workflow protocol 1 without acquiring proof_manifest requirements.",
+              "Create a research project and OPEN claims through the public Rethlas façade, then start a project-linked protocol-2 run with workflow_mode=auto or compact. Confirm the run receives a frozen project snapshot hash and Native dangerous cannot read the private registry directly.",
+              "Complete a direct local lemma through the compact lane and confirm it still traverses LaTeX validation, independent verifier, and finalizer before one immutable VERIFIED revision is promoted. Repeat terminal delivery and confirm no duplicate revision is created.",
+              "Create a CONDITIONAL dependency carrying an explicit condition such as GRH, use its frozen revision in a later proof_manifest, and confirm the downstream promoted revision mechanically inherits the condition rather than relying on a model-supplied status label.",
+              "Start two project runs from the same claim base revision, let one promote first, then finish the other. Confirm the second mathematical run remains done/correct while registry promotion records an optimistic-concurrency conflict instead of overwriting the newer active revision.",
+              "Force one registry-promotion attempt to fail after a mathematically correct run reaches done. Confirm final_tex remains available, the run stays done/correct, promotion remains retryable/pending, and a later terminal rethlas_step retries promotion without re-running the proof.",
+              "After a VERIFIED claim revision exists, create a newer OPEN revision and start another project-linked run. Confirm the frozen snapshot still contains the historical VERIFIED revision as an eligible dependency while exposing its superseded lifecycle status.",
+              "Run a reference-using proof. Omit the material reference audit once and confirm the server mechanically inserts a verification gap; then audit the same reference as SOURCE_VERIFIED or INDEPENDENTLY_REDERIVED with assumptions/notation/source checks plus evidence_basis/evidence_locator and confirm a correct proof can finalize. Confirm a LeanSearch/OpenAlex discovery snapshot alone is rejected as SOURCE_VERIFIED original-source evidence.",
+              "Use rethlas_retrieve theorem_search plus paper_search/paper_lookup/theorem_context on real network connectivity, including an author/title/keywords-only paper search. Confirm results have stable reference ids/source provenance, paper operations use the configured fixed provider, redirects cannot leave the allowed HTTPS provider host, and no public argument permits an arbitrary URL fetch.",
+              "Inspect the verifier task for a project-linked proof and confirm it sees only the dependency revisions declared in proof_manifest, not unrelated project claims, speculative notes, generation memory, branches, steering, or generator confidence.",
+              "Retrieve proof_manifest, reference_audit, project_manifest, and project_summary_tex through rethlas_artifact; export the project manifest/summary to workspace and confirm they contain claim/revision/status/hash/dependency/condition/audit facts but no private reasoning, owner/OAuth material, or capability handles. Put an unsafe external-file command such as \\input in an OPEN claim and confirm project_summary_tex is refused while project_manifest remains available.",
+              "Force one compact proof to fail verification twice and confirm the first wrong verdict enters repair while the second changes the effective mode to full and continues at explore. Separately exercise compact assembler outcome=escalate."
+            ],
+            "expected": [
+              "Schema migration preserves old workflow state and protocol compatibility while refusing a database from a newer unsupported runtime.",
+              "Project state remains private from Native dangerous and owner isolation applies to all project/claim/artifact reads and mutations.",
+              "VERIFIED/CONDITIONAL revisions originate only from mechanically finalized correct runs, are immutable, idempotent by source run, and never overwrite a concurrent newer revision.",
+              "Registry promotion is a non-fatal second phase after mathematical finalization: promotion errors cannot invalidate verified LaTeX and are retried idempotently on later terminal calls.",
+              "Compact mode reduces exploration only; it never bypasses LaTeX, independent verification, repair, or finalization.",
+              "Frozen project snapshots make dependency resolution reproducible, retain historical VERIFIED/CONDITIONAL revisions even after later OPEN revisions supersede them, and propagate conditional hypotheses mechanically through declared dependencies.",
+              "Material references cannot silently pass without a resolved verifier audit and source/provenance evidence remains traceable.",
+              "Paper-aware retrieval is useful on the target network but remains bounded and fixed-provider rather than an arbitrary URL fetcher.",
+              "Portable project artifacts are sufficient for research/project management without exposing private chain-of-thought-like workflow memory."
+            ],
+            "evidence": []
+          },
+          {
+            "id": "MV-011",
+            "name": "Minimal terminal observer acceptance",
+            "status": "pending",
+            "steps": [
+              "On a target machine, open a terminal in a disposable project directory and run re-ctm tui with RE_CTM_OAUTH_PASSWORD unset. Confirm the displayed workspace is the current directory, the local/fixed MCP URL is correct, and the generated authorization key appears only after a successful bind.",
+              "Connect the real webpage MCP client, complete DCR/PKCE OAuth, and confirm the terminal status advances from waiting for authorization to authorization accepted/token issued/connected without repeating connected for every authenticated MCP request.",
+              "Issue several native and Rethlas tool calls and confirm the terminal shows only tool name/start/success-or-safe-error facts, never arguments, results, problem/proof contents, access tokens, authorization codes, capabilities, or client secrets.",
+              "Start the same setup with an explicit RE_CTM_OAUTH_PASSWORD and confirm the TUI prints configured externally rather than echoing the password.",
+              "Run plain re-ctm tui through an independently managed Cloudflare Quick Tunnel without RE_CTM_SERVER_URL. Confirm the TUI does not claim to own that external process and only updates the public origin after the trusted loopback proxy request resolves it.",
+              "Stress tool calls while slowing or breaking the terminal consumer and confirm MCP/tool execution remains responsive; verify no idle polling behavior is observable when no events occur.",
+              "Scan debug JSONL, SQLite state, validation reports, and project ledgers for the generated authorization key and confirm it is absent."
+            ],
+            "expected": [
+              "The TUI is optional presentation only and re-ctm serve remains behaviorally compatible for headless use.",
+              "Terminal rendering failure, queue pressure, or a closed output pipe cannot change tool success/failure or OAuth authorization semantics.",
+              "The generated OAuth key remains local-terminal-only secret material and explicitly configured passwords are never echoed by the TUI.",
+              "Plain tui adds no database/log polling, extra model/network request, token-usage estimation, public-tool change, workflow-state change, persistence-schema change, or tunnel process."
+            ],
+            "evidence": []
+          },
+          {
+            "id": "MV-012",
+            "name": "One-command Quick Tunnel TUI acceptance",
+            "status": "pending",
+            "steps": [
+              "On a target machine with cloudflared installed, open a disposable project directory and run re-ctm tui --quick-tunnel --native-mode dangerous with RE_CTM_OAUTH_PASSWORD and RE_CTM_PORT unset. Confirm Re-CTM chooses an available loopback port without fuser/pkill and displays both the generated authorization key and a real HTTPS *.trycloudflare.com/mcp URL.",
+              "Connect the real webpage MCP client to the displayed public MCP URL, complete DCR/PKCE OAuth, and exercise both a Native tool and a Rethlas workflow call while the same terminal reports authentication and tool-call state.",
+              "Repeat with an explicit --port and with RE_CTM_PORT to confirm each value is respected; repeat with a stale RE_CTM_SERVER_URL and confirm --quick-tunnel uses the dynamically resolved TryCloudflare origin for that session without rewriting the environment or persisted configuration.",
+              "Temporarily hide cloudflared from PATH and confirm --quick-tunnel reports that it is unavailable while the local MCP server remains running. Separately force cloudflared to exit early and confirm the same local-service degradation.",
+              "Set RE_CTM OAuth/token/capability secrets and Cloudflare named-tunnel credential environment variables, launch --quick-tunnel under process/environment inspection, and confirm the child receives none of those credential variables.",
+              "Press Ctrl-C after the Quick Tunnel is connected, confirm Re-CTM exits cleanly and the cloudflared child created by that TUI session is gone; confirm unrelated pre-existing cloudflared processes are untouched."
+            ],
+            "expected": [
+              "The common remote-client path is one command: re-ctm tui --quick-tunnel --native-mode dangerous.",
+              "Quick Tunnel mode is explicit opt-in; plain tui and serve create no cloudflared process and retain their previous performance profile.",
+              "Only strict HTTPS *.trycloudflare.com output becomes the public MCP URL; Quick Tunnel cannot inherit Re-CTM secrets or named-tunnel credentials.",
+              "Tunnel failure never kills the local MCP service, and shutdown only terminates the child process owned by this TUI session.",
+              "Real webpage/browser compatibility remains a manual target assertion even though deterministic lifecycle tests and a real local-network Quick Tunnel smoke pass."
+            ],
+            "evidence": [
+              "Local source smoke on 2026-08-31 used the installed cloudflared with isolated /tmp Re-CTM data roots: --quick-tunnel selected an OS-assigned loopback port and produced a real HTTPS *.trycloudflare.com/mcp URL.",
+              "A real HTTPS request through that Quick Tunnel to /.well-known/oauth-protected-resource returned resource and authorization_servers bound to the same random TryCloudflare origin.",
+              "A separate timeout/SIGINT source smoke exited Re-CTM with status 130 and left no matching cloudflared process; deterministic tests cover owned TERM-to-KILL escalation. Real webpage DCR/PKCE and target dangerous-mode tool calls remain pending."
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "candidate_notes": [
+    "0.4.1 OPT-024 changes Native managed-child creator-thread lifetime only; fresh candidate-specific host/installed HTTP+bwrap acceptance is required.",
+    "Actual connected 0.4.0 async SIGKILL failure remains recorded in .local-install/workspace/human-authorized-test-20261015T0434Z/human-authorized-test-report.json; do not overwrite or count it as passed.",
+    "Browser login UI, broad mathematical quality and strict cognitive independence must retain their own stated evidence boundaries.",
+    "2026-10-15: exact-runtime strict baseline, corrected HTTP/Bubblewrap supplement and actual connector lifecycle accepted at their stated scopes. Launcher activation/final source packaging remain separate; historical failures retained."
   ]
 }
