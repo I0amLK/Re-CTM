@@ -161,6 +161,7 @@ _START_SCHEMA = _closed_object(
     properties={
         "problem_tex": {"type": "string", "minLength": 1},
         "problem_id": {"type": "string", "default": START_DEFAULT_PROBLEM_ID},
+        "creation_key": {"type": "string", "minLength": 16, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]{16,128}$", "description": "Optional owner-scoped idempotency key. Reuse only with exactly the same normalized creation request."},
         "project_id": {
             "type": "string",
             "description": "Optional owner project to snapshot and link to this run.",
@@ -223,33 +224,19 @@ _STEP_SCHEMA = _closed_object(
             ),
         },
     },
-    oneOf=[
-        _closed_object(
-            required=("run_id",),
-            properties={"run_id": {"type": "string", "minLength": 1}},
-        ),
-        _closed_object(
-            required=("run_id", "capability", "action"),
-            properties={
-                "run_id": {"type": "string", "minLength": 1},
-                "capability": CAPABILITY_INPUT_SCHEMA,
-                "writes": RETHLAS_STEP_WRITES_SCHEMA,
-                "action": {
-                    "type": "string",
-                    "minLength": 1,
-                    "description": "Use the current task.commit_action exactly.",
-                },
-                "payload": {
-                    "type": "object",
-                    "description": (
-                        "Match the current task.commit_payload_schema exactly; use an empty "
-                        "object when the schema has no required fields."
-                    ),
-                },
-            },
-        ),
-    ],
+    dependentRequired={
+        "capability": ["action"],
+        "action": ["capability"],
+        "payload": ["capability", "action"],
+        "writes": ["capability", "action"],
+        "recover_only": ["capability", "action"],
+    },
 )
+_STEP_SCHEMA["properties"]["recover_only"] = {
+    "type": "boolean", "default": False,
+    "description": "Recover an existing enrolled receipt without executing writes or commit actions. Fetch the current task separately afterwards.",
+}
+
 
 
 _RETRIEVE_SCHEMA = _closed_object(

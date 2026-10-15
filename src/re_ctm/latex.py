@@ -8,19 +8,21 @@ from pathlib import Path
 
 from .enums import LatexPolicy, NativeMode
 from .errors import ReCTMError
+from .latex_scan import LatexScanError, scan_source
 from .native import BubblewrapExecBackend
 
 
 _FORBIDDEN = {
     "shell_escape": re.compile(r"\\(?:immediate\s*)?write18\b", re.I),
-    "input": re.compile(r"\\(?:input|include|includeonly)\b", re.I),
-    "file_write": re.compile(r"\\(?:openout|write|read)\b", re.I),
-    "file_read": re.compile(r"\\(?:openin|newread|readline)\b", re.I),
+    # TeX control words stop before digits, unlike regex word boundaries.
+    "input": re.compile(r"\\(?:input|include|includeonly)(?![a-zA-Z])", re.I | re.ASCII),
+    "file_write": re.compile(r"\\(?:openout|write|read)(?![a-zA-Z])", re.I | re.ASCII),
+    "file_read": re.compile(r"\\(?:openin|newread|readline)(?![a-zA-Z])", re.I | re.ASCII),
     "shellesc_package": re.compile(r"\\usepackage(?:\[[^\]]*\])?\{shellesc\}", re.I),
-    "bibliography_file": re.compile(r"\\(?:bibliography|addbibresource)\b", re.I),
-    "external_graphic": re.compile(r"\\includegraphics\b", re.I),
-    "external_listing": re.compile(r"\\(?:lstinputlisting|verbatiminput|includepdf)\b", re.I),
-    "external_auxiliary": re.compile(r"\\externaldocument\b", re.I),
+    "bibliography_file": re.compile(r"\\(?:bibliography|addbibresource)(?![a-zA-Z])", re.I | re.ASCII),
+    "external_graphic": re.compile(r"\\includegraphics(?![a-zA-Z])", re.I | re.ASCII),
+    "external_listing": re.compile(r"\\(?:lstinputlisting|verbatiminput|includepdf)(?![a-zA-Z])", re.I | re.ASCII),
+    "external_auxiliary": re.compile(r"\\externaldocument(?![a-zA-Z])", re.I | re.ASCII),
 }
 
 
@@ -143,8 +145,12 @@ def _static_errors(content: str) -> list[str]:
     if not content.strip():
         return ["proof.tex is empty"]
     if len(content.encode("utf-8")) > 2 * 1024 * 1024:
-        errors.append("proof.tex exceeds the 2 MiB source limit")
-    stripped = _strip_comments(content)
+        return ["proof.tex exceeds the 2 MiB source limit"]
+    try:
+        views = scan_source(content)
+    except LatexScanError as exc:
+        return [str(exc)]
+    stripped = views.structure
     if not re.search(r"\\documentclass(?:\[[^\]]*\])?\{[^}]+\}", stripped):
         errors.append("missing documentclass")
     if stripped.count("\\begin{document}") != 1:
@@ -156,7 +162,9 @@ def _static_errors(content: str) -> list[str]:
     if not _balanced_braces(stripped):
         errors.append("unbalanced LaTeX braces")
     for name, pattern in _FORBIDDEN.items():
-        if pattern.search(stripped):
+        # Literal masking is only a structural convenience, not evidence that
+        # arbitrary macros/packages cannot execute the apparent literal body.
+        if pattern.search(views.operations):
             errors.append(f"forbidden LaTeX operation: {name}")
     return errors
 
@@ -170,18 +178,6 @@ def static_latex_errors(content: str) -> list[str]:
     """
 
     return _static_errors(content)
-
-
-def _strip_comments(content: str) -> str:
-    lines: list[str] = []
-    for line in content.splitlines():
-        cut = len(line)
-        for index, character in enumerate(line):
-            if character == "%" and (index == 0 or line[index - 1] != "\\"):
-                cut = index
-                break
-        lines.append(line[:cut])
-    return "\n".join(lines)
 
 
 def _balanced_braces(content: str) -> bool:

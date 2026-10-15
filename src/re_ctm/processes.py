@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import queue
 import secrets
 import signal
 import subprocess
@@ -8,7 +9,7 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, Callable
 
 from .errors import ReCTMError, invalid_argument
 
@@ -18,6 +19,8 @@ COMMAND_HEAD_BUFFER_DIVISOR = 8
 MAX_ACTIVE_COMMANDS = 16
 MAX_RETAINED_COMMANDS = 32
 COMPLETED_COMMAND_TTL_SECONDS = 300
+DEFAULT_COMMAND_TIMEOUT_MS = 300_000
+MAX_COMMAND_TIMEOUT_MS = 600_000
 HARD_KILL_SIGNAL = getattr(signal, "SIGKILL", signal.SIGTERM)
 
 
@@ -44,6 +47,47 @@ def terminate_process_group(
 
 
 def spawn_process(
+    command: list[str],
+    *,
+    env: dict[str, str],
+    tty: bool,
+) -> tuple[subprocess.Popen[bytes], int | None]:
+    # Linux parent-death signals follow the creating thread, not just its
+    # process. HTTP request threads may exit as soon as "running" is returned,
+    # so the owner of a --die-with-parent child must live until that child exits.
+    outcomes: queue.Queue[
+        tuple[subprocess.Popen[bytes], int | None] | BaseException
+    ] = queue.Queue(maxsize=1)
+
+    def supervise() -> None:
+        try:
+            spawned = _spawn_process_owned(command, env=env, tty=tty)
+        except BaseException as exc:
+            outcomes.put(exc)
+            return
+        outcomes.put(spawned)
+        process, _ = spawned
+        while True:
+            try:
+                if process.poll() is not None or process.wait() is not None:
+                    return
+            except Exception:
+                # Observation failure must not itself kill a still-live child
+                # by ending its parent thread. Other lifecycle waiters retain
+                # their existing timeout/kill authority and provenance.
+                time.sleep(0.05)
+
+    owner = threading.Thread(
+        target=supervise, name="re-ctm-command-owner", daemon=True,
+    )
+    owner.start()  # A failure propagates before waiting for the handshake.
+    outcome = outcomes.get()
+    if isinstance(outcome, BaseException):
+        raise outcome
+    return outcome
+
+
+def _spawn_process_owned(
     command: list[str],
     *,
     env: dict[str, str],
@@ -126,6 +170,9 @@ class CommandRun:
     kill_sent_by_re_ctm: bool = False
     pty_master_fd: int | None = None
     _stdin_closed: bool = False
+    _status_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    _terminal_observed: bool = field(default=False, repr=False)
+    on_terminal: Callable[[dict[str, Any]], None] | None = field(default=None, repr=False)
 
     @property
     def head_buffer_limit(self) -> int:
@@ -182,32 +229,104 @@ class CommandRun:
             except OSError:
                 pass
 
+    def request_termination(
+        self,
+        signum: signal.Signals,
+        *,
+        source: str,
+        force: bool = False,
+    ) -> bool:
+        # Keep timeout provenance and explicit signal bookkeeping coherent with
+        # the single status snapshot used by all four observation tools.
+        with self._status_lock:
+            if self.process.poll() is not None:
+                return False
+            self.terminating = True
+            self.termination_source = self.termination_source or source
+            if source == "command_timeout":
+                self.timed_out = True
+            if signum == signal.SIGTERM:
+                self.term_sent_by_re_ctm = True
+            if force:
+                self.kill_sent_by_re_ctm = True
+            terminate_process_group(self.process, signum, force=force)
+            return True
+
     def refresh_status(self) -> None:
-        if (
-            self.timeout_at is not None
-            and not self.timed_out
-            and self.process.poll() is None
-            and time.time() >= self.timeout_at
-        ):
-            self.timed_out = True
-            self.termination_source = self.termination_source or "command_timeout"
-            self.term_sent_by_re_ctm = True
-            terminate_process_group(self.process, signal.SIGTERM)
+        with self._status_lock:
+            if self.completed_at is not None:
+                return
+            expired = (
+                self.timeout_at is not None
+                and not self.timed_out
+                and time.time() >= self.timeout_at
+            )
+        if expired:
+            self.request_termination(signal.SIGTERM, source="command_timeout")
         code = self.process.poll()
         if code is None:
             return
+        # Reader threads acquire the output lock, so never join them while
+        # holding that lock or the lifecycle snapshot lock.
         self.drain_readers()
-        self.exit_code = code
-        self.terminating = False
-        if code < 0:
-            try:
-                self.signal_name = signal.Signals(-code).name
-            except ValueError:
-                self.signal_name = str(-code)
-            if self.termination_source is None:
-                self.termination_source = "external_or_unknown"
-        if self.completed_at is None:
+        with self._status_lock:
+            if self.completed_at is not None:
+                return
+            self.exit_code = code
+            self.terminating = False
+            if code < 0:
+                try:
+                    self.signal_name = signal.Signals(-code).name
+                except ValueError:
+                    self.signal_name = str(-code)
+                if self.termination_source is None:
+                    self.termination_source = "external_or_unknown"
             self.completed_at = time.time()
+
+    def observe_status(self) -> dict[str, Any]:
+        """Return one coherent observation and report its first terminal state.
+
+        Maintenance/watchdog status refreshes do not consume the observation.
+        The callback receives public lifecycle facts, never output or a private
+        once flag; read_output can observe without advancing polling cursors.
+        """
+        self.refresh_status()
+        with self._status_lock:
+            terminal = self.completed_at is not None
+            if not terminal:
+                outcome, status = "running", "running"
+            elif self.timed_out:
+                outcome, status = "timeout", "timeout"
+            elif self.signal_name is not None:
+                outcome, status = "signal", "terminated"
+            elif self.exit_code == 0:
+                outcome, status = "exited_0", "exited"
+            else:
+                outcome, status = "exited_nonzero", "exited"
+            first_terminal = terminal and not self._terminal_observed
+            if terminal:
+                self._terminal_observed = True
+            elapsed_ms = int(((self.completed_at or time.time()) - self.started_at) * 1000)
+            payload: dict[str, Any] = {
+                "command_id": self.command_id,
+                "operation_outcome": outcome,
+                "status": status,
+                "exit_code": self.exit_code,
+                "signal": self.signal_name,
+                "timed_out": self.timed_out,
+                "elapsed_ms": elapsed_ms,
+                "termination": {
+                    "source": self.termination_source,
+                    "requested_timeout_ms": self.requested_timeout_ms,
+                    "elapsed_ms": elapsed_ms,
+                    "observed_signal": self.signal_name,
+                    "term_sent_by_re_ctm": self.term_sent_by_re_ctm,
+                    "kill_sent_by_re_ctm": self.kill_sent_by_re_ctm,
+                },
+            }
+        if first_terminal and self.on_terminal is not None:
+            self.on_terminal({**payload, "termination": dict(payload["termination"])})
+        return payload
 
     def drain_readers(self, timeout: float = 0.25) -> None:
         deadline = time.time() + timeout
@@ -230,21 +349,9 @@ class CommandRun:
             self.stderr_cursor = self.stderr_total_bytes
         stdout_text, stdout_truncated = _tail_text(stdout, max_output_bytes)
         stderr_text, stderr_truncated = _tail_text(stderr, max_output_bytes)
-        if self.timed_out:
-            status = "timeout"
-        elif self.terminating and self.process.poll() is None:
-            status = "running"
-        elif self.signal_name:
-            status = "terminated"
-        else:
-            status = "running" if self.process.poll() is None else "exited"
         payload: dict[str, Any] = {
             "ok": True,
-            "command_id": self.command_id,
-            "status": status,
-            "exit_code": self.exit_code,
-            "signal": self.signal_name,
-            "timed_out": self.timed_out,
+            **self.observe_status(),
             "stdout": stdout_text,
             "stderr": stderr_text,
             "stdout_truncated": stdout_truncated,
@@ -254,14 +361,6 @@ class CommandRun:
             "stdout_omitted_bytes": stdout_omitted,
             "stderr_omitted_bytes": stderr_omitted,
             "truncated": stdout_truncated or stderr_truncated or stdout_omitted > 0 or stderr_omitted > 0,
-            "termination": {
-                "source": self.termination_source,
-                "requested_timeout_ms": self.requested_timeout_ms,
-                "elapsed_ms": int(((self.completed_at or time.time()) - self.started_at) * 1000),
-                "observed_signal": self.signal_name,
-                "term_sent_by_re_ctm": self.term_sent_by_re_ctm,
-                "kill_sent_by_re_ctm": self.kill_sent_by_re_ctm,
-            },
         }
         if self.warnings:
             payload["warnings"] = list(self.warnings)
@@ -337,7 +436,10 @@ def start_reader_threads(command: CommandRun) -> None:
 
 
 class CommandManager:
-    def __init__(self) -> None:
+    def __init__(
+        self, *, on_terminal: Callable[[dict[str, Any]], None] | None = None
+    ) -> None:
+        self.on_terminal = on_terminal
         self.active: dict[str, CommandRun] = {}
         self.retained: OrderedDict[str, CommandRun] = OrderedDict()
         self.lock = threading.Lock()
@@ -348,7 +450,7 @@ class CommandManager:
         command_argv: list[str],
         *,
         env: dict[str, str],
-        timeout_ms: int,
+        timeout_ms: int = DEFAULT_COMMAND_TIMEOUT_MS,
         yield_time_ms: int,
         max_output_bytes: int,
         stdin_text: str,
@@ -356,6 +458,10 @@ class CommandManager:
         verbosity: str | None,
         preview_bytes: int,
     ) -> dict[str, Any]:
+        if type(timeout_ms) is not int or not 1 <= timeout_ms <= MAX_COMMAND_TIMEOUT_MS:
+            raise invalid_argument("timeout_ms must be between 1 and 600000")
+        if verbosity is not None and verbosity not in {"summary", "preview", "full"}:
+            raise invalid_argument("verbosity must be summary, preview, or full")
         self._prune()
         with self.lock:
             if self.closed:
@@ -368,15 +474,18 @@ class CommandManager:
                     retryable=True,
                     details={"max_active_commands": MAX_ACTIVE_COMMANDS},
                 )
-        process, pty_master_fd = spawn_process(command_argv, env=env, tty=tty)
-        command = CommandRun(
-            command_id=secrets.token_urlsafe(18),
-            process=process,
-            timeout_at=time.time() + timeout_ms / 1000.0,
-            requested_timeout_ms=timeout_ms,
-            pty_master_fd=pty_master_fd,
-        )
-        with self.lock:
+            # Keep admission, the spawn handshake and registration atomic with
+            # close() and other starts. The owner thread never takes this lock.
+            command_id = secrets.token_urlsafe(18)
+            process, pty_master_fd = spawn_process(command_argv, env=env, tty=tty)
+            command = CommandRun(
+                command_id=command_id,
+                process=process,
+                timeout_at=time.time() + timeout_ms / 1000.0,
+                requested_timeout_ms=timeout_ms,
+                pty_master_fd=pty_master_fd,
+                on_terminal=self.on_terminal,
+            )
             self.active[command.command_id] = command
         start_reader_threads(command)
         self._start_watchdog(command)
@@ -389,7 +498,6 @@ class CommandManager:
             time.sleep(0.02)
         command.refresh_status()
         payload = command.snapshot_since_cursor(max_output_bytes)
-        payload["elapsed_ms"] = int((time.time() - command.started_at) * 1000)
         return self._format(command, payload, verbosity=verbosity, preview_bytes=preview_bytes)
 
     def poll(
@@ -419,7 +527,6 @@ class CommandManager:
                 break
             time.sleep(0.02)
         payload = command.snapshot_since_cursor(max_output_bytes)
-        payload["elapsed_ms"] = int((time.time() - command.started_at) * 1000)
         return self._format(command, payload, verbosity=verbosity, preview_bytes=preview_bytes)
 
     def kill(
@@ -444,29 +551,24 @@ class CommandManager:
         force = signal_name == "KILL"
         killed = False
         evicted = True
-        original_running = command.process.poll() is None
+        original_running = command.request_termination(
+            signum, source="explicit_kill", force=force
+        )
         if original_running:
-            command.terminating = True
-            command.termination_source = "explicit_kill"
-            if signum == signal.SIGTERM:
-                command.term_sent_by_re_ctm = True
-            if signum == HARD_KILL_SIGNAL:
-                command.kill_sent_by_re_ctm = True
-            terminate_process_group(command.process, signum, force=force)
             try:
                 command.process.wait(timeout=max(0, wait_ms) / 1000.0)
             except subprocess.TimeoutExpired:
                 if not force:
                     force = True
-                    command.kill_sent_by_re_ctm = True
-                    terminate_process_group(command.process, HARD_KILL_SIGNAL, force=True)
+                    command.request_termination(
+                        HARD_KILL_SIGNAL, source="explicit_kill", force=True
+                    )
                     try:
                         command.process.wait(timeout=max(0, kill_wait_ms) / 1000.0)
                     except subprocess.TimeoutExpired:
                         pass
-            killed = command.process.poll() is not None
-        command.refresh_status()
         payload = command.snapshot_since_cursor(max_output_bytes)
+        killed = original_running and payload["operation_outcome"] != "running"
         if original_running and not killed:
             status = "terminating"
             evicted = False
@@ -506,6 +608,7 @@ class CommandManager:
         selected = match.group(2)
         if stream and stream != selected:
             raise invalid_argument("stream does not match output_ref")
+        lifecycle = command.observe_status()
         head, tail, tail_start, total, dropped = command.retained_stream_segments(selected)
         requested = max(0, offset)
         limit = max(1, min(limit, COMMAND_BUFFER_BYTES))
@@ -532,6 +635,7 @@ class CommandManager:
             )
         result: dict[str, Any] = {
             "ok": True,
+            **lifecycle,
             "output_ref": output_ref,
             "stream_output_ref": f"command:{command.command_id}:{selected}",
             "stream": selected,
@@ -564,10 +668,7 @@ class CommandManager:
             self.closed = True
             active = list(self.active.values())
         for command in active:
-            if command.process.poll() is None:
-                command.termination_source = command.termination_source or "parent_shutdown"
-                command.term_sent_by_re_ctm = True
-                terminate_process_group(command.process, signal.SIGTERM)
+            command.request_termination(signal.SIGTERM, source="parent_shutdown")
 
     def _get(self, command_id: str, *, stdin: bool) -> CommandRun:
         self._prune()
@@ -610,7 +711,7 @@ class CommandManager:
         verbosity: str | None,
         preview_bytes: int,
     ) -> dict[str, Any]:
-        terminal = payload.get("status") != "running"
+        terminal = payload.get("operation_outcome") != "running"
         if terminal:
             with self.lock:
                 self.active.pop(command.command_id, None)
@@ -653,11 +754,7 @@ class CommandManager:
             try:
                 command.process.wait(timeout=delay)
             except subprocess.TimeoutExpired:
-                if command.process.poll() is None:
-                    command.timed_out = True
-                    command.termination_source = command.termination_source or "command_timeout"
-                    command.term_sent_by_re_ctm = True
-                    terminate_process_group(command.process, signal.SIGTERM)
+                command.request_termination(signal.SIGTERM, source="command_timeout")
             command.refresh_status()
 
         threading.Thread(target=watchdog, daemon=True).start()

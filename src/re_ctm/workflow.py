@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import secrets
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -17,9 +18,18 @@ from .capabilities import (
 from .debug import DebugEventBus, new_trace_id, utc_now
 from .enums import DomainStatus, WorkflowRole, WorkflowState
 from .errors import ReCTMError, invalid_argument
+from .fact_memory import (attach_project_memory, prepare_promotion_facts, project_findings,
+                          project_memory_view, validate_manifest_facts, manifest_facts_schema)
 from .latex import LatexGate
-from .methodology import task_for_state
+from .methodology import task_for_state, overlay_protocol3_research
 from .research import ResearchProvider, TheoremSearchClient
+from .research_state import (
+    ProtocolRecordStamp, ProtocolResearchScope, normalize_protocol3_plans,
+    normalize_protocol3_generation_record, normalize_protocol3_branch_payload,
+    normalize_protocol3_failure_summary, normalize_protocol3_replan_decision,
+    protocol3_screening_fields, stamp_protocol3_record, normalize_research, task_view,
+    ResearchNormalization, ResearchState,
+)
 from .storage import StateStore
 from .vault import (
     BRANCH_CHANNELS,
@@ -103,162 +113,20 @@ class WorkflowEngine:
         self.research = research or TheoremSearchClient()
 
     def start(
-        self,
-        *,
-        owner_id: str,
-        problem_tex: str,
-        problem_id: str | None = None,
-        references: Iterable[Mapping[str, Any]] = (),
-        native_mode: str = "safe",
-        workspace_export_path: str | None = None,
-        project_id: str | None = None,
-        target_claim_id: str | None = None,
-        workflow_mode: str = "auto",
-        register_result: bool = True,
-        workflow_protocol_version: int = 1,
-        trace_id: str | None = None,
+        self, *, owner_id: str, problem_tex: str, problem_id: str | None = None,
+        references: Iterable[Mapping[str, Any]] = (), native_mode: str = "dangerous",
+        workspace_export_path: str | None = None, project_id: str | None = None,
+        target_claim_id: str | None = None, workflow_mode: str = "auto",
+        register_result: bool = True, workflow_protocol_version: int = 1,
+        trace_id: str | None = None, creation_key: str | None = None,
+        workspace_identity: str = "",
     ) -> dict[str, Any]:
-        trace = trace_id or new_trace_id()
-        if not owner_id.strip():
-            raise invalid_argument("owner_id is required")
-        if not problem_tex.strip():
-            raise invalid_argument("problem_tex is required")
-        if workflow_mode not in {"auto", "compact", "full"}:
-            raise invalid_argument("workflow_mode must be auto, compact, or full")
-        if workflow_protocol_version not in {1, 2}:
-            raise invalid_argument("workflow_protocol_version must be 1 or 2")
-        if target_claim_id and not project_id:
-            raise invalid_argument("target_claim_id requires project_id")
-        if project_id:
-            self.store.get_project(project_id, owner_id=owner_id)
-            if target_claim_id:
-                target_claim = self.store.get_claim(target_claim_id, owner_id=owner_id)
-                if target_claim["project_id"] != project_id:
-                    raise invalid_argument("target_claim_id must belong to project_id")
-        resolved_problem_id = _safe_component(problem_id or "problem")
-        reference_inputs: list[dict[str, Any]] = []
-        for item in references:
-            if not isinstance(item, Mapping):
-                raise invalid_argument("references must contain only JSON objects")
-            reference_inputs.append(dict(item))
-        run_id = f"run-{resolved_problem_id}-{secrets.token_hex(6)}"
-        resolved_export_path = (
-            workspace_export_path.strip()
-            if workspace_export_path and workspace_export_path.strip()
-            else f"rethlas-output/{run_id}/proof_verified.tex"
-        )
-        vault_result = self.vault.initialize_run(
-            run_id,
-            problem_tex=problem_tex,
-            references=reference_inputs,
-            metadata={
-                "problem_id": resolved_problem_id,
-                "owner_id": owner_id,
-                "created_at": utc_now(),
-            },
-        )
-        project_snapshot: dict[str, Any] | None = None
-        base_revision_id: str | None = None
-        if project_id:
-            project_snapshot = self.store.create_project_snapshot(project_id, owner_id=owner_id)
-            if target_claim_id:
-                current = self.store.current_claim_revision(target_claim_id, owner_id=owner_id)
-                base_revision_id = current["revision_id"] if current else None
-        self.store.create_run(
-            run_id=run_id,
-            problem_id=resolved_problem_id,
-            owner_id=owner_id,
-            state=WorkflowState.CREATED.value,
-            metadata={
-                "native_mode_at_creation": native_mode,
-                "problem_sha256": vault_result["problem_sha256"],
-                "reference_count": vault_result["reference_count"],
-                "manual_validation_required": True,
-                "active_plans": [],
-                "branch_requests": [],
-                "latex_result": None,
-                "workspace_export_path": resolved_export_path,
-                "workflow_protocol_version": workflow_protocol_version,
-                "requested_workflow_mode": workflow_mode,
-                "effective_workflow_mode": "full" if workflow_mode == "full" else "pending",
-                "compact_verifier_failures": 0,
-                "project_id": project_id,
-                "project_snapshot_id": project_snapshot["snapshot_id"] if project_snapshot else None,
-                "target_claim_id": target_claim_id,
-            },
-        )
-        if project_snapshot is not None:
-            self.store.link_run_to_project(
-                run_id=run_id,
-                owner_id=owner_id,
-                project_id=project_id or "",
-                project_snapshot_id=project_snapshot["snapshot_id"],
-                target_claim_id=target_claim_id,
-                base_revision_id=base_revision_id,
-                requested_workflow_mode=workflow_mode,
-                effective_workflow_mode="full" if workflow_mode == "full" else "pending",
-                register_result=register_result,
-            )
-        reference_manifest = self.vault.read_references_manifest(run_id)
-        for index, item in enumerate(reference_manifest):
-            original = reference_inputs[index] if index < len(reference_inputs) else {}
-            reference = self.store.register_reference(
-                run_id=run_id,
-                project_id=project_id,
-                provider="inline",
-                identity_key=f"inline:{item['name']}:{item['sha256']}",
-                title=str(original.get("name") or item["name"]),
-                source_uri=str(original.get("source") or "inline"),
-                source_state="candidate",
-                content_sha256=str(item.get("sha256") or ""),
-                metadata={"vault_name": item["name"], "size": item.get("size")},
-            )
-            self.store.create_source_snapshot(
-                reference_id=reference["reference_id"],
-                provider="inline",
-                source_uri=str(original.get("source") or "inline"),
-                content=str(original.get("content") or ""),
-                content_type="text/plain",
-                metadata={"vault_name": item["name"]},
-            )
-        self.debug.emit(
-            "workflow.run_created",
-            "workflow_engine",
-            trace_id=trace,
-            run_id=run_id,
-            decision="allow",
-            reason="valid_problem_input",
-            details={
-                "problem_id": resolved_problem_id,
-                "problem_sha256": vault_result["problem_sha256"],
-                "reference_count": vault_result["reference_count"],
-                "native_mode_recorded_only": native_mode,
-                "workflow_protocol_version": workflow_protocol_version,
-                "workflow_mode": workflow_mode,
-                "project_linked": project_snapshot is not None,
-            },
-        )
-        self._transition(
-            run_id,
-            WorkflowState.CREATED,
-            WorkflowState.ASSESS,
-            trace_id=trace,
-            actor="system",
-            reason="run_initialized",
-        )
-        return {
-            "ok": True,
-            "run_id": run_id,
-            "state": WorkflowState.ASSESS.value,
-            "workspace_export_path": resolved_export_path,
-            "workflow_protocol_version": workflow_protocol_version,
-            "workflow_mode": workflow_mode,
-            "project_id": project_id,
-            "project_snapshot_id": project_snapshot["snapshot_id"] if project_snapshot else None,
-            "target_claim_id": target_claim_id,
-            "manual_validation_required": True,
-            "trace_id": trace,
-        }
+        from .workflow_creation import start_run
+        return start_run(self, owner_id=owner_id, problem_tex=problem_tex, problem_id=problem_id,
+                         references=references, native_mode=native_mode, workspace_export_path=workspace_export_path,
+                         project_id=project_id, target_claim_id=target_claim_id, workflow_mode=workflow_mode,
+                         register_result=register_result, workflow_protocol_version=workflow_protocol_version,
+                         trace_id=trace_id, creation_key=creation_key, workspace_identity=workspace_identity)
 
     def next_task(
         self,
@@ -269,6 +137,12 @@ class WorkflowEngine:
     ) -> dict[str, Any]:
         trace = trace_id or new_trace_id()
         run = self._require_owner(run_id, owner_id)
+        pending = self.store.pending_submission_status(owner_id, run_id)
+        if pending is not None:
+            from .storage_receipts import unknown
+            error = unknown()
+            error.details.update({"pending_submission": pending})
+            raise error
         run = self._advance_mechanical(run, trace)
         state = WorkflowState(run["state"])
         if state.terminal:
@@ -386,6 +260,10 @@ class WorkflowEngine:
                         },
                     }
                 )
+            if protocol_version >= 3:
+                for contract in contracts:
+                    if contract.get("resource") == "proof_manifest":
+                        contract["content_schema"]["properties"]["facts"] = manifest_facts_schema()
             task["write_contract"] = contracts
             required = list(task.get("required_records") or [])
             if "proof_manifest" not in required:
@@ -564,6 +442,8 @@ class WorkflowEngine:
                 "Every material reference listed by proof_manifest must receive a disposition plus evidence_basis/evidence_locator. "
                 "Missing or UNRESOLVED material references are converted into server-side verification gaps even if the submitted report omits them."
             )
+        if protocol_version >= 3:
+            overlay_protocol3_research(task, state)
         return task
 
     def read(
@@ -590,6 +470,47 @@ class WorkflowEngine:
             "content": content,
             "trace_id": trace,
         }
+
+    def write_submission(self, *, owner_id: str, capability: str, resource: str,
+                         content: Any, execution: Mapping[str, Any], index: int) -> dict[str, Any]:
+        from .vault_effects import PreparedFiles, lock_run
+        claims = self.capabilities.validate(capability, owner_id=owner_id, action="write", resource=resource,
+                                           trace_id=execution["trace_id"], expected_run_id=execution["claims"].run_id)
+        with lock_run(self.vault.private_root, claims.run_id):
+            if resource == "proof_manifest":
+                if not isinstance(content, Mapping):
+                    raise invalid_argument("proof_manifest must be a JSON object")
+                manifest = self._normalize_proof_manifest(claims, content)
+                stored = self.store.write_submission_manifest(execution, index, manifest)
+                result = {"path_kind": "proof_manifest", "sha256": stored["sha256"]}
+            elif resource == "reference_audit":
+                audit = self._normalize_reference_audit(claims, content)
+                stored = self.store.write_submission_reference_audit(execution, index, audit)
+                result = {"path_kind": "reference_audit", "reference_id": audit["reference_id"], "disposition": stored["disposition"]}
+            else:
+                prepared = PreparedFiles(self.vault.run_root(claims.run_id))
+                with prepared.capture():
+                    result = self._write_resource(claims, resource, content)
+                if len(prepared.effects) != 1:
+                    raise ReCTMError("UNSUPPORTED_SUBMISSION_EFFECT", "Logical writes require one enrolled private file effect.", category="internal")
+                path = next(iter(prepared.effects))
+                self.store.begin_submission_write(execution, index, prepared.evidence(path))
+                prepared.apply(path)
+                self.store.checkpoint_submission_write(execution, index + 1)
+        self.debug.emit("workflow.resource_written", "workflow_engine", trace_id=execution["trace_id"],
+                        run_id=claims.run_id, actor_role=claims.role.value, domain_id=claims.domain_id,
+                        decision="allow", reason="enrolled_resource_write", details={"resource": resource, "index": index})
+        return {"ok": True, "run_id": claims.run_id, "resource": resource, "result": result}
+
+    def recover_submission(self, receipt: Mapping[str, Any]) -> dict[str, Any]:
+        from .vault_effects import image, lock_run, read_regular
+        with lock_run(self.vault.private_root, receipt["run_id"]):
+            recovery = self.store.submission_recovery(receipt)
+            evidence = recovery["file_evidence"]
+            if evidence is None:
+                return self.store.reconcile_caller_writes(recovery)
+            observed = image(read_regular(self.vault.run_root(receipt["run_id"]) / evidence["relative_path"]))
+            return self.store.reconcile_caller_writes(recovery, observed)
 
     def write(
         self,
@@ -1027,6 +948,7 @@ class WorkflowEngine:
                 continue
             if state == WorkflowState.DONE:
                 run = self._retry_pending_registry_promotion(run, trace_id)
+                self._write_manual_validation_manifest(run)
             return run
 
     def _ensure_domain(
@@ -1157,6 +1079,7 @@ class WorkflowEngine:
                         str(first_subgoal["subgoal_id"]): {
                             "status": "solved|partial|stuck",
                             "summary": "...",
+                            **({"method": "direct", "obstruction": "no_progress"} if protocol_version >= 3 else {}),
                         }
                     }
                 }
@@ -1185,6 +1108,7 @@ class WorkflowEngine:
                     "plan_id": branch["plan_id"],
                     "snapshot_id": branch["snapshot_id"],
                     "information_barrier": "Other branch results are unavailable until join.",
+                    **({"assigned_research_subgoals": branch.get("metadata", {}).get("plan", {}).get("research_subgoals", [])} if protocol_version >= 3 else {}),
                 }
             )
         elif role == WorkflowRole.JOIN:
@@ -1207,6 +1131,8 @@ class WorkflowEngine:
                     if not bool(latex_result.get("gate_passed"))
                     else "verification_report"
                 )
+        if protocol_version >= 3 and role in {WorkflowRole.GENERATOR, WorkflowRole.REPAIR}:
+            context["mathematical_research_state"] = self._research_context(run, role)
         return context
 
     def _read_resource(self, claims: CapabilityClaims, resource: str) -> Any:
@@ -1341,6 +1267,129 @@ class WorkflowEngine:
             return self.vault.read_verification_report(claims.run_id)
         raise invalid_argument("unknown logical resource", resource=resource)
 
+    def _research_scope(self, run: Mapping[str, Any]) -> ProtocolResearchScope:
+        try:
+            return ProtocolResearchScope.from_active_plans(
+                run.get("metadata", {}).get("active_plans", []),
+                (item["reference_id"] for item in self.store.list_run_references(str(run["run_id"]))),
+            )
+        except ReCTMError as exc:
+            if exc.code != "INVALID_RESEARCH_RECORD":
+                raise
+            raise ReCTMError("RESEARCH_STATE_PROTOCOL_INVALID", "The stored protocol-3 mathematical research state is invalid.",
+                             category="internal", details=exc.details) from exc
+
+    def _research_stamp(self, claims: CapabilityClaims) -> ProtocolRecordStamp:
+        run = self.store.get_run(claims.run_id)
+        from .workflow_actions import active
+        prepared = active(self)
+        record_id, created_at = prepared.stamp() if prepared else ("research-" + secrets.token_hex(12), utc_now())
+        return ProtocolRecordStamp(record_id, claims.role.value, claims.domain_id,
+                                   int(run.get("round_index") or 0), created_at)
+
+    def _research_action_stamp(
+        self, run: Mapping[str, Any], claims: CapabilityClaims, action: str, slot: str,
+    ) -> ProtocolRecordStamp:
+        seed = f"{claims.run_id}:{claims.epoch}:{claims.issued_state.value}:{action}:{slot}"
+        record_id = "research-" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+        return ProtocolRecordStamp(record_id, claims.role.value, claims.domain_id,
+                                   int(run.get("round_index") or 0), str(run["updated_at"]))
+
+    def _normalize_generation_write(
+        self, claims: CapabilityClaims, channel: str, content: Any,
+    ) -> dict[str, Any]:
+        if channel not in GENERATION_CHANNELS or not isinstance(content, Mapping):
+            raise invalid_argument("generation memory writes require a known channel and JSON object")
+        run = self.store.get_run(claims.run_id)
+        if int(run.get("metadata", {}).get("workflow_protocol_version") or 1) < 3:
+            return dict(content)
+        from .research_state.protocol import RESERVED_RECORD_FIELDS
+        if any(field in content for field in RESERVED_RECORD_FIELDS):
+            raise invalid_argument("protocol-3 generation memory cannot supply server-owned record fields")
+        if channel not in {"events", "counterexamples"}:
+            return dict(content)
+        return normalize_protocol3_generation_record(
+            channel, dict(content), self._research_stamp(claims), self._research_scope(run),
+        )
+
+    def _research_context(self, run: Mapping[str, Any], role: WorkflowRole) -> dict[str, Any] | None:
+        # Check role before reading anything: verifier/branch tasks must not even
+        # construct a broad projection from private generation or sibling state.
+        if role not in {WorkflowRole.GENERATOR, WorkflowRole.REPAIR}:
+            return None
+        normalized = self._normalized_research_state(run, role)
+        view = task_view(normalized, role.value)
+        if view is None:
+            return None
+        self._persist_project_findings(run, normalized.state, new_trace_id())
+        project_run = self.store.get_project_run(str(run["run_id"]), owner_id=str(run["owner_id"]))
+        if project_run is not None:
+            memory = project_memory_view(self.store, project_run["project_id"], str(run["owner_id"]),
+                                         str(run["run_id"]), normalized.state)
+            view = attach_project_memory(view, memory)
+        return view
+
+    def _normalized_research_state(self, run: Mapping[str, Any], role: WorkflowRole) -> ResearchNormalization:
+        run_id = str(run["run_id"])
+        metadata = run.get("metadata", {})
+        branches = self.store.list_branches(run_id)
+        sealed_results = []
+        if branches and all(branch["status"] == "sealed" for branch in branches):
+            sealed_results = [self.vault.read_branch_result(run_id, branch["branch_id"]) for branch in branches]
+        try:
+            join_result = self.vault.read_join_result(run_id)
+        except ReCTMError as exc:
+            if exc.code != "RESOURCE_NOT_FOUND":
+                raise
+            join_result = {}
+        channels = {
+            name: self.vault.read_generation_memory(run_id, name)
+            for name in ("proof_steps", "counterexamples", "failed_paths", "big_decisions", "events")
+        }
+        if role is WorkflowRole.REPAIR:
+            channels["verification_reports"] = self.vault.read_generation_memory(run_id, "verification_reports")
+        try:
+            return normalize_research(
+                self.vault.read_problem(run_id), int(run.get("round_index") or 0),
+                metadata.get("active_plans", []), metadata.get("direct_screening_progress", {}),
+                **channels, branch_results=sealed_results, join_result=join_result,
+                registered_reference_ids=(item["reference_id"] for item in self.store.list_run_references(run_id)),
+            )
+        except ReCTMError as exc:
+            if exc.code != "INVALID_RESEARCH_RECORD":
+                raise
+            raise ReCTMError("RESEARCH_STATE_PROTOCOL_INVALID", "The stored protocol-3 mathematical research state is invalid.",
+                             category="internal", details=exc.details) from exc
+
+    def _persist_project_findings(self, run: Mapping[str, Any], state: ResearchState, trace_id: str) -> None:
+        # Finding projection is a replayable advisory side effect, never a gate
+        # on mathematical work or final artifact delivery.
+        try:
+            project_run = self.store.get_project_run(str(run["run_id"]), owner_id=str(run["owner_id"]))
+            if project_run is not None:
+                findings = project_findings(project_run["project_id"], str(run["run_id"]), state)
+                self.store.insert_project_findings(project_run["project_id"], str(run["run_id"]),
+                                                   str(run["owner_id"]), findings)
+        except (ReCTMError, sqlite3.Error, OSError) as exc:
+            self._memory_projection_failed(run, trace_id, exc)
+
+    def _persist_project_findings_after_transition(self, run: Mapping[str, Any], trace_id: str) -> None:
+        if int(run.get("metadata", {}).get("workflow_protocol_version") or 1) < 3:
+            return
+        try:
+            if self.store.get_project_run(str(run["run_id"]), owner_id=str(run["owner_id"])) is None:
+                return
+            normalized = self._normalized_research_state(run, WorkflowRole.GENERATOR)
+            self._persist_project_findings(run, normalized.state, trace_id)
+        except (ReCTMError, sqlite3.Error, OSError) as exc:
+            self._memory_projection_failed(run, trace_id, exc)
+
+    def _memory_projection_failed(self, run: Mapping[str, Any], trace_id: str, exc: Exception) -> None:
+        self.debug.emit("workflow.memory_projection_failed", "workflow_engine", trace_id=trace_id,
+                        run_id=str(run["run_id"]), decision="deferred",
+                        reason=exc.code if isinstance(exc, ReCTMError) else type(exc).__name__,
+                        details={"replay": "next_task_view"})
+
     def _write_resource(
         self,
         claims: CapabilityClaims,
@@ -1349,9 +1398,8 @@ class WorkflowEngine:
     ) -> dict[str, Any]:
         if resource.startswith("memory:generation:"):
             channel = resource.rsplit(":", 1)[-1]
-            if channel not in GENERATION_CHANNELS or not isinstance(content, Mapping):
-                raise invalid_argument("generation memory writes require a known channel and JSON object")
-            path = self.vault.append_generation_memory(claims.run_id, channel, dict(content))
+            normalized = self._normalize_generation_write(claims, channel, content)
+            path = self.vault.append_generation_memory(claims.run_id, channel, normalized)
             return {"path_kind": "generation_memory", "channel": channel, "file": path.name}
         if resource.startswith("memory:verifier:"):
             channel = resource.rsplit(":", 1)[-1]
@@ -1389,109 +1437,9 @@ class WorkflowEngine:
             path = self.vault.write_verification_report(claims.run_id, normalized)
             return {"path_kind": "verification_report", "file": path.name}
         if resource == "reference_audit":
-            if claims.role is not WorkflowRole.VERIFIER or not isinstance(content, Mapping):
-                raise invalid_argument("reference_audit writes require a verifier JSON object")
-            raw_reference_id = content.get("reference_id")
-            raw_disposition = content.get("disposition")
-            if not isinstance(raw_reference_id, str) or not isinstance(raw_disposition, str):
-                raise invalid_argument("reference_audit requires reference_id and disposition")
-            reference_id = raw_reference_id.strip()
-            disposition = raw_disposition.strip()
-            if not reference_id or not disposition:
-                raise invalid_argument("reference_audit requires non-empty reference_id and disposition")
-            raw_evidence_basis = content.get("evidence_basis")
-            raw_evidence_locator = content.get("evidence_locator")
-            if not isinstance(raw_evidence_basis, str) or not isinstance(raw_evidence_locator, str):
-                raise invalid_argument("reference_audit requires evidence_basis and evidence_locator strings")
-            evidence_basis = raw_evidence_basis.strip()
-            evidence_locator = raw_evidence_locator.strip()
-            valid_evidence_basis = {
-                "stored_source_snapshot",
-                "external_source_inspection",
-                "independent_derivation",
-                "not_material",
-                "unresolved",
-            }
-            if evidence_basis not in valid_evidence_basis:
-                raise invalid_argument("reference_audit.evidence_basis is unsupported")
-            boolean_fields = (
-                "material", "assumptions_checked", "notation_checked",
-                "source_checked", "independently_rederived",
-            )
-            for field in boolean_fields:
-                if field in content and not isinstance(content[field], bool):
-                    raise invalid_argument(f"reference_audit.{field} must be boolean")
-            notes = content.get("notes", "")
-            if not isinstance(notes, str):
-                raise invalid_argument("reference_audit.notes must be a string")
-            material = content.get("material", True)
-            assumptions_checked = content.get("assumptions_checked", False)
-            notation_checked = content.get("notation_checked", False)
-            source_checked = content.get("source_checked", False)
-            independently_rederived = content.get("independently_rederived", False)
-            if disposition == "SOURCE_VERIFIED" and not (
-                source_checked and assumptions_checked and notation_checked
-            ):
-                raise invalid_argument(
-                    "SOURCE_VERIFIED requires source_checked, assumptions_checked, and notation_checked to be true"
-                )
-            if disposition == "SOURCE_VERIFIED":
-                if evidence_basis not in {"stored_source_snapshot", "external_source_inspection"}:
-                    raise invalid_argument(
-                        "SOURCE_VERIFIED requires stored_source_snapshot or external_source_inspection evidence_basis"
-                    )
-                if not evidence_locator:
-                    raise invalid_argument("SOURCE_VERIFIED requires a non-empty evidence_locator")
-                if evidence_basis == "stored_source_snapshot":
-                    snapshots = {
-                        item["source_snapshot_id"]: item
-                        for item in self.store.list_source_snapshots(reference_id)
-                    }
-                    if evidence_locator not in snapshots:
-                        raise invalid_argument(
-                            "Stored source evidence_locator must identify a source snapshot for the audited reference"
-                        )
-                    if snapshots[evidence_locator].get("provider") != "inline":
-                        raise invalid_argument(
-                            "Stored theorem/paper discovery snapshots are unverified metadata, not original-source evidence; use external_source_inspection after checking the actual source"
-                        )
-            if disposition == "INDEPENDENTLY_REDERIVED" and not independently_rederived:
-                raise invalid_argument(
-                    "INDEPENDENTLY_REDERIVED requires independently_rederived=true"
-                )
-            if disposition == "INDEPENDENTLY_REDERIVED" and evidence_basis != "independent_derivation":
-                raise invalid_argument(
-                    "INDEPENDENTLY_REDERIVED requires evidence_basis=independent_derivation"
-                )
-            if disposition == "INDEPENDENTLY_REDERIVED" and not evidence_locator:
-                raise invalid_argument("INDEPENDENTLY_REDERIVED requires a non-empty evidence_locator")
-            if disposition == "NOT_MATERIAL" and material:
-                raise invalid_argument("NOT_MATERIAL requires material=false")
-            if disposition == "NOT_MATERIAL" and evidence_basis != "not_material":
-                raise invalid_argument("NOT_MATERIAL requires evidence_basis=not_material")
-            if disposition == "UNRESOLVED" and evidence_basis != "unresolved":
-                raise invalid_argument("UNRESOLVED requires evidence_basis=unresolved")
-            audit = self.store.write_reference_audit(
-                run_id=claims.run_id,
-                reference_id=reference_id,
-                disposition=disposition,
-                evidence_basis=evidence_basis,
-                evidence_locator=evidence_locator,
-                verifier_domain_id=claims.domain_id,
-                proof_sha256=hashlib.sha256(
-                    self.vault.read_proof(claims.run_id).encode("utf-8")
-                ).hexdigest(),
-                proof_manifest_sha256=self.store.read_proof_manifest(
-                    claims.run_id
-                )["sha256"],
-                material=material,
-                assumptions_checked=assumptions_checked,
-                notation_checked=notation_checked,
-                source_checked=source_checked,
-                independently_rederived=independently_rederived,
-                notes=notes,
-            )
-            return {"path_kind": "reference_audit", "reference_id": reference_id, "disposition": audit["disposition"]}
+            prepared = self._normalize_reference_audit(claims, content)
+            audit = self.store.write_reference_audit(run_id=claims.run_id, **prepared)
+            return {"path_kind": "reference_audit", "reference_id": prepared["reference_id"], "disposition": audit["disposition"]}
         if resource == "branch:self":
             raise ReCTMError(
                 "BRANCH_RESULT_REQUIRES_COMMIT",
@@ -1499,6 +1447,102 @@ class WorkflowEngine:
                 category="validation",
             )
         raise invalid_argument("unknown or non-writable logical resource", resource=resource)
+
+    def _normalize_reference_audit(self, claims: CapabilityClaims, content: Mapping[str, Any]) -> dict[str, Any]:
+        if claims.role is not WorkflowRole.VERIFIER or not isinstance(content, Mapping):
+            raise invalid_argument("reference_audit writes require a verifier JSON object")
+        raw_reference_id = content.get("reference_id")
+        raw_disposition = content.get("disposition")
+        if not isinstance(raw_reference_id, str) or not isinstance(raw_disposition, str):
+            raise invalid_argument("reference_audit requires reference_id and disposition")
+        reference_id = raw_reference_id.strip()
+        disposition = raw_disposition.strip()
+        if not reference_id or not disposition:
+            raise invalid_argument("reference_audit requires non-empty reference_id and disposition")
+        raw_evidence_basis = content.get("evidence_basis")
+        raw_evidence_locator = content.get("evidence_locator")
+        if not isinstance(raw_evidence_basis, str) or not isinstance(raw_evidence_locator, str):
+            raise invalid_argument("reference_audit requires evidence_basis and evidence_locator strings")
+        evidence_basis = raw_evidence_basis.strip()
+        evidence_locator = raw_evidence_locator.strip()
+        valid_evidence_basis = {
+            "stored_source_snapshot",
+            "external_source_inspection",
+            "independent_derivation",
+            "not_material",
+            "unresolved",
+        }
+        if evidence_basis not in valid_evidence_basis:
+            raise invalid_argument("reference_audit.evidence_basis is unsupported")
+        boolean_fields = (
+            "material", "assumptions_checked", "notation_checked",
+            "source_checked", "independently_rederived",
+        )
+        for field in boolean_fields:
+            if field in content and not isinstance(content[field], bool):
+                raise invalid_argument(f"reference_audit.{field} must be boolean")
+        notes = content.get("notes", "")
+        if not isinstance(notes, str):
+            raise invalid_argument("reference_audit.notes must be a string")
+        material = content.get("material", True)
+        assumptions_checked = content.get("assumptions_checked", False)
+        notation_checked = content.get("notation_checked", False)
+        source_checked = content.get("source_checked", False)
+        independently_rederived = content.get("independently_rederived", False)
+        if disposition == "SOURCE_VERIFIED" and not (
+            source_checked and assumptions_checked and notation_checked
+        ):
+            raise invalid_argument(
+                "SOURCE_VERIFIED requires source_checked, assumptions_checked, and notation_checked to be true"
+            )
+        if disposition == "SOURCE_VERIFIED":
+            if evidence_basis not in {"stored_source_snapshot", "external_source_inspection"}:
+                raise invalid_argument(
+                    "SOURCE_VERIFIED requires stored_source_snapshot or external_source_inspection evidence_basis"
+                )
+            if not evidence_locator:
+                raise invalid_argument("SOURCE_VERIFIED requires a non-empty evidence_locator")
+            if evidence_basis == "stored_source_snapshot":
+                snapshots = {
+                    item["source_snapshot_id"]: item
+                    for item in self.store.list_source_snapshots(reference_id)
+                }
+                if evidence_locator not in snapshots:
+                    raise invalid_argument(
+                        "Stored source evidence_locator must identify a source snapshot for the audited reference"
+                    )
+                if snapshots[evidence_locator].get("provider") != "inline":
+                    raise invalid_argument(
+                        "Stored theorem/paper discovery snapshots are unverified metadata, not original-source evidence; use external_source_inspection after checking the actual source"
+                    )
+        if disposition == "INDEPENDENTLY_REDERIVED" and not independently_rederived:
+            raise invalid_argument(
+                "INDEPENDENTLY_REDERIVED requires independently_rederived=true"
+            )
+        if disposition == "INDEPENDENTLY_REDERIVED" and evidence_basis != "independent_derivation":
+            raise invalid_argument(
+                "INDEPENDENTLY_REDERIVED requires evidence_basis=independent_derivation"
+            )
+        if disposition == "INDEPENDENTLY_REDERIVED" and not evidence_locator:
+            raise invalid_argument("INDEPENDENTLY_REDERIVED requires a non-empty evidence_locator")
+        if disposition == "NOT_MATERIAL" and material:
+            raise invalid_argument("NOT_MATERIAL requires material=false")
+        if disposition == "NOT_MATERIAL" and evidence_basis != "not_material":
+            raise invalid_argument("NOT_MATERIAL requires evidence_basis=not_material")
+        if disposition == "UNRESOLVED" and evidence_basis != "unresolved":
+            raise invalid_argument("UNRESOLVED requires evidence_basis=unresolved")
+        return dict(
+            reference_id=reference_id,
+            disposition=disposition,
+            evidence_basis=evidence_basis,
+            evidence_locator=evidence_locator,
+            verifier_domain_id=claims.domain_id,
+            proof_sha256=hashlib.sha256(self.vault.read_proof(claims.run_id).encode("utf-8")).hexdigest(),
+            proof_manifest_sha256=self.store.read_proof_manifest(claims.run_id)["sha256"],
+            material=material, assumptions_checked=assumptions_checked,
+            notation_checked=notation_checked, source_checked=source_checked,
+            independently_rederived=independently_rederived, notes=notes,
+        )
 
     def _normalize_proof_manifest(
         self,
@@ -1552,7 +1596,7 @@ class WorkflowEngine:
                 "proof_manifest reference_ids must identify references registered for this run",
                 invalid_reference_ids=invalid_references,
             )
-        return {
+        normalized = {
             "target_statement_tex": statement.strip(),
             "dependency_revision_ids": dependency_ids,
             "reference_ids": reference_ids,
@@ -1563,8 +1607,39 @@ class WorkflowEngine:
                 self.store.get_run(claims.run_id).get("metadata", {}).get("workflow_protocol_version") or 1
             ),
         }
+        if "facts" in content:
+            normalized["facts"] = validate_manifest_facts(content["facts"], statement)
+        return normalized
 
-    def _commit_action(
+    def _stage_metadata(self, run_id: str, updates: Mapping[str, Any]) -> None:
+        from .workflow_actions import active
+        prepared = active(self)
+        if prepared is None:
+            self.store.update_run_metadata(run_id, updates)
+        else:
+            if run_id != prepared.claims.run_id:
+                raise invalid_argument("Action metadata belongs to another run")
+            prepared.updates.update(updates)
+
+    def _stage_project_mode(self, run_id: str, mode: str) -> None:
+        from .workflow_actions import active
+        prepared = active(self)
+        if prepared is None:
+            self.store.set_project_run_mode(run_id, mode)
+        else:
+            prepared.project_mode = mode
+
+    def _action_now(self) -> str:
+        from .workflow_actions import active
+        prepared = active(self)
+        return prepared.created_at if prepared else utc_now()
+
+    def _commit_action(self, run: Mapping[str, Any], claims: CapabilityClaims, action: str,
+                       payload: dict[str, Any], trace_id: str) -> dict[str, Any]:
+        from .workflow_actions import commit_action
+        return commit_action(self, run, claims, action, payload, trace_id)
+
+    def _prepare_commit_action(
         self,
         run: Mapping[str, Any],
         claims: CapabilityClaims,
@@ -1643,7 +1718,7 @@ class WorkflowEngine:
             effective_mode = "compact" if compact_allowed else "full"
         else:
             effective_mode = "compact" if route == "compact" and compact_allowed else "full"
-        self.store.update_run_metadata(
+        self._stage_metadata(
             claims.run_id,
             {
                 "effective_workflow_mode": effective_mode,
@@ -1653,7 +1728,7 @@ class WorkflowEngine:
         )
         project_run = self.store.get_project_run(claims.run_id, owner_id=claims.owner_id)
         if project_run is not None:
-            self.store.set_project_run_mode(claims.run_id, effective_mode)
+            self._stage_project_mode(claims.run_id, effective_mode)
         return WorkflowState.ASSEMBLE if effective_mode == "compact" else WorkflowState.EXPLORE
 
     def _commit_exploration_complete(self, claims: CapabilityClaims) -> WorkflowState:
@@ -1666,17 +1741,15 @@ class WorkflowEngine:
         claims: CapabilityClaims,
         payload: Mapping[str, Any],
     ) -> WorkflowState:
-        plans = _validate_plans(
-            payload.get("plans"),
-            plan_round=int(run.get("round_index") or 0) + 1,
-        )
+        protocol3 = int(run.get("metadata", {}).get("workflow_protocol_version") or 1) >= 3
+        plan_round = int(run.get("round_index") or 0) + 1
+        plans = (normalize_protocol3_plans(payload.get("plans"), plan_round) if protocol3
+                 else _validate_plans(payload.get("plans"), plan_round=plan_round))
         for plan in plans:
-            self.vault.append_generation_memory(
-                claims.run_id,
-                "subgoals",
-                {**plan, "record_type": "decomposition_plan", "status": "proposed"},
-            )
-        self.store.update_run_metadata(
+            record = (stamp_protocol3_record("decomposition_plan", {**plan, "status": "proposed"}, self._research_action_stamp(run, claims, "plans_proposed", plan["plan_id"]))
+                      if protocol3 else {**plan, "record_type": "decomposition_plan", "status": "proposed"})
+            self.vault.append_generation_memory(claims.run_id, "subgoals", record)
+        self._stage_metadata(
             claims.run_id,
             {"active_plans": plans, "direct_screening_progress": {}},
         )
@@ -1688,14 +1761,17 @@ class WorkflowEngine:
         claims: CapabilityClaims,
         payload: Mapping[str, Any],
     ) -> WorkflowState | dict[str, Any]:
-        self._require_records(claims.run_id, "proof_steps")
+        protocol_version = int(run.get("metadata", {}).get("workflow_protocol_version") or 1)
+        if protocol_version < 3:
+            self._require_records(claims.run_id, "proof_steps")
         active_plans = run.get("metadata", {}).get("active_plans", [])
         screening, progress, missing = _merge_direct_screening(
             payload.get("screening"),
             active_plans,
             run.get("metadata", {}).get("direct_screening_progress"),
+            protocol_version=protocol_version,
         )
-        self.store.update_run_metadata(
+        self._stage_metadata(
             claims.run_id,
             {"direct_screening_progress": progress},
         )
@@ -1709,15 +1785,9 @@ class WorkflowEngine:
                 "accepted_progress": screening,
                 "verdict": run.get("verdict"),
             }
-        self.vault.append_generation_memory(
-            claims.run_id,
-            "proof_steps",
-            {
-                "record_type": "direct_screening_round",
-                "plans": screening,
-                "created_at": utc_now(),
-            },
-        )
+        record = (stamp_protocol3_record("direct_screening_round", {"plans": screening}, self._research_action_stamp(run, claims, "direct_proving_complete", "screening"))
+                  if protocol_version >= 3 else {"record_type": "direct_screening_round", "plans": screening, "created_at": self._action_now()})
+        self.vault.append_generation_memory(claims.run_id, "proof_steps", record)
         solved_plan_ids = [
             item["plan_id"] for item in screening if item["status"] == "solved"
         ]
@@ -1730,7 +1800,8 @@ class WorkflowEngine:
                 for plan in active_plans
                 if isinstance(plan, Mapping) and str(plan.get("source_plan_id") or "")
             }
-            selected_plan_id = source_to_plan.get(selected_plan_id, selected_plan_id)
+            if protocol_version < 3:
+                selected_plan_id = source_to_plan.get(selected_plan_id, selected_plan_id)
             if not selected_plan_id and len(solved_plan_ids) == 1:
                 selected_plan_id = solved_plan_ids[0]
             if selected_plan_id not in solved_plan_ids:
@@ -1751,7 +1822,7 @@ class WorkflowEngine:
             return WorkflowState.ASSEMBLE
 
         branch_plans = [dict(plan) for plan in active_plans if isinstance(plan, Mapping)]
-        self.store.update_run_metadata(
+        self._stage_metadata(
             claims.run_id,
             {"branch_requests": branch_plans, "last_direct_screening": screening},
         )
@@ -1820,7 +1891,7 @@ class WorkflowEngine:
             "outcome": outcome,
             "selected_branch_id": selected or None,
             "considered_branch_ids": sorted(sealed_ids),
-            "joined_at": utc_now(),
+            "joined_at": self._action_now(),
         }
         if common_failures is not None:
             normalized_join["common_failures"] = common_failures
@@ -1847,11 +1918,13 @@ class WorkflowEngine:
     ) -> WorkflowState:
         if not isinstance(payload.get("summary"), Mapping):
             raise invalid_argument("failures_identified requires summary object")
-        self.vault.append_generation_memory(
-            claims.run_id,
-            "failed_paths",
-            {"record_type": "key_failures_summary", **dict(payload["summary"])},
-        )
+        run = self.store.get_run(claims.run_id)
+        if int(run.get("metadata", {}).get("workflow_protocol_version") or 1) >= 3:
+            summary = normalize_protocol3_failure_summary(dict(payload["summary"]), self._research_scope(run))
+            record = stamp_protocol3_record("key_failures_summary", summary, self._research_action_stamp(run, claims, "failures_identified", "summary"))
+        else:
+            record = {"record_type": "key_failures_summary", **dict(payload["summary"])}
+        self.vault.append_generation_memory(claims.run_id, "failed_paths", record)
         return WorkflowState.REPLAN
 
     def _commit_replan_complete(
@@ -1861,11 +1934,13 @@ class WorkflowEngine:
     ) -> WorkflowState:
         if not isinstance(payload.get("decision"), Mapping):
             raise invalid_argument("replan_complete requires decision object")
-        self.vault.append_generation_memory(
-            claims.run_id,
-            "big_decisions",
-            dict(payload["decision"]),
-        )
+        run = self.store.get_run(claims.run_id)
+        if int(run.get("metadata", {}).get("workflow_protocol_version") or 1) >= 3:
+            decision = normalize_protocol3_replan_decision(dict(payload["decision"]), self._research_scope(run))
+            record = stamp_protocol3_record("replan_decision", decision, self._research_action_stamp(run, claims, "replan_complete", "decision"))
+        else:
+            record = dict(payload["decision"])
+        self.vault.append_generation_memory(claims.run_id, "big_decisions", record)
         return WorkflowState.PROPOSE_PLANS
 
     def _commit_proof_submitted(
@@ -1879,7 +1954,7 @@ class WorkflowEngine:
         if protocol_version >= 2 and str(payload.get("outcome") or "proof") == "escalate":
             if str(run.get("metadata", {}).get("effective_workflow_mode") or "") != "compact":
                 raise invalid_argument("Only a compact assembly may escalate to full exploration")
-            self.store.update_run_metadata(
+            self._stage_metadata(
                 claims.run_id,
                 {
                     "effective_workflow_mode": "full",
@@ -1891,7 +1966,7 @@ class WorkflowEngine:
             )
             project_run = self.store.get_project_run(claims.run_id, owner_id=claims.owner_id)
             if project_run is not None:
-                self.store.set_project_run_mode(claims.run_id, "full")
+                self._stage_project_mode(claims.run_id, "full")
             return self._seal_and_transition(
                 run,
                 claims,
@@ -1902,7 +1977,7 @@ class WorkflowEngine:
         proof = self.vault.read_proof(claims.run_id)
         if protocol_version >= 2:
             self.store.read_proof_manifest(claims.run_id)
-        self.store.update_run_metadata(
+        self._stage_metadata(
             claims.run_id,
             {"last_submitted_proof_sha256": hashlib.sha256(proof.encode("utf-8")).hexdigest()},
         )
@@ -1939,7 +2014,8 @@ class WorkflowEngine:
                         "location": f"reference:{reference_id}",
                         "issue": "Material reference has no verifier audit disposition.",
                     }
-                    gaps.append(finding)
+                    if finding not in gaps:
+                        gaps.append(finding)
                     server_reference_gaps.append(finding)
                     continue
                 if audit.get("disposition") not in {
@@ -1951,7 +2027,8 @@ class WorkflowEngine:
                         "location": f"reference:{reference_id}",
                         "issue": "Material reference remains unresolved after verifier audit.",
                     }
-                    gaps.append(finding)
+                    if finding not in gaps:
+                        gaps.append(finding)
                     server_reference_gaps.append(finding)
         verdict = "correct" if not critical and not gaps else "wrong"
         normalized["verdict"] = verdict
@@ -1979,7 +2056,7 @@ class WorkflowEngine:
             "verification_reports",
             normalized,
         )
-        self.store.update_run_metadata(
+        self._stage_metadata(
             claims.run_id,
             {
                 "last_verified_proof_sha256": hashlib.sha256(proof.encode("utf-8")).hexdigest(),
@@ -2013,12 +2090,12 @@ class WorkflowEngine:
                 1 if compact else 0
             )
             if compact:
-                self.store.update_run_metadata(
+                self._stage_metadata(
                     claims.run_id,
                     {"compact_verifier_failures": failures},
                 )
             if compact and failures >= 2:
-                self.store.update_run_metadata(
+                self._stage_metadata(
                     claims.run_id,
                     {
                         "effective_workflow_mode": "full",
@@ -2030,7 +2107,7 @@ class WorkflowEngine:
                     owner_id=claims.owner_id,
                 )
                 if project_run is not None:
-                    self.store.set_project_run_mode(claims.run_id, "full")
+                    self._stage_project_mode(claims.run_id, "full")
                 after = WorkflowState.EXPLORE
             else:
                 after = WorkflowState.REPAIR
@@ -2064,7 +2141,7 @@ class WorkflowEngine:
                 "A failed verification cannot be resubmitted unchanged.",
                 category="validation",
             )
-        self.store.update_run_metadata(
+        self._stage_metadata(
             claims.run_id,
             {"last_submitted_proof_sha256": proof_sha256},
         )
@@ -2085,51 +2162,61 @@ class WorkflowEngine:
                 category="validation",
                 details={"branch_id": branch_id, "channel": "proof_steps"},
             )
-        raw_status = payload.get("status")
-        status = raw_status.strip() if isinstance(raw_status, str) else ""
-        if status not in {"solved", "partial", "failed"}:
-            raise invalid_argument("branch status must be solved, partial, or failed")
-        raw_summary = payload.get("summary")
-        if not isinstance(raw_summary, str):
-            raise invalid_argument("branch result summary must be a string")
-        summary = raw_summary.strip()
-        raw_proof_route = payload.get("proof_route")
-        if raw_proof_route is not None and not isinstance(raw_proof_route, str):
-            raise invalid_argument("branch proof_route must be a string when supplied")
-        proof_route = (raw_proof_route or "").strip()
-        proved_subgoals = _string_array(
-            payload.get("proved_subgoals"),
-            label="proved_subgoals",
-        )
-        unproved_subgoals = _string_array(
-            payload.get("unproved_subgoals"),
-            label="unproved_subgoals",
-        )
-        failure_evidence = _string_array(
-            payload.get("failure_evidence"),
-            label="failure_evidence",
-        )
-        if not summary:
-            raise invalid_argument("branch result requires a non-empty summary")
-        if status == "solved" and not proof_route:
-            raise invalid_argument("solved branch result requires proof_route")
-        if status in {"partial", "failed"} and not (unproved_subgoals or failure_evidence):
-            raise invalid_argument(
-                "partial or failed branch result requires unproved_subgoals or failure_evidence"
+        protocol3 = int(run.get("metadata", {}).get("workflow_protocol_version") or 1) >= 3
+        if protocol3:
+            plan_id = self.store.get_branch(branch_id)["plan_id"]
+            fields = normalize_protocol3_branch_payload(payload, self._research_scope(run), plan_id)
+            status = fields["status"]
+            result_payload = stamp_protocol3_record("branch_result", {
+                "branch_id": branch_id, "plan_id": plan_id, "status": status,
+                "summary": fields["summary"], "proof_route": fields["proof_route"],
+                "proved_subgoals": fields["proved_node_ids"], "unproved_subgoals": fields["unproved_node_ids"],
+                "failure_evidence": fields["failure_evidence"], "obstructions": fields["obstructions"],
+            }, self._research_action_stamp(run, claims, "branch_complete", branch_id))
+        else:
+            raw_status = payload.get("status")
+            status = raw_status.strip() if isinstance(raw_status, str) else ""
+            if status not in {"solved", "partial", "failed"}:
+                raise invalid_argument("branch status must be solved, partial, or failed")
+            raw_summary = payload.get("summary")
+            if not isinstance(raw_summary, str):
+                raise invalid_argument("branch result summary must be a string")
+            summary = raw_summary.strip()
+            raw_proof_route = payload.get("proof_route")
+            if raw_proof_route is not None and not isinstance(raw_proof_route, str):
+                raise invalid_argument("branch proof_route must be a string when supplied")
+            proof_route = (raw_proof_route or "").strip()
+            proved_subgoals = _string_array(
+                payload.get("proved_subgoals"),
+                label="proved_subgoals",
             )
-        result_payload = {
-            "branch_id": branch_id,
-            "plan_id": self.store.get_branch(branch_id)["plan_id"],
-            "status": status,
-            "summary": summary,
-            "proof_route": proof_route or None,
-            "proved_subgoals": proved_subgoals,
-            "unproved_subgoals": unproved_subgoals,
-            "failure_evidence": failure_evidence,
-        }
+            unproved_subgoals = _string_array(
+                payload.get("unproved_subgoals"),
+                label="unproved_subgoals",
+            )
+            failure_evidence = _string_array(
+                payload.get("failure_evidence"),
+                label="failure_evidence",
+            )
+            if not summary:
+                raise invalid_argument("branch result requires a non-empty summary")
+            if status == "solved" and not proof_route:
+                raise invalid_argument("solved branch result requires proof_route")
+            if status in {"partial", "failed"} and not (unproved_subgoals or failure_evidence):
+                raise invalid_argument(
+                    "partial or failed branch result requires unproved_subgoals or failure_evidence"
+                )
+            result_payload = {
+                "branch_id": branch_id,
+                "plan_id": self.store.get_branch(branch_id)["plan_id"],
+                "status": status,
+                "summary": summary,
+                "proof_route": proof_route or None,
+                "proved_subgoals": proved_subgoals,
+                "unproved_subgoals": unproved_subgoals,
+                "failure_evidence": failure_evidence,
+            }
         path = self.vault.write_branch_result(claims.run_id, branch_id, result_payload)
-        self.store.update_branch_status(branch_id, "sealed", result_path=str(path))
-        self.store.seal_domain(claims.domain_id)
         self.vault.append_generation_memory(
             claims.run_id,
             "branch_states",
@@ -2141,17 +2228,11 @@ class WorkflowEngine:
             },
         )
         branches = self.store.list_branches(claims.run_id)
-        barrier_complete = bool(branches) and all(item["status"] == "sealed" for item in branches)
+        barrier_complete = bool(branches) and all(item["status"] == "sealed" or item["branch_id"] == branch_id for item in branches)
         after = WorkflowState.BRANCH_JOIN if barrier_complete else WorkflowState.BRANCH_RUN
-        result = self._transition(
-            claims.run_id,
-            WorkflowState.BRANCH_RUN,
-            after,
-            trace_id=trace_id,
-            actor=claims.role.value,
+        result = self._seal_and_transition(run, claims, after, trace_id,
             reason="branch_sealed_barrier_complete" if barrier_complete else "branch_sealed_next_pending",
-            evidence={"branch_id": branch_id, "status": status, "barrier_complete": barrier_complete},
-        )
+            branch={"branch_id": branch_id, "result_path": str(path)})
         return {
             "run_id": claims.run_id,
             "state": result["state"],
@@ -2160,124 +2241,77 @@ class WorkflowEngine:
             "barrier_complete": barrier_complete,
         }
 
-    def _seal_and_transition(
-        self,
-        run: Mapping[str, Any],
-        claims: CapabilityClaims,
-        after: WorkflowState,
-        trace_id: str,
-        *,
-        reason: str,
-        verdict: str | None = None,
-    ) -> dict[str, Any]:
-        self.store.seal_domain(claims.domain_id)
-        result = self._transition(
-            claims.run_id,
-            WorkflowState(str(run["state"])),
-            after,
-            trace_id=trace_id,
-            actor=claims.role.value,
-            reason=reason,
-            verdict=verdict,
-        )
+    def _seal_and_transition(self, run: Mapping[str, Any], claims: CapabilityClaims,
+                             after: WorkflowState, trace_id: str, *, reason: str,
+                             verdict: str | None = None, branch: Mapping[str, str] | None = None) -> dict[str, Any]:
+        from .workflow_actions import active
+        transition = {"run_id": claims.run_id, "expected_state": str(run["state"]), "after_state": after.value,
+                      "trace_id": trace_id, "actor": claims.role.value, "reason": reason, "verdict": verdict}
+        prepared = active(self)
+        if prepared is not None:
+            prepared.transition, prepared.branch = transition, branch
+            return {"run_id": claims.run_id, "state": after.value, "verdict": verdict if verdict is not None else run.get("verdict")}
+        result = self.store.transition_task(claims, transition=transition, branch=branch)
+        self._emit_transition(result, transition)
         return {"run_id": claims.run_id, "state": result["state"], "verdict": result["verdict"]}
 
     def _prepare_branch_round(self, run: Mapping[str, Any], trace_id: str) -> dict[str, Any]:
-        requests = run.get("metadata", {}).get("branch_requests", [])
-        if not isinstance(requests, list) or not requests:
-            raise ReCTMError(
-                "BRANCH_REQUESTS_MISSING",
-                "Branch preparation requires persisted branch requests.",
-                category="internal",
-            )
-        snapshot_id = f"round-{int(run['round_index']) + 1}-{secrets.token_hex(4)}"
-        snapshot_payload = {
-            "snapshot_id": snapshot_id,
-            "created_at": utc_now(),
-            "problem": self.vault.read_problem(run["run_id"]),
-            "references_manifest": self.vault.read_references_manifest(run["run_id"]),
-            "generation_memory": {
-                channel: self.vault.read_generation_memory(run["run_id"], channel)
-                for channel in GENERATION_CHANNELS
-                if channel != "events"
-            },
-            "branch_requests": requests,
-        }
-        snapshot = self.vault.create_snapshot(run["run_id"], snapshot_id, snapshot_payload)
-        for index, plan in enumerate(requests):
-            branch_id = f"branch-{int(run['round_index']) + 1}-{index + 1}-{secrets.token_hex(3)}"
-            domain_id = f"branch-domain-{branch_id}"
-            self.store.create_domain(
-                domain_id=domain_id,
-                run_id=run["run_id"],
-                role=WorkflowRole.BRANCH.value,
-                snapshot_id=snapshot_id,
-                order_index=index,
-                metadata={
-                    "state": WorkflowState.BRANCH_RUN.value,
-                    "branch_id": branch_id,
-                    "snapshot_id": snapshot_id,
-                },
-            )
-            self.store.create_branch(
-                branch_id=branch_id,
-                run_id=run["run_id"],
-                plan_id=plan["plan_id"],
-                domain_id=domain_id,
-                snapshot_id=snapshot_id,
-                order_index=index,
-                metadata={"plan": plan},
-            )
-            self.vault.initialize_branch(
-                run["run_id"],
-                branch_id,
-                {
-                    "branch_id": branch_id,
-                    "plan": plan,
-                    "snapshot_id": snapshot_id,
-                    "snapshot_sha256": snapshot["sha256"],
-                },
-            )
-        self.store.update_run_metadata(
-            run["run_id"],
-            {"active_snapshot_id": snapshot_id, "branch_requests": []},
-        )
-        return self._transition(
-            run["run_id"],
-            WorkflowState.BRANCH_PREPARE,
-            WorkflowState.BRANCH_RUN,
-            trace_id=trace_id,
-            actor="system",
-            reason="frozen_snapshot_and_branch_domains_created",
-            evidence={"snapshot_id": snapshot_id, "branch_count": len(requests)},
-            round_delta=1,
-        )
+        from .vault_effects import lock_run, publish
+        with lock_run(self.vault.private_root, str(run["run_id"])):
+            run = self.store.get_run(str(run["run_id"]))
+            if run["state"] != WorkflowState.BRANCH_PREPARE.value:
+                return run
+            requests = run.get("metadata", {}).get("branch_requests", [])
+            if not isinstance(requests, list) or not requests:
+                raise ReCTMError("BRANCH_REQUESTS_MISSING", "Branch preparation requires persisted requests.", category="internal")
+            suffix = hashlib.sha256(f"{run['run_id']}:{run['epoch']}".encode()).hexdigest()[:12]
+            round_index = int(run["round_index"]) + 1
+            snapshot_id = f"round-{round_index}-{suffix}"
+            snapshot_payload = {
+                "snapshot_id": snapshot_id, "created_at": run["updated_at"],
+                "problem": self.vault.read_problem(run["run_id"]),
+                "references_manifest": self.vault.read_references_manifest(run["run_id"]),
+                "generation_memory": {channel: self.vault.read_generation_memory(run["run_id"], channel)
+                                      for channel in GENERATION_CHANNELS if channel != "events"},
+                "branch_requests": requests,
+            }
+            encoded = (json.dumps(snapshot_payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode()
+            publish(self.vault.run_root(run["run_id"]) / "snapshots" / f"{snapshot_id}.json", encoded, exact=True)
+            snapshot_sha = hashlib.sha256(encoded).hexdigest()
+            branches = []
+            for index, plan in enumerate(requests):
+                branch_id = f"branch-{round_index}-{index + 1}-{suffix}"
+                domain_id = f"branch-domain-{branch_id}"
+                assignment = {"branch_id": branch_id, "plan": plan, "snapshot_id": snapshot_id, "snapshot_sha256": snapshot_sha}
+                root = self.vault.run_root(run["run_id"]) / "branches" / branch_id
+                (root / "memory").mkdir(parents=True, exist_ok=True, mode=0o700)
+                publish(root / "assignment.json", (json.dumps(assignment, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode(), exact=True)
+                branches.append({"branch_id": branch_id, "plan_id": plan["plan_id"], "domain_id": domain_id,
+                    "snapshot_id": snapshot_id, "order_index": index,
+                    "domain_metadata": {"state": "branch_run", "branch_id": branch_id, "snapshot_id": snapshot_id},
+                    "branch_metadata": {"plan": plan}})
+            transition = {"run_id": run["run_id"], "expected_state": "branch_prepare", "after_state": "branch_run",
+                "trace_id": trace_id, "actor": "system", "reason": "frozen_snapshot_and_branch_domains_created",
+                "evidence": {"snapshot_id": snapshot_id, "branch_count": len(requests)}, "round_delta": 1}
+            result = self.store.complete_branch_preparation(transition=transition, expected_branch_requests=requests,
+                                                           snapshot_id=snapshot_id, branches=branches)
+        self._emit_transition(result, transition)
+        return result
 
     def _run_latex_gate(self, run: Mapping[str, Any], trace_id: str) -> dict[str, Any]:
         proof = self.vault.read_proof(run["run_id"])
         workdir = self.vault.run_root(run["run_id"]) / "verification" / "latex"
         result = self.latex_gate.validate(proof, workdir)
-        self.store.update_run_metadata(run["run_id"], {"latex_result": result.to_payload()})
-        self.debug.emit(
-            "latex.gate_result",
-            "latex_gate",
-            trace_id=trace_id,
-            run_id=run["run_id"],
-            before_state=WorkflowState.LATEX_VALIDATE.value,
-            decision="allow" if result.gate_passed else "deny",
-            reason="latex_gate_passed" if result.gate_passed else "latex_gate_failed",
-            details=result.to_payload(),
-        )
-        return self._transition(
-            run["run_id"],
-            WorkflowState.LATEX_VALIDATE,
-            WorkflowState.VERIFY if result.gate_passed else WorkflowState.REPAIR,
-            trace_id=trace_id,
-            actor="latex_gate",
-            reason="latex_gate_passed" if result.gate_passed else "latex_gate_failed",
-            evidence=result.to_payload(),
-            latex_passed=result.gate_passed,
-        )
+        transition = {"run_id": run["run_id"], "expected_state": "latex_validate",
+                      "after_state": "verify" if result.gate_passed else "repair", "trace_id": trace_id,
+                      "actor": "latex_gate", "reason": "latex_gate_passed" if result.gate_passed else "latex_gate_failed",
+                      "evidence": result.to_payload(), "latex_passed": result.gate_passed}
+        changed = self.store.complete_latex_gate(transition=transition, expected_metadata=run["metadata"], latex_result=result.to_payload())
+        self.debug.emit("latex.gate_result", "latex_gate", trace_id=trace_id, run_id=run["run_id"],
+                        before_state="latex_validate", decision="allow" if result.gate_passed else "deny",
+                        reason=transition["reason"], details=result.to_payload())
+        self._emit_transition(changed, transition)
+        return changed
 
     def _finalize(self, run: Mapping[str, Any], trace_id: str) -> dict[str, Any]:
         if not run["latex_passed"] or run.get("verdict") != "correct":
@@ -2350,6 +2384,8 @@ class WorkflowEngine:
                     if isinstance(item, str) and item.strip()
                 )
             final_proof = self.vault.read_final_proof(str(run["run_id"]))
+            facts = (prepare_promotion_facts(self.store, project_run, str(run["owner_id"]), manifest, final_proof)
+                     if protocol_version >= 3 else None)
             promotion = self.store.promote_verified_run(
                 run_id=str(run["run_id"]),
                 owner_id=str(run["owner_id"]),
@@ -2357,6 +2393,7 @@ class WorkflowEngine:
                 proof_sha256=hashlib.sha256(final_proof.encode("utf-8")).hexdigest(),
                 effective_conditions=sorted(effective_conditions),
                 manifest=manifest,
+                facts=facts,
             )
             self.store.update_run_metadata(
                 str(run["run_id"]),
@@ -2382,7 +2419,10 @@ class WorkflowEngine:
                     ),
                 },
             )
-        except ReCTMError as exc:
+        except (ReCTMError, sqlite3.Error, OSError) as exc:
+            if not isinstance(exc, ReCTMError):
+                exc = ReCTMError("REGISTRY_PROMOTION_FAILED", "Verified proof registry promotion must be retried.",
+                                category="internal", retryable=True, details={"failure_type": type(exc).__name__})
             promotion = {"status": "error", "error": exc.to_payload()}
             try:
                 self.store.update_run_metadata(
@@ -2401,6 +2441,13 @@ class WorkflowEngine:
                 details={"status": "error", "error": exc.to_payload()},
             )
         return self.store.get_run(str(run["run_id"]))
+
+    def _emit_transition(self, result: Mapping[str, Any], transition: Mapping[str, Any]) -> None:
+        self.debug.emit("workflow.transition", "workflow_engine", trace_id=transition["trace_id"],
+                        run_id=result["run_id"], actor_role=transition["actor"], before_state=transition["expected_state"],
+                        after_state=result["state"], decision="allow", reason=transition["reason"], details={"epoch": result["epoch"]})
+        self.debug.write_state_snapshot(result["run_id"], int(result["transition_seq"]), result)
+        self._persist_project_findings_after_transition(result, transition["trace_id"])
 
     def _transition(
         self,
@@ -2451,6 +2498,7 @@ class WorkflowEngine:
             details={"evidence": dict(evidence or {}), "epoch": result["epoch"]},
         )
         self.debug.write_state_snapshot(run_id, int(result["transition_seq"]), result)
+        self._persist_project_findings_after_transition(result, trace_id)
         return result
 
     def _require_owner(self, run_id: str, owner_id: str) -> dict[str, Any]:
@@ -2634,6 +2682,7 @@ def _public_active_plans(active_plans: Any) -> list[dict[str, Any]]:
                     {"subgoal_id": subgoal_id, "text": text}
                     for subgoal_id, text in zip(ids, texts)
                 ],
+                **({"research_subgoals": list(plan["research_subgoals"])} if isinstance(plan.get("research_subgoals"), list) else {}),
                 "motivation": list(plan.get("motivation") or []),
                 "dependencies": list(plan.get("dependencies") or []),
                 "risks": list(plan.get("risks") or []),
@@ -2670,7 +2719,8 @@ def _merge_direct_screening(
     value: Any,
     active_plans: Any,
     previous: Any = None,
-) -> tuple[list[dict[str, Any]], dict[str, dict[str, dict[str, str]]], list[dict[str, str]]]:
+    *, protocol_version: int = 1,
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, dict[str, Any]]], list[dict[str, str]]]:
     if not isinstance(active_plans, list) or not active_plans:
         raise invalid_argument("direct screening requires active decomposition plans")
     known = {
@@ -2707,7 +2757,8 @@ def _merge_direct_screening(
         raise invalid_argument("screening must be an object keyed by plan_id or a legacy report array")
 
     for plan_id, raw_results in submissions:
-        plan_id = source_to_plan.get(plan_id, plan_id)
+        if protocol_version < 3:
+            plan_id = source_to_plan.get(plan_id, plan_id)
         if plan_id not in known:
             raise invalid_argument(
                 "screening plan_id is not active",
@@ -2728,7 +2779,7 @@ def _merge_direct_screening(
                 if not isinstance(raw_result, Mapping):
                     raise invalid_argument("each subgoal result must be an object", plan_id=plan_id)
                 subgoal_id = str(raw_result.get("subgoal_id") or "")
-                if not subgoal_id:
+                if not subgoal_id and protocol_version < 3:
                     subgoal_id = by_text.get(str(raw_result.get("subgoal") or ""), "")
                 entries.append((subgoal_id, raw_result))
         else:
@@ -2753,6 +2804,8 @@ def _merge_direct_screening(
                     subgoal_id=subgoal_id,
                 )
             bucket[subgoal_id] = {"status": status, "summary": summary}
+            if protocol_version >= 3:
+                bucket[subgoal_id].update(protocol3_screening_fields(dict(raw_result), status, f"screening.{plan_id}.{subgoal_id}"))
 
     normalized: list[dict[str, Any]] = []
     missing: list[dict[str, str]] = []
@@ -2774,6 +2827,7 @@ def _merge_direct_screening(
                     "subgoal": text,
                     "status": str(result.get("status") or ""),
                     "summary": str(result.get("summary") or ""),
+                    **({key: result[key] for key in ("method", "obstruction", "evidence_ids") if key in result} if protocol_version >= 3 else {}),
                 }
             )
         statuses = [result["status"] for result in results]

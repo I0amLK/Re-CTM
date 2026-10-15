@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-14T16:07:33.716Z",
+  "scope": "RC-003 scripted loopback OAuth/MCP only; no actual browser, Native isolation or LaTeX qualification",
+  "candidate_version": "0.4.0",
+  "tool_contract": "mtm-tools-v11",
+  "command": "PYTHONPATH=src:tests python3 -m unittest test_oauth test_http test_http_oauth_resources test_config_secrets test_smoke_oauth_mcp -q",
+  "command_id": "cmd-1661160-69-18de71061419cdf3",
+  "exit_code": 0,
+  "tests_run": 33,
+  "passed": 33,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "confirmed": [
+    "DCR and PKCE authorization/code exchange over temporary loopback HTTP",
+    "Origin and exact /mcp resource discovery, challenge and issuer/audience binding",
+    "Legacy initialize and modern mirrored-header MCP",
+    "Exact ordered 19 Native + 6 workflow tools; all 11 retired aliases rejected",
+    "Missing/foreign-origin credentials, replayed authorization code and unapproved browser Origin rejected",
+    "No-clobber signing-key fixture, fixed origin and loopback-only dynamic origin regressions",
+    "Redacted smoke exception handling and in-memory authenticated HTTP callback"
+  ],
+  "limitations": [
+    "No real browser interaction, external callback client or public ingress was exercised.",
+    "Only fresh disposable fixture state and synthetic credentials were used."
+  ]
+}

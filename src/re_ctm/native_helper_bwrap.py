@@ -391,14 +391,8 @@ def _execute(request: Mapping[str, Any]) -> dict[str, Any]:
             "argv must not contain NUL bytes",
         )
     workdir = _relative_workdir(str(request.get("workdir") or "."), workspace)
-    try:
-        timeout_ms = int(request.get("timeout_ms", 30_000))
-    except (TypeError, ValueError) as exc:
-        raise HelperError(
-            "NATIVE_HELPER_INVALID_ARGUMENT",
-            "timeout_ms must be an integer",
-        ) from exc
-    if not 1 <= timeout_ms <= 600_000:
+    timeout_ms = request.get("timeout_ms", 300_000)
+    if type(timeout_ms) is not int or not 1 <= timeout_ms <= 600_000:
         raise HelperError(
             "NATIVE_HELPER_INVALID_ARGUMENT",
             "timeout_ms must be between 1 and 600000",
@@ -452,6 +446,7 @@ def _execute(request: Mapping[str, Any]) -> dict[str, Any]:
         "request_id": request_id,
         "ok": True,
         "status": result["status"],
+        "operation_outcome": result["operation_outcome"],
         "exit_code": result["exit_code"],
         "signal": result["signal"],
         "timed_out": result["timed_out"],
@@ -539,7 +534,11 @@ def _run_in_sandbox(
         except ValueError:
             signal_name = str(-return_code)
     return {
-        "status": "timeout" if timed_out else "exited",
+        "status": "timeout" if timed_out else "terminated" if signal_name else "exited",
+        "operation_outcome": (
+            "timeout" if timed_out else "signal" if signal_name
+            else "exited_0" if return_code == 0 else "exited_nonzero"
+        ),
         "exit_code": return_code if return_code >= 0 else None,
         "signal": signal_name,
         "timed_out": timed_out,

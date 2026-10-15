@@ -4,7 +4,7 @@ import io
 import os
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -22,6 +22,14 @@ class CLITestCase(unittest.TestCase):
             build_parser().parse_args(["--version"])
         self.assertEqual(exited.exception.code, 0)
         self.assertEqual(output.getvalue().strip(), f"re-ctm {__version__}")
+
+    def test_public_native_mode_rejects_retired_profiles(self) -> None:
+        for command in ("serve", "tui"):
+            self.assertEqual(build_parser().parse_args([command, "--native-mode", "dangerous"]).native_mode, "dangerous")
+            for mode in ("safe", "trusted"):
+                with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:
+                    build_parser().parse_args([command, "--native-mode", mode])
+                self.assertEqual(caught.exception.code, 2)
 
     def test_attest_native_accepts_repeatable_generic_allow_roots(self) -> None:
         args = build_parser().parse_args(
@@ -128,6 +136,32 @@ class CLITestCase(unittest.TestCase):
         self.assertEqual(args.host, "127.0.0.4")
         self.assertEqual(args.port, 45454)
 
+    def test_verbose_is_opt_in_and_tui_only(self) -> None:
+        self.assertFalse(build_parser().parse_args(["tui"]).verbose)
+        self.assertTrue(build_parser().parse_args(["tui", "--verbose"]).verbose)
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as exited:
+            build_parser().parse_args(["serve", "--verbose"])
+        self.assertEqual(exited.exception.code, 2)
+
+    def test_verbose_flag_reaches_terminal_session(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            env = {
+                "RE_CTM_WORKSPACE": str(workspace),
+                "RE_CTM_DATA_ROOT": str(root / "data"),
+                "RE_CTM_OAUTH_PASSWORD": "test-password",
+                "RE_CTM_NATIVE_EXEC_BACKEND": "disabled",
+                "RE_CTM_LATEX_POLICY": "static_only",
+            }
+            with mock.patch.dict(os.environ, env, clear=True), mock.patch(
+                "re_ctm.cli.TerminalSession"
+            ) as terminal, mock.patch("re_ctm.cli.run_server", return_value=0) as server:
+                self.assertEqual(main(["tui", "--verbose"]), 0)
+            terminal.assert_called_once_with(verbose=True)
+            server.call_args.args[0].close()
+
     def test_quick_tunnel_without_port_uses_dynamic_port_sentinel(self) -> None:
         with mock.patch.dict(os.environ, {"RE_CTM_PORT": ""}, clear=False):
             args = build_parser().parse_args(["tui", "--quick-tunnel"])
@@ -153,6 +187,8 @@ class CLITestCase(unittest.TestCase):
                 "RE_CTM_DEBUG_ROOT": str(data / "debug"),
                 "RE_CTM_OAUTH_PASSWORD": "configured-for-test",
                 "RE_CTM_LATEX_POLICY": "static_only",
+                # This fixture verifies CLI/OAuth behavior; isolation has dedicated tests.
+                "RE_CTM_NATIVE_EXEC_BACKEND": "disabled",
             }
             with mock.patch.dict(os.environ, env, clear=False), mock.patch(
                 "re_ctm.cli.TerminalSession"
@@ -286,6 +322,8 @@ class CLITestCase(unittest.TestCase):
                 "RE_CTM_OAUTH_PASSWORD": "",
                 "RE_CTM_SERVER_URL": "",
                 "RE_CTM_LATEX_POLICY": "static_only",
+                # This fixture verifies CLI/OAuth behavior; isolation has dedicated tests.
+                "RE_CTM_NATIVE_EXEC_BACKEND": "disabled",
             }
             with mock.patch.dict(os.environ, env, clear=False), mock.patch(
                 "re_ctm.cli.run_server", return_value=0

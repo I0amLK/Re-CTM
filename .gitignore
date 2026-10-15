@@ -16,3 +16,7 @@ build/
 runs/
 runtime/
 logs/
+
+# Disposable installations, validation logs and local runtime state.
+.local-install*/
+.release-validation/

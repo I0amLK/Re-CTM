@@ -248,3 +248,130 @@ CREATE TABLE IF NOT EXISTS reference_audits (
     UNIQUE(run_id, reference_id)
 );
 """
+
+
+V3_SUBMISSION_RECEIPTS_SQL = """
+CREATE TABLE step_receipts (
+    capability_sha256 TEXT PRIMARY KEY CHECK(length(capability_sha256)=64),
+    owner_id TEXT NOT NULL,
+    workspace_sha256 TEXT NOT NULL CHECK(length(workspace_sha256)=64),
+    request_sha256 TEXT NOT NULL CHECK(length(request_sha256)=64),
+    run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE RESTRICT,
+    domain_id TEXT NOT NULL REFERENCES domains(domain_id) ON DELETE RESTRICT,
+    role TEXT NOT NULL,
+    epoch INTEGER NOT NULL,
+    issued_state TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('pending','completed')),
+    result_json TEXT CHECK(result_json IS NULL OR length(result_json)<=2048),
+    created_at TEXT NOT NULL,
+    completed_at TEXT,
+    CHECK((status='pending' AND result_json IS NULL AND completed_at IS NULL)
+       OR (status='completed' AND result_json IS NOT NULL AND completed_at IS NOT NULL))
+);
+CREATE INDEX idx_step_receipts_run ON step_receipts(run_id);
+CREATE UNIQUE INDEX idx_step_receipts_pending_run
+    ON step_receipts(run_id) WHERE status='pending';
+"""
+
+
+V4_RECOVERY_SQL = """
+CREATE TABLE creation_receipts (
+    owner_id TEXT NOT NULL,
+    key_sha256 TEXT NOT NULL CHECK(length(key_sha256)=64),
+    workspace_sha256 TEXT NOT NULL CHECK(length(workspace_sha256)=64),
+    request_sha256 TEXT NOT NULL CHECK(length(request_sha256)=64),
+    run_id TEXT NOT NULL UNIQUE,
+    execution_id TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL CHECK(status IN ('pending','completed')),
+    created_at TEXT NOT NULL,
+    completed_at TEXT,
+    PRIMARY KEY(owner_id,key_sha256),
+    CHECK((status='pending' AND completed_at IS NULL)
+       OR (status='completed' AND completed_at IS NOT NULL))
+);
+CREATE TABLE step_checkpoints (
+    capability_sha256 TEXT PRIMARY KEY REFERENCES step_receipts(capability_sha256) ON DELETE RESTRICT,
+    execution_id TEXT NOT NULL UNIQUE,
+    phase TEXT NOT NULL CHECK(phase IN ('prepared','running','commit_ready')),
+    expected_writes INTEGER CHECK(expected_writes BETWEEN 0 AND 65536),
+    accepted_writes INTEGER NOT NULL DEFAULT 0 CHECK(accepted_writes BETWEEN 0 AND 65536),
+    CHECK((phase='prepared' AND expected_writes IS NULL AND accepted_writes=0)
+       OR (phase='running' AND expected_writes IS NOT NULL AND accepted_writes<=expected_writes)
+       OR (phase='commit_ready' AND expected_writes IS NOT NULL AND accepted_writes=expected_writes))
+);
+"""
+
+
+V5_CREATION_INITIALIZATION_SQL = """
+CREATE TABLE creation_initializations (
+    run_id TEXT PRIMARY KEY REFERENCES creation_receipts(run_id) ON DELETE RESTRICT,
+    material_sha256 TEXT CHECK(material_sha256 IS NULL OR length(material_sha256)=64),
+    database_sha256 TEXT CHECK(database_sha256 IS NULL OR length(database_sha256)=64),
+    CHECK((material_sha256 IS NULL)=(database_sha256 IS NULL))
+);
+"""
+
+
+V6_CALLER_WRITE_JOURNAL_SQL = """
+CREATE TABLE step_write_journals (
+    capability_sha256 TEXT PRIMARY KEY REFERENCES step_checkpoints(capability_sha256) ON DELETE RESTRICT,
+    marker_json TEXT NOT NULL CHECK(length(marker_json)<=4096)
+);
+"""
+
+
+V7_ATOMIC_ACTION_SQL = """
+ALTER TABLE step_checkpoints ADD COLUMN atomic_action TEXT
+    CHECK(atomic_action IN ('assessment_complete','exploration_complete','proof_submitted','repair_submitted'));
+"""
+
+
+V8_FACT_MEMORY_SQL = """
+CREATE TABLE facts (
+    fact_id TEXT PRIMARY KEY CHECK(length(fact_id)=16),
+    project_id TEXT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+    source_run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE RESTRICT,
+    statement_tex TEXT NOT NULL,
+    proof_tex TEXT NOT NULL,
+    intuition TEXT NOT NULL DEFAULT '',
+    glossary_json TEXT NOT NULL DEFAULT '[]',
+    external_refs_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX idx_facts_project ON facts(project_id, created_at, fact_id);
+ALTER TABLE claim_revisions ADD COLUMN fact_id TEXT REFERENCES facts(fact_id) ON DELETE RESTRICT;
+CREATE TABLE fact_edges (
+    fact_id TEXT NOT NULL REFERENCES facts(fact_id) ON DELETE RESTRICT,
+    predecessor_id TEXT NOT NULL REFERENCES facts(fact_id) ON DELETE RESTRICT,
+    PRIMARY KEY(fact_id, predecessor_id),
+    CHECK(fact_id != predecessor_id)
+);
+CREATE TABLE fact_revocations (
+    fact_id TEXT NOT NULL REFERENCES facts(fact_id) ON DELETE RESTRICT,
+    reason TEXT NOT NULL CHECK(length(reason)>0),
+    actor TEXT NOT NULL CHECK(length(actor)>0),
+    created_at TEXT NOT NULL
+);
+CREATE INDEX idx_fact_revocations_fact ON fact_revocations(fact_id);
+CREATE TABLE memory_findings (
+    finding_id TEXT PRIMARY KEY CHECK(length(finding_id)=64),
+    project_id TEXT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+    run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK(kind IN ('conclusion','example','counterexample','proof_attempt','plan','dead_end','direction','obstacle')),
+    claim TEXT NOT NULL,
+    evidence TEXT NOT NULL,
+    verifiable INTEGER NOT NULL CHECK(verifiable IN (0,1)),
+    links_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX idx_memory_findings_project ON memory_findings(project_id, kind, created_at);
+CREATE TABLE memory_finding_status (
+    finding_id TEXT NOT NULL REFERENCES memory_findings(finding_id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL CHECK(seq>0),
+    status TEXT NOT NULL CHECK(status IN ('active','verified','superseded')),
+    fact_id TEXT REFERENCES facts(fact_id) ON DELETE RESTRICT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(finding_id, seq),
+    CHECK((status='verified')=(fact_id IS NOT NULL))
+);
+"""

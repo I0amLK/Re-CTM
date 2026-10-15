@@ -8,26 +8,42 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator, Mapping, Sequence
+from typing import Any, Iterator, Mapping, Sequence, TYPE_CHECKING
 
 from .debug import utc_now
 from .errors import ReCTMError
+from .fact_store import FactStore
+from .storage_actions import ActionStore, audit_on, manifest_on
+from .storage_creation import CreationStore, record_initialization
+from .storage_receipts import SubmissionStore, record_transition
+from .storage_recovery import RecoveryStore
 from .storage_schema import (
     SCHEMA_MIGRATIONS_TABLE_SQL,
     V1_WORKFLOW_SCHEMA_SQL,
     V2_RESEARCH_SCHEMA_SQL,
+    V3_SUBMISSION_RECEIPTS_SQL,
+    V4_RECOVERY_SQL,
+    V5_CREATION_INITIALIZATION_SQL,
+    V6_CALLER_WRITE_JOURNAL_SQL,
+    V7_ATOMIC_ACTION_SQL,
+    V8_FACT_MEMORY_SQL,
 )
 
 
-STATE_SCHEMA_VERSION = 2
+if TYPE_CHECKING:
+    from .fact_memory import VerifiedFact
+
+
+STATE_SCHEMA_VERSION = 8
 _REGISTRY_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
-class StateStore:
+class StateStore(CreationStore, SubmissionStore, RecoveryStore, ActionStore, FactStore):
     """Transactional SQLite store for workflow facts and capability revocation."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
+        self._read_only = False
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._lock = threading.RLock()
         self._connection = sqlite3.connect(
@@ -46,12 +62,40 @@ class StateStore:
             self._connection.close()
             raise
 
+    @classmethod
+    def open_read_only(cls, path: Path) -> StateStore:
+        """Inspect an existing current-schema database without creating/migrating it."""
+        store = cls.__new__(cls)
+        store.path = path
+        store._read_only = True
+        store._lock = threading.RLock()
+        store._connection = sqlite3.connect(
+            path.resolve().as_uri() + "?mode=ro", uri=True,
+            check_same_thread=False, isolation_level=None,
+        )
+        store._connection.row_factory = sqlite3.Row
+        try:
+            store._connection.execute("PRAGMA foreign_keys=ON")
+            store._connection.execute("PRAGMA query_only=ON")
+            version = int(store._connection.execute("PRAGMA user_version").fetchone()[0])
+            if version != STATE_SCHEMA_VERSION:
+                raise ReCTMError(
+                    "STATE_SCHEMA_NOT_CURRENT", "Read-only inspection requires the current schema; no migration was attempted.",
+                    category="conflict", details={"database_version": version, "runtime_version": STATE_SCHEMA_VERSION},
+                )
+        except Exception:
+            store._connection.close()
+            raise
+        return store
+
     def close(self) -> None:
         with self._lock:
             self._connection.close()
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
+        if self._read_only:
+            raise ReCTMError("STATE_READ_ONLY", "Read-only inspection cannot modify state.", category="permission")
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
@@ -82,6 +126,18 @@ class StateStore:
         if version == 1:
             self._migrate_1_to_2()
             version = 2
+        additions = (
+            (3, V3_SUBMISSION_RECEIPTS_SQL, "durable submission receipts"),
+            (4, V4_RECOVERY_SQL, "creation receipts and submission checkpoints"),
+            (5, V5_CREATION_INITIALIZATION_SQL, "restartable creation initialization"),
+            (6, V6_CALLER_WRITE_JOURNAL_SQL, "caller write effect journals"),
+            (7, V7_ATOMIC_ACTION_SQL, "atomic action enrollment"),
+            (8, V8_FACT_MEMORY_SQL, "verified facts and finding memory"),
+        )
+        for target, sql, description in additions:
+            if version == target - 1:
+                self._migrate_additive(target, sql, description)
+                version = target
         if version != STATE_SCHEMA_VERSION:
             raise ReCTMError(
                 "STATE_SCHEMA_MIGRATION_FAILED",
@@ -116,6 +172,23 @@ class StateStore:
                 + f"INSERT OR IGNORE INTO schema_migrations(version, applied_at, description) VALUES(2, '{applied_at}', 'v0.2 research registry and provenance schema');\n"
                 + "PRAGMA user_version = 2;\nCOMMIT;"
             )
+
+    def _migrate_additive(self, version: int, sql: str, description: str) -> None:
+        # execute(), unlike executescript(), preserves this rollback boundary.
+        with self.transaction() as connection:
+            pending = ""
+            for line in sql.splitlines(keepends=True):
+                pending += line
+                if sqlite3.complete_statement(pending):
+                    connection.execute(pending)
+                    pending = ""
+            if pending.strip():
+                raise ReCTMError("STATE_SCHEMA_MIGRATION_FAILED", "Incomplete schema migration.", category="internal")
+            connection.execute(
+                "INSERT INTO schema_migrations VALUES(?, ?, ?)",
+                (version, utc_now(), description),
+            )
+            connection.execute(f"PRAGMA user_version = {version}")
 
     def create_run(
         self,
@@ -485,18 +558,11 @@ class StateStore:
             )
 
     def write_proof_manifest(self, run_id: str, manifest: Mapping[str, Any]) -> dict[str, Any]:
-        canonical = json.dumps(dict(manifest), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        canonical = json.dumps(dict(manifest), ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
         digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         now = utc_now()
         with self.transaction() as connection:
-            connection.execute(
-                """
-                INSERT INTO proof_manifests(run_id, manifest_json, sha256, created_at, updated_at)
-                VALUES(?, ?, ?, ?, ?)
-                ON CONFLICT(run_id) DO UPDATE SET manifest_json=excluded.manifest_json, sha256=excluded.sha256, updated_at=excluded.updated_at
-                """,
-                (run_id, canonical, digest, now, now),
-            )
+            manifest_on(connection, run_id, canonical, digest, now)
         return {"run_id": run_id, "manifest": json.loads(canonical), "sha256": digest}
 
     def read_proof_manifest(self, run_id: str) -> dict[str, Any]:
@@ -623,47 +689,16 @@ class StateStore:
         independently_rederived: bool,
         notes: str = "",
     ) -> dict[str, Any]:
-        reference = self.get_reference(reference_id)
-        if reference["run_id"] != run_id:
-            raise ReCTMError(
-                "REFERENCE_RUN_MISMATCH",
-                "Reference does not belong to this run.",
-                category="permission",
-            )
-        if disposition not in {"SOURCE_VERIFIED", "INDEPENDENTLY_REDERIVED", "UNRESOLVED", "NOT_MATERIAL"}:
-            raise ReCTMError("INVALID_REFERENCE_DISPOSITION", "Unsupported reference audit disposition.", category="validation")
-        now = utc_now()
+        audit = {
+            "reference_id": reference_id, "disposition": disposition, "evidence_basis": evidence_basis,
+            "evidence_locator": evidence_locator, "verifier_domain_id": verifier_domain_id,
+            "proof_sha256": proof_sha256, "proof_manifest_sha256": proof_manifest_sha256,
+            "material": material, "assumptions_checked": assumptions_checked,
+            "notation_checked": notation_checked, "source_checked": source_checked,
+            "independently_rederived": independently_rederived, "notes": notes,
+        }
         with self.transaction() as connection:
-            connection.execute(
-                """
-                INSERT INTO reference_audits(
-                    run_id, reference_id, disposition, evidence_basis, evidence_locator,
-                    verifier_domain_id, proof_sha256, proof_manifest_sha256,
-                    material, assumptions_checked, notation_checked, source_checked,
-                    independently_rederived, notes, created_at, updated_at
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(run_id, reference_id) DO UPDATE SET
-                    disposition=excluded.disposition,
-                    evidence_basis=excluded.evidence_basis,
-                    evidence_locator=excluded.evidence_locator,
-                    verifier_domain_id=excluded.verifier_domain_id,
-                    proof_sha256=excluded.proof_sha256,
-                    proof_manifest_sha256=excluded.proof_manifest_sha256,
-                    material=excluded.material,
-                    assumptions_checked=excluded.assumptions_checked,
-                    notation_checked=excluded.notation_checked,
-                    source_checked=excluded.source_checked,
-                    independently_rederived=excluded.independently_rederived,
-                    notes=excluded.notes,
-                    updated_at=excluded.updated_at
-                """,
-                (
-                    run_id, reference_id, disposition, evidence_basis, evidence_locator,
-                    verifier_domain_id, proof_sha256, proof_manifest_sha256,
-                    int(material), int(assumptions_checked), int(notation_checked),
-                    int(source_checked), int(independently_rederived), notes, now, now,
-                ),
-            )
+            audit_on(connection, run_id, audit, utc_now())
         return self.get_reference_audit(run_id, reference_id)
 
     def get_reference_audit(self, run_id: str, reference_id: str) -> dict[str, Any]:
@@ -697,6 +732,7 @@ class StateStore:
         proof_sha256: str,
         effective_conditions: Sequence[str],
         manifest: Mapping[str, Any],
+        facts: Sequence[VerifiedFact] | None = None,
     ) -> dict[str, Any]:
         project_run = self.get_project_run(run_id, owner_id=owner_id)
         if project_run is None:
@@ -739,6 +775,20 @@ class StateStore:
         ]
         now = utc_now()
         with self.transaction() as connection:
+            # Promotion remains a second phase, but its fact/revision/status writes
+            # share this transaction. A finalizer retry cannot create duplicates.
+            run_row = connection.execute("SELECT * FROM runs WHERE run_id=?", (run_id,)).fetchone()
+            if run_row is None or run_row["owner_id"] != owner_id:
+                raise ReCTMError("RUN_OWNER_MISMATCH", "Run is not owned by this principal.", category="permission")
+            protocol = json.loads(run_row["metadata_json"]).get("workflow_protocol_version", 1)
+            if protocol >= 3 and not facts:
+                raise ReCTMError("FACT_PROMOTION_REQUIRED", "Protocol-3 promotion requires validated proof facts.", category="validation")
+            if facts is not None and (not facts or run_row["state"] != "done" or not run_row["latex_passed"] or run_row["verdict"] != "correct"):
+                raise ReCTMError("FACT_FINALIZATION_REQUIRED", "Facts require a mechanically finalized, verified run.", category="permission")
+            recorded = connection.execute("SELECT promoted_revision_id FROM project_runs WHERE run_id=?", (run_id,)).fetchone()
+            if recorded is not None and recorded[0] is not None:
+                revision = connection.execute("SELECT * FROM claim_revisions WHERE revision_id=?", (recorded[0],)).fetchone()
+                return {"status": "already_promoted", "revision": _row_payload(revision, json_fields=("conditions_json", "metadata_json"))}
             active = connection.execute(
                 "SELECT revision_id, revision_number FROM claim_revisions WHERE claim_id=? AND lifecycle_status='ACTIVE' ORDER BY revision_number DESC LIMIT 1",
                 (claim_id,),
@@ -755,6 +805,15 @@ class StateStore:
                     (_json(conflict), now, run_id),
                 )
                 return conflict
+            project_id = str(project_run["project_id"])
+            target_fact_id = None
+            if facts is not None:
+                from .fact_store import insert_promoted_facts, verify_matching_findings
+                target_fact_id = insert_promoted_facts(connection, project_id, run_id, facts, now)
+                from .fact_memory import normalize
+                if normalize(facts[-1].statement_tex) != normalize(statement_tex):
+                    raise ReCTMError("FACT_TARGET_MISMATCH", "Final fact does not match the promoted claim.", category="validation")
+                verify_matching_findings(connection, run_id, facts, now)
             if active_id:
                 connection.execute(
                     "UPDATE claim_revisions SET lifecycle_status='SUPERSEDED' WHERE revision_id=?",
@@ -764,13 +823,13 @@ class StateStore:
                 """
                 INSERT INTO claim_revisions(
                     revision_id, claim_id, revision_number, statement_tex, evidence_status,
-                    lifecycle_status, source_run_id, proof_sha256, conditions_json, metadata_json, created_at
-                ) VALUES(?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?)
+                    lifecycle_status, source_run_id, proof_sha256, conditions_json, metadata_json, created_at, fact_id
+                ) VALUES(?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     revision_id, claim_id, revision_number, statement_tex, evidence_status,
                     run_id, proof_sha256, json.dumps(conditions, ensure_ascii=False),
-                    _json({"workflow_protocol_version": 2}), now,
+                    _json({"workflow_protocol_version": protocol}), now, target_fact_id,
                 ),
             )
             project_id = str(project_run["project_id"])
@@ -786,10 +845,11 @@ class StateStore:
                         category="validation",
                         details={"revision_id": dependency_id},
                     )
-                connection.execute(
-                    "INSERT OR IGNORE INTO claim_edges(project_id, from_revision_id, to_revision_id, edge_type, created_at) VALUES(?, ?, ?, 'depends_on', ?)",
-                    (project_id, revision_id, dependency_id, now),
-                )
+                if facts is None:
+                    connection.execute(
+                        "INSERT OR IGNORE INTO claim_edges(project_id, from_revision_id, to_revision_id, edge_type, created_at) VALUES(?, ?, ?, 'depends_on', ?)",
+                        (project_id, revision_id, dependency_id, now),
+                    )
             if active_id:
                 connection.execute(
                     "INSERT OR IGNORE INTO claim_edges(project_id, from_revision_id, to_revision_id, edge_type, created_at) VALUES(?, ?, ?, 'supersedes', ?)",
@@ -828,86 +888,117 @@ class StateStore:
         sealed: bool | None = None,
         round_delta: int = 0,
     ) -> dict[str, Any]:
-        now = utc_now()
         with self.transaction() as connection:
-            row = connection.execute(
-                "SELECT * FROM runs WHERE run_id = ?",
-                (run_id,),
-            ).fetchone()
-            if row is None:
-                raise ReCTMError("RUN_NOT_FOUND", f"Unknown run: {run_id}", category="not_found")
-            if row["state"] != expected_state:
-                raise ReCTMError(
-                    "STATE_CONFLICT",
-                    "The run changed state before this transition was committed.",
-                    category="conflict",
-                    retryable=True,
-                    details={
-                        "run_id": run_id,
-                        "expected": expected_state,
-                        "actual": row["state"],
-                    },
-                )
-            sequence = int(row["transition_seq"]) + 1
-            epoch = int(row["epoch"]) + (1 if increment_epoch else 0)
-            fields = {
-                "state": after_state,
-                "epoch": epoch,
-                "transition_seq": sequence,
-                "round_index": int(row["round_index"]) + round_delta,
-                "updated_at": now,
-                "status": status if status is not None else row["status"],
-                "latex_passed": (
-                    int(latex_passed) if latex_passed is not None else row["latex_passed"]
-                ),
-                "verdict": verdict if verdict is not None else row["verdict"],
-                "sealed": int(sealed) if sealed is not None else row["sealed"],
-            }
+            return self._transition_on(
+                connection, run_id=run_id, expected_state=expected_state, after_state=after_state,
+                trace_id=trace_id, actor=actor, reason=reason, evidence=evidence,
+                increment_epoch=increment_epoch, status=status, latex_passed=latex_passed,
+                verdict=verdict, sealed=sealed, round_delta=round_delta,
+            )
+
+    def _transition_on(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        expected_state: str,
+        after_state: str,
+        trace_id: str,
+        actor: str,
+        reason: str,
+        evidence: Mapping[str, Any] | None = None,
+        increment_epoch: bool = True,
+        status: str | None = None,
+        latex_passed: bool | None = None,
+        verdict: str | None = None,
+        sealed: bool | None = None,
+        round_delta: int = 0,
+        now: str | None = None,
+    ) -> dict[str, Any]:
+        now = now or utc_now()
+        row = connection.execute(
+            "SELECT * FROM runs WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        if row is None:
+            raise ReCTMError("RUN_NOT_FOUND", f"Unknown run: {run_id}", category="not_found")
+        if row["state"] != expected_state:
+            raise ReCTMError(
+                "STATE_CONFLICT",
+                "The run changed state before this transition was committed.",
+                category="conflict",
+                retryable=True,
+                details={
+                    "run_id": run_id,
+                    "expected": expected_state,
+                    "actual": row["state"],
+                },
+            )
+        sequence = int(row["transition_seq"]) + 1
+        epoch = int(row["epoch"]) + (1 if increment_epoch else 0)
+        fields = {
+            "state": after_state,
+            "epoch": epoch,
+            "transition_seq": sequence,
+            "round_index": int(row["round_index"]) + round_delta,
+            "updated_at": now,
+            "status": status if status is not None else row["status"],
+            "latex_passed": (
+                int(latex_passed) if latex_passed is not None else row["latex_passed"]
+            ),
+            "verdict": verdict if verdict is not None else row["verdict"],
+            "sealed": int(sealed) if sealed is not None else row["sealed"],
+        }
+        connection.execute(
+            """
+            UPDATE runs SET
+                state = :state,
+                epoch = :epoch,
+                transition_seq = :transition_seq,
+                round_index = :round_index,
+                updated_at = :updated_at,
+                status = :status,
+                latex_passed = :latex_passed,
+                verdict = :verdict,
+                sealed = :sealed
+            WHERE run_id = :run_id
+            """,
+            {**fields, "run_id": run_id},
+        )
+        connection.execute(
+            """
+            INSERT INTO transitions (
+                run_id, sequence, trace_id, before_state, after_state,
+                actor, reason, evidence_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run_id,
+                sequence,
+                trace_id,
+                expected_state,
+                after_state,
+                actor,
+                reason,
+                _json(evidence or {}),
+                now,
+            ),
+        )
+        if increment_epoch:
             connection.execute(
                 """
-                UPDATE runs SET
-                    state = :state,
-                    epoch = :epoch,
-                    transition_seq = :transition_seq,
-                    round_index = :round_index,
-                    updated_at = :updated_at,
-                    status = :status,
-                    latex_passed = :latex_passed,
-                    verdict = :verdict,
-                    sealed = :sealed
-                WHERE run_id = :run_id
+                UPDATE capabilities
+                SET revoked = 1, revoked_at = ?, revoke_reason = 'run_epoch_advanced'
+                WHERE run_id = ? AND revoked = 0
                 """,
-                {**fields, "run_id": run_id},
+                (now, run_id),
             )
-            connection.execute(
-                """
-                INSERT INTO transitions (
-                    run_id, sequence, trace_id, before_state, after_state,
-                    actor, reason, evidence_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    run_id,
-                    sequence,
-                    trace_id,
-                    expected_state,
-                    after_state,
-                    actor,
-                    reason,
-                    _json(evidence or {}),
-                    now,
-                ),
-            )
-            if increment_epoch:
-                connection.execute(
-                    """
-                    UPDATE capabilities
-                    SET revoked = 1, revoked_at = ?, revoke_reason = 'run_epoch_advanced'
-                    WHERE run_id = ? AND revoked = 0
-                    """,
-                    (now, run_id),
-                )
-        return self.get_run(run_id)
+        record_initialization(connection, before=row, run_id=run_id, expected_state=expected_state,
+                              after_state=after_state, actor=actor, reason=reason, trace_id=trace_id, now=now)
+        record_transition(connection, before=row, run_id=run_id, expected_state=expected_state,
+                          after_state=after_state, actor=actor, trace_id=trace_id, now=now)
+        result = connection.execute("SELECT * FROM runs WHERE run_id=?", (run_id,)).fetchone()
+        return _row_payload(result, json_fields=("metadata_json",))
 
     def create_domain(
         self,

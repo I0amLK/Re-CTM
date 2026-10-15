@@ -87,7 +87,7 @@
 ## 5. 架构与权威来源
 
 - L0 OAuth、L1 Native mode、L2 workflow capability 三层权限不可合并或相互继承。
-- 18 个 CTM Native 工具前缀、6 个公开 Rethlas façade、隐藏兼容别名和 workflow protocol 兼容性属于公共功能约束。
+- 当前 19 个 MTM Native 工具前缀、6 个公开 Rethlas façade（共 25 个）、退役别名拒绝，以及新 run protocol 3 / 历史 run protocol 1–2 版本隔离属于公共功能约束。v0.2 的 24-tool/隐藏别名冻结仅作为历史记录保留，已由明确的迁移授权替代。
 - 状态转换、权限规则、工具 schema、错误恢复和持久化迁移各自应有单一权威来源。
 - 同一业务规则如果必须在文档、schema、运行时和测试中重复，必须有机械一致性检查或明确生成关系。
 - Native workspace、数据根目录和 private vault 的隔离不得为了代码复用而弱化。

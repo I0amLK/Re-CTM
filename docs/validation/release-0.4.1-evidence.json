@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "version": "0.4.1",
+  "generated_at": "2026-10-15T07:07:00Z",
+  "status": "bounded_runtime_machine_accepted_launcher_activation_pending",
+  "qualified_runtime_wheel": {
+    "file": ".local-install-0.4.1/re_ctm-0.4.1-py3-none-any.whl",
+    "sha256": "492ae13dca4f458dac048d8084883acb2426cea397e342fb9a9094a7762932cb",
+    "runtime_files": 55
+  },
+  "evidence": [
+    {
+      "file": ".release-validation/host-20261015T052516Z-6c9bdedf/report.json",
+      "sha256": "fda8f85855685e3f03ce23b79790ff6da0de42981ae90ad602adb7506a86bbe9",
+      "scope": "Reused exact-runtime baseline: 528 source and 178 installed tests; five strict machine gates, real native isolation, OAuth protocol-3 workflow and required isolated LaTeX passed. Not rerun."
+    },
+    {
+      "file": ".release-validation/opt024-20261015/supplement/acceptance-20261015T055127Z-7404621d/report.json",
+      "sha256": "230597e8c9e26f7f50147082d0df78dc81fd9fa72d59b4f208d5067c896df12c",
+      "scope": "22 fresh focused regressions and 13 real HTTP/Bubblewrap lifecycle groups passed against the exact unchanged runtime."
+    },
+    {
+      "file": ".local-install-0.4.1/install-report.json",
+      "sha256": "c51506475a90d2d599a87aaa92b4ff6978db9bcc8a5029d99cd0155ae957b2a6",
+      "scope": "Verified side-by-side offline installation; not the old bare PATH entry."
+    },
+    {
+      "file": ".local-install/workspace/human-authorized-test-v0.4.1-20261015T065049Z-n0DTLbY5.json",
+      "sha256": "d8666d2ef5863261d041f22589b7d025e63040a8cb2e67523e8e33208f0a8720",
+      "scope": "Actual connector async command running at 101 ms, same command exit 0 at 4022 ms; no signal."
+    },
+    {
+      "file": ".local-install/workspace/human-authorized-lifecycle-v0.4.1-20261015T065833Z-EYkU6B6n.json",
+      "sha256": "57f243b2ef363848224119fea40fa3a4b35b4bc891b0cd0eab14eb6699556ff1",
+      "scope": "Six actual connector checks passed: sync streams/nonzero exit, async exact paging, PTY input, timeout provenance, owned cancellation and independent concurrent requests."
+    }
+  ],
+  "pending": [
+    "Ordinary-host fresh package validation and launcher physical rehearsal/activation via the pinned finalization driver.",
+    "Publication authorization and destination; no publication performed."
+  ],
+  "unclaimed": [
+    "Broad mathematical quality or 95 percent methodology equivalence.",
+    "Fresh-context model routing and verifier cognitive independence.",
+    "Live provider substantive source quality, universal scientific tool compatibility, stress and crash coverage beyond stated fixtures."
+  ],
+  "privacy": "This file contains only bounded summaries and hashes, no credentials, private state, problem/proof bodies or raw terminal output.",
+  "final_launcher_validation": {
+    "focused_tests": 18,
+    "independent_review": "passed",
+    "helper_sha256": "a159b5d2c7ae14cd6e5c52631b5b24c5d8d2e210749613126f104edf1a71f73e",
+    "host_activation": "pending"
+  },
+  "final_package_validation": {
+    "status": "host_revalidation_pending",
+    "retained_failed_report": ".release-validation/opt025-20261015/final2-package/report.json",
+    "observed": "Build/install/import/CLI gates passed; installed fixtures 199/200. One test-only path assertion incorrectly rejected valid workspace-mounted temporary roots.",
+    "correction": "Exact sandbox-filename assertions and mounted-root regression; ordinary source 23/23 independently passed. Runtime bytes unchanged.",
+    "boundary": "Direct disposable venv execution was denied by connector; no alternate execution of that interpreter. Final host driver will rebuild and run all installed fixtures before activation."
+  }
+}

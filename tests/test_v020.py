@@ -122,7 +122,7 @@ class V020MCPTestCase(unittest.TestCase):
             NativeMode.DANGEROUS,
             debug,
         )
-        self.tools = ToolRuntime(native, workflow, debug)
+        self.tools = ToolRuntime(native, workflow, debug, workflow_protocol_version=2)
         self.principal = OAuthPrincipal("owner", "owner", "mcp")
         self.other = OAuthPrincipal("other", "other", "mcp")
         self.workspace = workspace

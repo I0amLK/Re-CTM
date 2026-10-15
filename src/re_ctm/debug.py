@@ -138,7 +138,8 @@ class DebugEventBus:
                     self.private_root / "runs" / run_id / "debug" / "events.jsonl",
                     line,
                 )
-        if self.observer is not None:
+        from .vault_effects import defer_observer
+        if self.observer is not None and not defer_observer(self.observer, event):
             try:
                 self.observer(event)
             except Exception:

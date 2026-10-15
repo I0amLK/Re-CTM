@@ -2,7 +2,7 @@
 
 This document is an operational guide, not evidence that a target has passed validation. The authoritative acceptance state remains in `manual-validation.json`.
 
-Current release: **Re-CTM v0.3.0**.
+Current source version: **Re-CTM v0.4.1**, a Native asynchronous-command lifetime repair candidate. It retains the 0.4.0 tool/protocol/schema contracts; this does not certify fresh target-PC acceptance.
 
 ## 1. Required software
 
@@ -57,12 +57,12 @@ RE_CTM_DATA_ROOT=/var/lib/re-ctm
 RE_CTM_PRIVATE_ROOT=/var/lib/re-ctm/private
 RE_CTM_ALLOWED_ORIGINS=https://the-real-web-client.example
 RE_CTM_LATEX_POLICY=required
-RE_CTM_NATIVE_MODE=safe
+RE_CTM_NATIVE_MODE=dangerous
 ```
 
 On Linux, if `bwrap` is installed and `RE_CTM_NATIVE_EXEC_BACKEND` is omitted, Re-CTM automatically selects the built-in Bubblewrap backend and performs mandatory startup attestation. Set `RE_CTM_NATIVE_EXEC_BACKEND=disabled` only when command execution should be intentionally unavailable.
 
-Native scientific/computer tools are exposed by policy rather than by an application allowlist. Trusted/dangerous modes derive read-only toolchain roots from non-system PATH entries and executable symlink targets. For split or non-PATH installations, declare additional absolute directories with the platform path separator (`:` on Linux):
+Native scientific/computer tools are exposed by policy rather than by an application allowlist. The dangerous profile derives read-only toolchain roots from non-system PATH entries and executable symlink targets. For split or non-PATH installations, declare additional absolute directories with the platform path separator (`:` on Linux):
 
 ```bash
 RE_CTM_NATIVE_EXEC_ALLOW_ROOTS=/opt/vendor-suite:/srv/shared-runtime
@@ -88,7 +88,13 @@ Do not commit the real environment file. Re-CTM materializes server signing secr
 
 v0.2.0 introduces a versioned state-schema migration framework. Existing unversioned v0.1/dev6 databases are recognized as the baseline workflow schema and migrated additively to the v0.2 research-registry schema; runs, domains, branches, capabilities, transitions, and old protocol-1 workflow metadata are preserved. The state store records `PRAGMA user_version` plus migration history and fails closed if a database was created by a newer runtime version. Back up the private state directory before the first production upgrade even though the migration is additive.
 
-New MCP runs use workflow protocol 2. Existing persisted runs without a protocol marker continue as protocol 1, so an in-progress pre-v0.2 run does not suddenly acquire new proof-manifest requirements after upgrade.
+New MCP runs default to workflow protocol 3. `RE_CTM_WORKFLOW_PROTOCOL_VERSION=2` explicitly selects protocol 2 for new runs; only 2 or 3 is accepted. Persisted protocol-1/2 runs retain their original write contracts and remain resumable. The current additive state migration and durable recovery details are documented in [MTM_MIGRATION.md](MTM_MIGRATION.md); do not open live state merely to test an upgrade.
+
+### Native/client contract upgrade
+
+The public surface is now 19 Native plus six workflow tools (`mtm-tools-v11`), 25 total. Refresh cached client schemas. Public `safe` and `trusted` profiles are retired and rejected; review the change before selecting `dangerous`. The former hidden workflow MCP aliases are also rejected; use the six façades. Existing persisted runs are handled separately from public alias compatibility.
+
+`exec_command` requires exactly one of `argv` or `cmd`; `cmd` runs non-login `/bin/sh -c`. The total lifetime default is 300000 ms (maximum 600000), while polling yield remains 10000 ms by default. Requested PATH/workdir executable facts are revalidated immediately before start. Native write keys are caller-scoped in-memory receipts, not durable exactly-once execution. Unknown results and rollback failures require file reconciliation, even after restart. See [Native migration details](MTM_MIGRATION.md).
 
 ## 5. Validate native isolation
 
@@ -121,7 +127,30 @@ Omit `--allow-root` when none are configured; repeat it for every declared root.
 
 Review the JSON before treating that target as accepted for production. `RE_CTM_NATIVE_ISOLATION_ATTESTED=1` remains required only for an operator-supplied external helper. `dangerous` still does not grant a workflow capability: it changes native-tool policy inside the attested namespace. Host-PATH discovery and explicit toolchain roots use one canonical, read-only mount plan while the configured workspace/data/private trust domains remain excluded.
 
-Long-running command results include additive `termination` provenance without changing CTM lifecycle semantics. Review `source`, `requested_timeout_ms`, `elapsed_ms`, `observed_signal`, `term_sent_by_re_ctm`, and `kill_sent_by_re_ctm` before diagnosing a killed CAS computation. A signal observed without a matching Re-CTM action is reported as `external_or_unknown`, not guessed to be an OOM event.
+Long-running command results include `operation_outcome` and additive `termination` provenance. The default lifetime is now 300000 ms; the existing timeout/TERM/KILL termination sequence is preserved. Review `source`, `requested_timeout_ms`, `elapsed_ms`, `observed_signal`, `term_sent_by_re_ctm`, and `kill_sent_by_re_ctm` before diagnosing a killed CAS computation. A signal observed without a matching Re-CTM action is reported as `external_or_unknown`, not guessed to be an OOM event.
+
+### Asynchronous HTTP command lifetime (0.4.1)
+
+Actual connected-client testing of 0.4.0 found that a Native command could return
+`running` and then receive SIGKILL when its HTTP request thread exited.
+Linux parent-death signaling follows the creating thread. The repair creates
+each managed child in a dedicated owner thread which stays alive until the child
+is terminal; it retains Bubblewrap's `--die-with-parent`, namespaces,
+process-group signaling and the existing timeout/kill authority.
+
+Keep the previously running installation and evidence intact. Qualify a fresh
+0.4.1 candidate with `scripts/manual_native_http_lifecycle_test.py` on the
+ordinary host, including async completion, stdin/PTY, explicit kill, timeout
+and service-exit cleanup after each initiating HTTP request has finished.
+Do not remove `--die-with-parent` or disable isolation to make this pass.
+Direct in-process tests and old 0.4.0 acceptance cannot establish this repair.
+
+Install the accepted wheel into a separate venv. Stop/restart a live service only
+at an operator-approved point; do not overwrite its active venv, change existing
+signing keys, or open its private database merely to test an upgrade. Protocol 3,
+schema 8, the 25-tool catalog and persisted workflow contracts are unchanged.
+A Quick Tunnel restart may assign a new public URL and the interactive OAuth
+authorization key is generated anew; reconnect the intended client explicitly.
 
 ## 6. Start Re-CTM
 
@@ -135,6 +164,24 @@ set +a
 ```
 
 The terminal observer is presentation-only. It consumes already-redacted runtime events through a bounded non-blocking in-memory queue, performs no database/JSONL polling and no extra network calls, and never receives the raw generated authorization key through the structured event path. Slow/broken terminal output is isolated from MCP tool execution. Model token usage is intentionally not estimated because the MCP server is not guaranteed to receive authoritative upstream model-usage metadata.
+
+For the untouched standard stderr, terminal-observer output bypasses Python's buffered writer. A closed PTY or pipe disables further observer output without changing the intended server shutdown status; Re-CTM does not close or replace process-wide stderr. Explicit/custom streams retain their write/flush behavior. Source regressions use disabled Native execution and static-only LaTeX to isolate this I/O contract; release qualification still requires the rebuilt installed candidate on the ordinary host.
+
+The default TUI prints each tool when it starts and preserves failures and rejected
+logical submissions, without a second routine-success line. Add `--verbose` to
+show completion lines and trace identifiers. Argument values, result bodies and
+capabilities are never rendered in either mode. A returned fresh workflow task
+does not mean its rejected submission succeeded; inspect its retained-write
+instructions before correcting it.
+
+The MTM-compatible source update also publishes
+`/.well-known/oauth-protected-resource/mcp` and advertises it in the MCP bearer
+challenge. This document identifies the exact `/mcp` resource while preserving
+the origin-level issuer and legacy origin-resource audience. Keep reverse-proxy
+origin validation and the existing single-writer deployment boundary intact.
+First-start secret publication is now non-overwriting; do not delete or rotate an
+existing secret to diagnose an authorization issue. See [the backport notes](MTM_BACKPORT.md)
+for scope and fresh target-host/browser checks still required.
 
 For the common disposable remote-client path, `tui` can explicitly own one Cloudflare Quick Tunnel:
 
@@ -189,7 +236,17 @@ This is not a substitute for connecting the actual webpage MCP host.
 
 ## 8. Manual acceptance
 
-Execute every pending item in `manual-validation.json`. Keep evidence content-minimized:
+Execute the active RC-001 through RC-011 checks in `manual-validation.json` against the actual candidate. The complete previous MV checklist and its evidence are retained under `historical_checklists` as superseded history, not current acceptance. Repository publication is a separate operator action and is not required before local target qualification. Local host deployment/testing does not itself authorize public ingress, live private-state access or security-policy changes.
+
+The active gates separate:
+
+- RC-001/002: deterministic/package evidence and the 25-tool MTM v11 contract;
+- RC-003/004: scripted loopback OAuth/MCP versus actual browser/client authorization, routing and resume;
+- RC-005/006: target hard isolation and real required LaTeX compilation/final delivery;
+- RC-007/008/009: protocol-3 role barriers, disposable schema-8/recovery tests, project facts and source-backed reference audits;
+- RC-010/011: optional terminal/approved ingress behavior and operator mathematical-quality review.
+
+All current checks begin pending. Record candidate hashes, target environment, exact commands/client actions, outcomes and redacted evidence before marking any passed. A failed nested-namespace probe is an execution blocker; disabling the backend or replacing required compilation with `static_only` does not satisfy the corresponding gate. Preserve the real-isolation tests and do not alter host security policy merely to pass them. Use only disposable state for qualification unless a separate live-state action is explicitly authorized. Keep evidence content-minimized:
 
 - tool names, state names, hashes, trace IDs, status codes, and redacted reports are appropriate;
 - OAuth passwords, access tokens, authorization codes, client secrets, capabilities, private problem statements, proof bodies, and reference bodies are not.
@@ -212,7 +269,7 @@ When terminal `rethlas_step` reports `done`, the controlled private-to-native br
 rethlas-output/<run_id>/proof_verified.tex
 ```
 
-The automatic operation is idempotent when the existing file has the same hash and refuses to overwrite different content. `rethlas_artifact` is the public artifact façade: `action=get` returns finalized LaTeX through MCP and `action=export` re-materializes the run's default `workspace_export_path` or writes an explicit alternate workspace-relative `.tex` destination. Overwriting an existing alternate path requires its current SHA-256 baseline. The older `rethlas_get_artifact` and `rethlas_export_final` names remain hidden compatibility aliases.
+The automatic operation is idempotent when the existing file has the same hash and refuses to overwrite different content. `rethlas_artifact` is the public artifact façade: `action=get` returns finalized LaTeX through MCP and `action=export` re-materializes the run's default `workspace_export_path` or writes an explicit alternate workspace-relative `.tex` destination. Overwriting an existing alternate path requires its current SHA-256 baseline. The older `rethlas_get_artifact` and `rethlas_export_final` names are retired and rejected; persisted-run compatibility does not restore retired tool aliases.
 
 Protocol-2 runs may additionally expose `proof_manifest` and `reference_audit`. Project owners may retrieve/export a portable `project_manifest` or `project_summary_tex`. These project artifacts are generated from private registry facts and contain claim/revision/status/hash/dependency/condition/reference-audit information only; they must not include owner/OAuth binding data, generation memory, branch internals, verifier scratch memory, steering, or capability handles. `project_summary_tex` is subjected to the same static external-file/shell-operation checks as proof LaTeX before it can be returned/exported.
 
@@ -232,3 +289,61 @@ Do not mark the full workflow validated until all manual checks have evidence. I
 - hard isolation on a different target kernel/packaging;
 - mathematical proof quality or 95-percent Rethlas equivalence;
 - cognitive independence equivalent to truly fresh model contexts.
+
+
+## Accepted local launcher
+
+The accepted local 0.4.1 installation can be activated without reinstalling it,
+changing runtime code, reading/migrating data, or restarting a running service.
+This is a deployment-specific wrapper, not a change to package defaults. Review
+`scripts/activate_release_launcher.py`, then run once in the ordinary host terminal:
+
+```sh
+cd '/home/lk/桌面/MTM/Re-CTM' &&
+/home/lk/miniconda3/bin/python3 -I -B scripts/activate_release_launcher.py --activate &&
+hash -r && re-ctm --version
+```
+
+The helper verifies the pinned accepted wheel SHA-256 and all 55 installed runtime
+files, rejects another PATH entry shadowing `~/.local/bin/re-ctm`, preserves the
+old launcher (including a symlink), and atomically replaces only that launcher.
+Its JSON output names the activation receipt and reversible backup. A failed
+version or receipt check restores the backup. Before activation, the same launcher
+template starts a temporary loopback-only TUI with fresh disposable data/workspace
+roots, checks OAuth discovery, then stops only that owned process. It never starts
+a public Quick Tunnel or touches the existing running service. Run
+`--check-only` for a read-only candidate check; it does not certify host activation.
+
+After activation, the usual command is:
+
+```sh
+re-ctm tui --quick-tunnel --native-mode dangerous
+```
+
+It preserves the previously accepted launch settings regardless of current
+directory: workspace `<checkout>/.local-install/workspace`, data
+`~/.re-ctm-0.4-local`, private data beneath that root, Bubblewrap, required LaTeX,
+loopback `127.0.0.1`, and port `0`. The wrapper clears inherited settings and
+credentials just as the accepted `env -i` command did; it preserves only HOME,
+PATH and TERM, then supplies those explicit settings. Ordinary CLI arguments
+still pass through unchanged. It does not read the old 0.3 data root or move any
+state. Keep the checkout and its accepted venv at their original host location.
+
+For rollback, use the exact receipt path printed at activation:
+
+```sh
+python3 scripts/activate_release_launcher.py --rollback /path/to/activation.json
+hash -r
+```
+
+Rollback refuses to overwrite a launcher changed since activation. It restores
+only the prior command entry, never a database, private vault or running service.
+Do not run an old runtime against newer state after rollback. Shell aliases or
+functions named `re-ctm` are outside PATH lookup; use `type -a re-ctm` if the shell
+still selects an unexpected command.
+
+This helper is pinned to the accepted local 0.4.1 wheel. Later accepted releases
+require a new reviewed pin; it intentionally never downloads or chooses an
+unverified latest version. Machine acceptance, operator acceptance and public
+publication remain separate release gates. Do not publish `.local-install*` or
+`.release-validation`; use the package builder's explicit source allowlist.

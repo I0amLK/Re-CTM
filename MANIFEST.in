@@ -1,0 +1,14 @@
+include AGENTS.md README.md LICENSE NOTICE pyproject.toml MANIFEST.in
+include config.example.env engineering-graph.json code-optimization-graph.json
+include manual-validation.json project-progress.json
+recursive-include src *.py *.json *.md
+recursive-include tests *.py
+recursive-include scripts *.py
+recursive-include docs *.md *.json
+prune .release-validation
+prune .git
+prune .venv
+prune venv
+prune build
+prune dist
+global-exclude *.pyc *.pyo *.log *.db *.sqlite *.sqlite3 .env .env.*

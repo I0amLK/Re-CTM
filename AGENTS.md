@@ -1,11 +1,49 @@
 # Re-CTM engineering rules
 
+## Current target-host validation scope (2026-10-14)
+
+The user subsequently authorized deployment and validation on the selected MTM
+host, aiming for release readiness. OPT-022 covers the bounded release-harness
+and documentation corrections plus isolated target testing. Use only the MTM
+connector and workspace-relative paths for this task; do not launch Work, Codex,
+a cloud task or an alternate local execution route.
+
+This later authorization supersedes the earlier source-only/no-deployment
+restriction below only for disposable deployment and testing on this host. It
+does not authorize reading or migrating production private state, changing host
+security/isolation settings, public ingress, commits, pushes or publication.
+The user will handle GitHub publication. Keep the existing MTM service and its
+private state untouched; use fresh, non-overlapping test roots. A nested-user-
+namespace restriction is a blocker to report, not a reason to weaken isolation.
+Preserve historical acceptance records and never convert missing target,
+browser, LaTeX or mathematical evidence into a passing release claim.
+
+## User-authorized MTM contract migration (2026-10-14)
+
+The user explicitly approved migration to MTM's new tool, workflow and database
+contracts after being told that they break the previous freeze. For OPT-018 through
+OPT-021, the target is the actual MTM `b5dbd2577869d2aaf7b0933373df6671d104581c`
+behavior: 19 Native plus six workflow tools, current v11 tool semantics, workflow
+protocol 3 for new runs, additive state schemas 3–8, durable recovery receipts and
+verified fact memory. The old 24-tool/schema-2/protocol-2/alias/Native-mode freeze
+below is superseded only for this explicit migration; historical records remain
+historical, and legacy persisted runs require a tested upgrade/resume path.
+
+Do not claim completion by changing version constants. Preserve one production
+authority, OAuth ownership, Native/private-root isolation, opaque signed capability
+checks, role/state and verifier barriers, and mechanical finalizer-only promotion.
+The earlier source-only phase authorized source changes and disposable test
+migrations, and excluded live databases, security settings, installation,
+deployment, commits and pushes. Its cloud-filesystem execution route is historical;
+the current target-host scope above now governs this task. Keep the compatible
+OPT-017 changes and their stricter Git/LaTeX safety boundaries intact.
+
 Re-CTM combines a native CMT plane and a Rethlas workflow plane in one OAuth MCP package. Preserve the following invariants in every change.
 
 ## Authorization axioms
 
 1. OAuth identity is L0 authority.
-2. Native `safe`, `trusted`, and `dangerous` are L1 authority and govern native tools only.
+2. Public Native `dangerous` is L1 authority and governs native tools only. Public `safe`/`trusted` configuration is retired; retained internal isolation adapters do not restore those public profiles.
 3. Signed run capabilities, role ACLs, and workflow state are L2 authority and govern only `rethlas_*` logical resources and transitions.
 4. L1 `dangerous` never implies an L2 capability. Do not add `native_mode` to capability claims or workflow authorization decisions.
 5. The native workspace and Re-CTM data/private roots must not overlap.
@@ -19,10 +57,10 @@ Re-CTM combines a native CMT plane and a Rethlas workflow plane in one OAuth MCP
 
 ## Workflow invariants
 
-- Keep one fixed, truthful public MCP tool catalog: the exact 18 CTM native tools followed by six Rethlas façade tools. Authorization is server-side, not `tools/list` filtering. Superseded Rethlas protocol names may remain callable only as hidden compatibility aliases.
+- Keep one fixed, truthful public MCP tool catalog: the exact 19 MTM Native tools followed by six Rethlas façade tools (25 public tools). Authorization is server-side, not `tools/list` filtering. Retired Rethlas aliases are documented historical names and are rejected, not callable hidden tools.
 - Keep the concrete-mathematics routing rule in both MCP initialize instructions and `rethlas_start` metadata: proof, derivation, proof-repair, and rigorous verification tasks use Rethlas by default unless the user explicitly requests an informal bypass, and continue through `rethlas_step` until done.
 - Every model-active Rethlas task must be zero-guess and self-describing: return a machine-readable `write_contract`, exact `commit_action`, `commit_payload_schema`, and at least one minimal/template/example submission. Memory writes are one JSON object per write unless the task explicitly declares another schema.
-- New v0.2 runs use workflow protocol 2. Existing persisted protocol-1 runs must remain resumable after upgrade and must not suddenly acquire protocol-2 write requirements.
+- New façade runs use workflow protocol 3. Existing persisted protocol-1 and protocol-2 runs remain resumable after upgrade with their original write contracts; a schema upgrade never silently changes a run protocol. The v0.2 protocol-2 and 24-tool freeze is historical and was explicitly superseded by the migration approval above.
 - Compact mode reduces exploration cost only. It never skips the LaTeX gate, independent verifier, repair loop, or mechanical finalizer. The server owns the compact/full route decision; compact assembly and repeated verifier failure must have explicit full-workflow escalation paths.
 - Do not make the model duplicate server-derived workflow facts. If commit payload is authoritative and the server creates the canonical memory record (for example decomposition plans, failure synthesis, or replanning decisions), expose an empty `write_contract` for that fact instead of also requiring a logical write.
 - Direct-plan screening must use server-issued plan/subgoal identifiers. Coverage remains mandatory, but partial screening submissions are retained and report missing ids; plan status, overall branch-vs-solved outcome, and the all-active-plan branch set are server-derived rather than echoed by the model.
@@ -32,16 +70,21 @@ Re-CTM combines a native CMT plane and a Rethlas workflow plane in one OAuth MCP
 - Branch domains read one frozen snapshot and their own branch only until every branch is sealed and the join barrier opens.
 - Sealing a domain revokes its capabilities.
 - Verifier domains cannot read generation memory, branch internals, steering history, join internals, or generator confidence.
-- For project-linked protocol-2 runs, the verifier may see only proof-declared dependency revisions from the frozen project snapshot, not the wider project registry or target-claim lifecycle state.
-- Protocol-2 proof submission includes a machine-readable `proof_manifest`. Dependency revisions must come from the frozen project snapshot; material references must belong to the run; conditional hypotheses and computational evidence remain explicit provenance rather than hidden prose-only assumptions.
-- Each material protocol-2 reference must receive a server-tracked verifier disposition plus evidence basis/locator. `SOURCE_VERIFIED` requires actual source/assumption/notation checks and traceable source evidence; fixed-provider theorem/bibliographic discovery metadata is never sufficient by itself. Missing or unresolved reference-audit coverage is mechanically added to verification gaps before the server computes the verdict.
+- For project-linked protocol-2-or-newer runs, the verifier may see only proof-declared dependency revisions from the frozen project snapshot, not the wider project registry or target-claim lifecycle state.
+- Protocol-2-or-newer proof submission includes a machine-readable `proof_manifest`. Dependency revisions must come from the frozen project snapshot; material references must belong to the run; conditional hypotheses and computational evidence remain explicit provenance rather than hidden prose-only assumptions.
+- Each material protocol-2-or-newer reference must receive a server-tracked verifier disposition plus evidence basis/locator. `SOURCE_VERIFIED` requires actual source/assumption/notation checks and traceable source evidence; fixed-provider theorem/bibliographic discovery metadata is never sufficient by itself. Missing or unresolved reference-audit coverage is mechanically added to verification gaps before the server computes the verdict.
 - The server computes `correct` iff both `critical_errors` and `gaps` are empty.
-- Protocol-2 reference dispositions are evidence-bearing, not labels: SOURCE_VERIFIED must identify an actual source inspection or an eligible stored source-body snapshot; theorem/paper discovery metadata alone is not original-source verification. Bind each structured audit to the verifier domain plus proof/proof-manifest hashes.
+- Protocol-3 research events and action records carry server-owned record type/id, role, domain, round and timestamp; callers cannot forge these fields. Plans have typed local keys with server-issued canonical plan/node/subgoal ids and validated acyclic dependencies.
+- Research state is advisory. `route_solved`, counterexample-search negative evidence and project-memory suggestions never confer VERIFIED status or bypass the verifier/finalizer. Only generator and repair task context may include the broad research projection; verifier, branch and join context must not construct or expose it.
+- Bound research graphs to 256 nodes, 1,024 edges, 2,048 attempts and 256 decisions. Bound the base advisory task view to 16,384 UTF-8 bytes, five frontier/attempt/partial entries and three warnings; the view including project memory must stay within 24,576 bytes.
+- Exact `rethlas_step` retries use durable submission receipts bound to the owner, workspace, run/domain/role/epoch, original capability and ordered request. Historical receipts provide no fresh task authority; changed content under a consumed capability fails closed. `recover_only` reconciles only explicitly enrolled evidenced work and never executes missing writes or actions.
+- State schemas 3–8 add receipts, recovery checkpoints, creation initialization, caller-write journals, explicit action enrollment, immutable facts and append-only finding status. Use the same private SQLite authority and transaction boundary; unsupported future schemas fail closed.
+- Protocol-2-or-newer reference dispositions are evidence-bearing, not labels: SOURCE_VERIFIED must identify an actual source inspection or an eligible stored source-body snapshot; theorem/paper discovery metadata alone is not original-source verification. Bind each structured audit to the verifier domain plus proof/proof-manifest hashes.
 - Project registry promotion is a non-fatal second phase after mathematical `done`: promotion failure/conflict must never invalidate `proof_verified.tex`; retryable promotion errors remain pending and are retried idempotently on later terminal calls.
 - Frozen project snapshots retain historical VERIFIED/CONDITIONAL revisions even after a newer OPEN revision becomes active, so lifecycle supersession does not erase mathematically valid dependency evidence.
 - Only the mechanical finalization gate may create `proof_verified.tex`.
 - Project promotion is downstream of mathematical finalization. It must be idempotent by source run, propagate dependency conditions mechanically, use optimistic concurrency against the run's frozen base revision, and record registry conflicts without invalidating an already-verified proof.
-- On terminal MCP `rethlas_next`, export the mechanically finalized bytes through the controlled bridge to the run's workspace-relative path. The default is `rethlas-output/<run_id>/proof_verified.tex`; identical retries are idempotent and different content must never be overwritten automatically.
+- On terminal MCP `rethlas_step`, export the mechanically finalized bytes through the controlled bridge to the run's workspace-relative path. The default is `rethlas-output/<run_id>/proof_verified.tex`; identical retries are idempotent and different content must never be overwritten automatically.
 - The final artifact is self-contained LaTeX; Zola and Markdown delivery are out of scope.
 - Portable project manifests must omit owner/OAuth/capability/private-reasoning material. Generated project-summary LaTeX must pass the same static external-file/shell-safety checks before export.
 
@@ -74,6 +117,6 @@ Run before considering a local change complete:
 python3 scripts/run_local_checks.py
 ```
 
-This validates deterministic local behavior only. Never describe it as proof that the complete webpage/OAuth/MCP/mathematical workflow works on the target PC. Keep `manual-validation.json` pending until a human runs it after the repository is pushed.
+This validates deterministic local behavior only. Never describe it as proof that the complete webpage/OAuth/MCP/mathematical workflow works on the target PC. Keep the active RC checklist in `manual-validation.json` pending until each check has candidate-specific evidence at its stated scope. Scripted/local evidence cannot replace actual target/browser or operator mathematical acceptance. Preserve superseded checklists and their evidence; pushing the repository is a separate user action, not a prerequisite for local qualification.
 
 Update `project-progress.json` after material engineering changes. Do not mark hard native isolation, real browser compatibility, external retrieval quality, real LaTeX compilation, cognitive domain independence, or the 95-percent functional-equivalence target as validated solely from local unit tests.

@@ -4,11 +4,16 @@ import base64
 import fnmatch
 import hashlib
 import io
+import json
 import mimetypes
+import os
 import re
+import selectors
 import shlex
 import shutil
+import stat
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -261,36 +266,49 @@ def search_text(workspace: Any, args: Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(args.get("glob"), str) and args.get("glob"):
         include_globs.append(str(args["glob"]))
     exclude_globs = [str(item) for item in args.get("exclude_globs", []) if str(item)]
-    listed = list_files(
-        workspace,
-        {
-            "path": str(args.get("path", ".")),
-            "patterns": include_globs or ["**/*"],
-            "exclude_patterns": exclude_globs,
-            "include_hidden": False,
-            "include_ignored": False,
-            "max_results": 50_000,
-        },
-    )
+    target = workspace.resolve_existing(args.get("path", "."))
+    if target.path.is_file():
+        # An explicit file is allowed even when normal directory traversal would
+        # hide it; include/exclude globs still select its basename or full path.
+        def selected(pattern: str) -> bool:
+            return _glob_match(target.path.name, pattern) or _glob_match(target.display, pattern)
+        chosen = (not include_globs or any(selected(item) for item in include_globs)) and not any(selected(item) for item in exclude_globs)
+        listed = {"files": [{"path": target.display}] if chosen else [], "truncated": False}
+    elif target.path.is_dir():
+        listed = list_files(workspace, {
+            "path": target.display, "patterns": include_globs or ["**/*"],
+            "exclude_patterns": exclude_globs, "include_hidden": False,
+            "include_ignored": False, "max_results": 50_000,
+        })
+    else:
+        raise ReCTMError("NOT_A_FILE_OR_DIRECTORY", "Search requires a regular file or directory.", category="validation")
     flags = 0 if case_sensitive else re.IGNORECASE
     try:
         pattern = re.compile(query if regex else re.escape(query), flags)
     except re.error as exc:
         raise invalid_argument("invalid regular expression", error=str(exc)) from exc
     matches: list[dict[str, Any]] = []
+    # Reuse the Native reader's bounded no-follow descriptor snapshot. The local
+    # import avoids the module dependency cycle while keeping one read boundary.
+    from .native import _read_file_snapshot
     for item in listed["files"]:
         path = workspace.resolve_existing(item["path"]).path
         try:
-            text = path.read_text(encoding="utf-8")
+            text = _read_file_snapshot(path, root=workspace.root).decode("utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        lines = text.splitlines()
+        lines = text.split("\n")
+        if lines[-1] == "":
+            lines.pop()
+        lines = [line[:-1] if line.endswith("\r") else line for line in lines]
         for index, line in enumerate(lines):
             match = pattern.search(line)
             if match is None:
                 continue
-            before = lines[max(0, index - context_lines) : index]
-            after = lines[index + 1 : index + 1 + context_lines]
+            before = [value.encode("utf-8")[:max_preview].decode("utf-8", errors="ignore")
+                      for value in lines[max(0, index - context_lines) : index]]
+            after = [value.encode("utf-8")[:max_preview].decode("utf-8", errors="ignore")
+                     for value in lines[index + 1 : index + 1 + context_lines]]
             preview = line.encode("utf-8")[:max_preview].decode("utf-8", errors="ignore")
             matches.append(
                 {
@@ -449,167 +467,366 @@ def apply_update_hunks(content: str, hunks: list[list[str]], path: str) -> str:
 
 
 def git_status(workspace: Any, args: Mapping[str, Any]) -> dict[str, Any]:
-    resolved = workspace.resolve_existing(str(args.get("path", ".")))
-    if not _is_repo(resolved.path):
+    repo = _select_repository(workspace, args, fallback=args.get("path", "."))
+    if repo is None:
         return {"is_repo": False, "clean": True, "entries": [], "truncated": False, "warnings": []}
-    max_entries = int(args.get("max_entries", 1000))
-    command = ["git", "-C", str(resolved.path), "status", "--porcelain=v1", "-b"]
+    _git_reject_submodules(repo)
+    max_entries = _git_integer(args, "max_entries", 1000, 1, 10_000)
+    command = repo.command("status") + ["--porcelain=v1", "-b", "-z"]
     if not bool(args.get("include_untracked", True)):
         command.append("--untracked-files=no")
     completed = _git(command)
-    if completed.returncode != 0:
-        raise ReCTMError("GIT_ERROR", completed.stderr.strip() or "git status failed", category="runtime")
+    _git_check(completed, "git status failed")
+    _git_complete(completed)
     branch = ""
     upstream = ""
     ahead = behind = 0
     entries: list[dict[str, Any]] = []
-    for line in completed.stdout.splitlines():
-        if line.startswith("## "):
-            branch, upstream, ahead, behind = _parse_branch(line[3:])
+    records = iter(completed.stdout.split("\0"))
+    for record in records:
+        if record.startswith("## "):
+            branch, upstream, ahead, behind = _parse_branch(record[3:])
             continue
-        if not line:
+        if not record:
             continue
-        path_text = line[3:]
+        if len(record) < 3 or not record[:2].isascii() or record[2] != " ":
+            raise ReCTMError("GIT_ERROR", "Malformed Git status record.", category="runtime")
         original = None
-        if " -> " in path_text:
-            original, path_text = path_text.split(" -> ", 1)
-        entries.append(
-            {"path": path_text, "original_path": original, "index_status": line[0], "worktree_status": line[1]}
-        )
-        if len(entries) >= max_entries:
+        if "R" in record[:2] or "C" in record[:2]:
+            original = next(records, None)
+            if not original:
+                raise ReCTMError("GIT_ERROR", "Missing Git rename source.", category="runtime")
+        entries.append({
+            "path": record[3:], "original_path": original,
+            "index_status": record[0], "worktree_status": record[1],
+        })
+        if len(entries) > max_entries:
             break
-    head = _git(["git", "-C", str(resolved.path), "rev-parse", "HEAD"])
+    truncated = len(entries) > max_entries
+    entries = entries[:max_entries]
+    head = _git(repo.command("rev-parse") + ["--verify", "HEAD"], max_bytes=4096)
+    _git_complete(head)
     return {
-        "is_repo": True,
-        "branch": branch,
+        "is_repo": True, "repo_path": repo.display, "branch": branch,
         "head": head.stdout.strip() if head.returncode == 0 else "",
-        "upstream": upstream,
-        "ahead": ahead,
-        "behind": behind,
-        "clean": not entries,
-        "entries": entries,
-        "truncated": len(entries) >= max_entries,
+        "upstream": upstream, "ahead": ahead, "behind": behind,
+        "clean": not entries, "entries": entries, "truncated": truncated,
     }
 
 
 def git_diff(workspace: Any, args: Mapping[str, Any]) -> dict[str, Any]:
-    if not _is_repo(workspace.root):
+    repo = _select_repository(workspace, args)
+    if repo is None:
         return {"diff": "", "files": [], "truncated": False, "warnings": ["not a git repository"]}
-    context = int(args.get("context_lines", 3))
-    max_bytes = int(args.get("max_bytes", 262_144))
-    filters = _path_filters(workspace, args)
+    _git_reject_submodules(repo)
+    context = _git_integer(args, "context_lines", 3, 0, 20)
+    max_bytes = _git_integer(args, "max_bytes", 262_144, 1, 1_048_576)
+    filters = repo.filters(workspace, args)
+    for flag in ("staged", "unstaged", "include_untracked"):
+        if flag in args and not isinstance(args[flag], bool):
+            raise invalid_argument(f"{flag} must be a boolean")
     chunks: list[str] = []
+    files: set[str] = set()
+    output_truncated = False
     for staged in (False, True):
-        if staged and not bool(args.get("staged", False)):
+        if staged and not args.get("staged", False):
             continue
-        if not staged and not bool(args.get("unstaged", True)):
+        if not staged and not args.get("unstaged", True):
             continue
-        command = [
-            "git",
-            "-C",
-            str(workspace.root),
-            "-c",
-            "diff.external=",
-            "diff",
-            "--no-ext-diff",
-            "--no-textconv",
-            f"--unified={context}",
-        ]
+        command = repo.command("diff") + ["--no-ext-diff", "--no-textconv", f"--unified={context}"]
         if staged:
             command.append("--cached")
         if filters:
             command += ["--", *filters]
-        completed = _git(command)
-        if completed.returncode not in {0, 1}:
-            raise ReCTMError("GIT_ERROR", completed.stderr.strip() or "git diff failed", category="runtime")
-        chunks.append(completed.stdout)
-    text = "\n".join(chunk.rstrip("\n") for chunk in chunks if chunk)
+        completed = _git(command, max_bytes=max(65_536, max_bytes * 2))
+        _git_check(completed, "git diff failed", allowed=(0, 1))
+        output_truncated |= completed.stdout_truncated
+        chunks.append(completed.stdout.rstrip("\n"))
+    text = "\n".join(chunk for chunk in chunks if chunk)
     if text:
         text += "\n"
     encoded = text.encode("utf-8")
-    truncated = len(encoded) > max_bytes
-    if truncated:
-        text = encoded[:max_bytes].decode("utf-8", errors="ignore")
-    return {"diff": text, "files": _parse_diff_files(text), "truncated": truncated, "warnings": ["diff truncated"] if truncated else []}
+    output_truncated |= len(encoded) > max_bytes
+    text = encoded[:max_bytes].decode("utf-8", errors="ignore")
+    # Parse only Git-produced tracked sections. Untracked names below come from
+    # the complete NUL listing, never from content or quoted/truncated headers.
+    for line in text.splitlines():
+        if line.startswith("+++ b/") or line.startswith("--- a/"):
+            files.add(line[6:])
+    if args.get("unstaged", True) and args.get("include_untracked", True):
+        extra, limited, names = _git_untracked_diff(
+            workspace, repo, filters, max_bytes - len(text.encode("utf-8")),
+        )
+        text += extra
+        files.update(names)
+        output_truncated |= limited
+    return {
+        "repo_path": repo.display, "diff": text, "files": sorted(files),
+        "truncated": output_truncated, "warnings": ["diff truncated"] if output_truncated else [],
+    }
+
+
+_UNTRACKED_FILE_LIMIT = 128
+_UNTRACKED_BYTE_LIMIT = 8 * 1024 * 1024
+_UNTRACKED_WINDOW_SECONDS = 15
+
+
+def _git_untracked_diff(
+    workspace: Any, repo: _GitRepository, filters: list[str], max_bytes: int,
+) -> tuple[str, bool, list[str]]:
+    command = repo.command("ls-files") + ["-z", "--others", "--exclude-standard"]
+    if filters:
+        command += ["--", *filters]
+    listed = _git(command, max_bytes=262_144)
+    _git_check(listed, "git untracked enumeration failed")
+    _git_complete(listed)
+    if listed.stdout and not listed.stdout.endswith("\0"):
+        raise invalid_argument("Untracked paths must be complete UTF-8 NUL records; narrow the filter")
+    names = listed.stdout.split("\0")[:-1] if listed.stdout else []
+    if any(not name for name in names):
+        raise invalid_argument("Untracked path listing contains an empty record")
+    deadline = time.monotonic() + _UNTRACKED_WINDOW_SECONDS
+    output = bytearray()
+    files: list[str] = []
+    truncated = False
+    for index, name in enumerate(names):
+        if index >= _UNTRACKED_FILE_LIMIT or len(output) >= max_bytes or time.monotonic() >= deadline:
+            truncated = True
+            break
+        captured = _read_untracked_file(workspace, repo, name, deadline)
+        if captured is None:
+            truncated = True
+            continue
+        data, mode = captured
+        section, limited = _untracked_diff_section(name, data, mode, max_bytes - len(output), deadline)
+        output.extend(section)
+        truncated |= limited
+        files.append(name)
+    return output.decode("utf-8"), truncated, files
+
+
+def _untracked_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    return (metadata.st_dev, metadata.st_ino, metadata.st_mode, metadata.st_nlink,
+            metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns)
+
+
+def _read_untracked_file(
+    workspace: Any, repo: _GitRepository, name: str, deadline: float,
+) -> tuple[bytes, int] | None:
+    """Read one bounded regular file through no-follow directory descriptors.
+
+    Before/after fingerprints bind evidence to captured bytes. Descriptor-relative
+    opens prevent symlink replacement races from opening a private-vault alias.
+    """
+    relative = workspace._validate_text(name)
+    if relative.as_posix() != name or not relative.parts:
+        raise invalid_argument("Untracked path listing contains a noncanonical path")
+    full_relative = repo.root.relative_to(workspace.root) / relative
+    descriptors: list[int] = []
+    bindings: list[tuple[int, str, int, int]] = []
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    try:
+        root_fd = os.open(workspace.root, directory_flags)
+        descriptors.append(root_fd)
+        parent_fd = root_fd
+        for component in full_relative.parts[:-1]:
+            child_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+            descriptors.append(child_fd)
+            metadata = os.fstat(child_fd)
+            bindings.append((parent_fd, component, metadata.st_dev, metadata.st_ino))
+            parent_fd = child_fd
+        leaf = full_relative.parts[-1]
+        before = os.stat(leaf, dir_fd=parent_fd, follow_symlinks=False)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            raise ReCTMError("UNSAFE_UNTRACKED_FILE", "Untracked diff refuses linked/nonregular files.", category="security")
+        if before.st_size > _UNTRACKED_BYTE_LIMIT:
+            return None
+        file_fd = os.open(leaf, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
+        descriptors.append(file_fd)
+        identity = _untracked_identity(before)
+        if identity != _untracked_identity(os.fstat(file_fd)):
+            raise ReCTMError("GIT_UNTRACKED_CHANGED", "Untracked source changed before capture.", category="conflict")
+        data = bytearray()
+        while len(data) <= _UNTRACKED_BYTE_LIMIT:
+            if time.monotonic() >= deadline:
+                return None
+            chunk = os.read(file_fd, min(65_536, _UNTRACKED_BYTE_LIMIT + 1 - len(data)))
+            if not chunk:
+                break
+            data.extend(chunk)
+        if len(data) > _UNTRACKED_BYTE_LIMIT:
+            return None
+        after = os.stat(leaf, dir_fd=parent_fd, follow_symlinks=False)
+        if identity != _untracked_identity(os.fstat(file_fd)) or identity != _untracked_identity(after):
+            raise ReCTMError("GIT_UNTRACKED_CHANGED", "Untracked source changed during capture.", category="conflict")
+        for parent, component, device, inode in bindings:
+            current = os.stat(component, dir_fd=parent, follow_symlinks=False)
+            if not stat.S_ISDIR(current.st_mode) or (current.st_dev, current.st_ino) != (device, inode):
+                raise ReCTMError("GIT_UNTRACKED_CHANGED", "Untracked directory binding changed.", category="conflict")
+        root = os.stat(workspace.root, follow_symlinks=False)
+        opened_root = os.fstat(root_fd)
+        if not stat.S_ISDIR(root.st_mode) or (root.st_dev, root.st_ino) != (opened_root.st_dev, opened_root.st_ino):
+            raise ReCTMError("GIT_UNTRACKED_CHANGED", "Workspace directory binding changed.", category="conflict")
+        return bytes(data), before.st_mode
+    except OSError as exc:
+        raise ReCTMError("UNSAFE_UNTRACKED_FILE", "Untracked source cannot be safely captured.", category="security") from exc
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+def _untracked_diff_section(
+    name: str, data: bytes, mode: int, max_bytes: int, deadline: float,
+) -> tuple[bytes, bool]:
+    def quoted(prefix: str) -> str:
+        value = f"{prefix}/{name}"
+        return json.dumps(value, ensure_ascii=False) if any(c.isspace() or c in '\"\\' for c in value) else value
+
+    a, b = quoted("a"), quoted("b")
+    file_mode = "100755" if mode & 0o111 else "100644"
+    section = bytearray()
+    truncated = False
+
+    def append(value: str) -> None:
+        nonlocal truncated
+        encoded = value.encode("utf-8")
+        remaining = max_bytes - len(section)
+        bounded = encoded[:remaining].decode("utf-8", errors="ignore").encode("utf-8")
+        section.extend(bounded)
+        truncated |= len(bounded) < len(encoded)
+
+    append(f"diff --git {a} {b}\nnew file mode {file_mode}\n--- /dev/null\n+++ {b}\n")
+    try:
+        content = data.decode("utf-8")
+    except UnicodeDecodeError:
+        content = None
+    if content is None or "\0" in content:
+        append(f"Binary files /dev/null and {b} differ\n")
+        return bytes(section), truncated
+    count = content.count("\n") + bool(content and not content.endswith("\n"))
+    if count:
+        append(f"@@ -0,0 +1,{count} @@\n")
+    offset = 0
+    while offset < len(content):
+        if len(section) >= max_bytes or time.monotonic() >= deadline:
+            truncated = True
+            break
+        end = content.find("\n", offset)
+        end = len(content) if end < 0 else end + 1
+        append("+" + content[offset:end])
+        offset = end
+        if truncated:
+            break
+    if content and not content.endswith("\n") and not truncated:
+        append("\n\\ No newline at end of file\n")
+    return bytes(section), truncated
 
 
 def git_log(workspace: Any, args: Mapping[str, Any]) -> dict[str, Any]:
-    requested = workspace.resolve_existing(str(args.get("path", ".")))
-    if not _is_repo(requested.path):
+    repo = _select_repository(workspace, args)
+    if repo is None:
         return {"is_repo": False, "commits": [], "truncated": False, "warnings": []}
-    ref = _validate_ref(str(args.get("ref", "HEAD")))
-    count = int(args.get("max_count", 20))
-    skip = int(args.get("skip", 0))
-    command = [
-        "git", "-C", str(workspace.root), "log", f"--max-count={count + 1}", f"--skip={skip}",
-        "--date=iso-strict", "--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%ad%x1f%s%x1e", ref,
+    ref = _validate_ref(args.get("ref", "HEAD"))
+    count = _git_integer(args, "max_count", 20, 1, 100)
+    skip = _git_integer(args, "skip", 0, 0, 10_000)
+    command = repo.command("log") + [
+        f"--max-count={count + 1}", f"--skip={skip}", "--date=iso-strict", "--no-show-signature",
+        "--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%ad%x1f%s%x1e", ref,
     ]
-    if requested.display != ".":
-        command += ["--", requested.display]
+    filters = repo.filters(workspace, args)
+    if filters:
+        command += ["--", *filters]
     completed = _git(command)
-    if completed.returncode != 0:
-        raise ReCTMError("GIT_ERROR", completed.stderr.strip() or "git log failed", category="runtime")
+    _git_check(completed, "git log failed")
+    _git_complete(completed)
     commits: list[dict[str, Any]] = []
     for record in completed.stdout.split("\x1e"):
         fields = record.strip("\n").split("\x1f")
         if len(fields) >= 6 and fields[0]:
-            commits.append(
-                {"hash": fields[0], "short_hash": fields[1], "author_name": fields[2], "author_email": fields[3], "author_date": fields[4], "subject": fields[5]}
-            )
+            commits.append({
+                "hash": fields[0], "short_hash": fields[1], "author_name": fields[2],
+                "author_email": fields[3], "author_date": fields[4], "subject": fields[5],
+            })
     truncated = len(commits) > count
-    return {"is_repo": True, "ref": ref, "path": requested.display, "max_count": count, "skip": skip, "commits": commits[:count], "truncated": truncated, "warnings": ["commit limit reached"] if truncated else []}
+    return {
+        "is_repo": True, "repo_path": repo.display, "ref": ref, "path": args.get("path", "."),
+        "max_count": count, "skip": skip, "commits": commits[:count], "truncated": truncated,
+        "warnings": ["commit limit reached"] if truncated else [],
+    }
 
 
 def git_show(workspace: Any, args: Mapping[str, Any]) -> dict[str, Any]:
-    if not _is_repo(workspace.root):
+    repo = _select_repository(workspace, args)
+    if repo is None:
         return {"is_repo": False, "content": "", "files": [], "truncated": False, "warnings": []}
-    rev = _validate_ref(str(args.get("rev", "HEAD")))
-    context = int(args.get("context_lines", 3))
-    max_bytes = int(args.get("max_bytes", 262_144))
-    command = [
-        "git", "-C", str(workspace.root), "show", "--no-ext-diff", "--no-textconv", "--format=fuller", f"--unified={context}",
+    rev = _validate_ref(args.get("rev", "HEAD"))
+    context = _git_integer(args, "context_lines", 3, 0, 20)
+    max_bytes = _git_integer(args, "max_bytes", 262_144, 1, 1_048_576)
+    command = repo.command("show") + [
+        "--no-ext-diff", "--no-textconv", "--no-show-signature", "--format=fuller", f"--unified={context}",
     ]
     if not bool(args.get("include_diff", True)):
         command.append("--no-patch")
     command.append(rev)
-    filters = _path_filters(workspace, args)
+    filters = repo.filters(workspace, args)
     if filters:
         command += ["--", *filters]
-    completed = _git(command)
-    if completed.returncode != 0:
-        raise ReCTMError("GIT_ERROR", completed.stderr.strip() or "git show failed", category="runtime")
+    completed = _git(command, max_bytes=max(65_536, max_bytes * 2))
+    _git_check(completed, "git show failed")
     encoded = completed.stdout.encode("utf-8")
-    truncated = len(encoded) > max_bytes
-    content = encoded[:max_bytes].decode("utf-8", errors="ignore") if truncated else completed.stdout
-    return {"is_repo": True, "rev": rev, "content": content, "files": _parse_diff_files(content), "truncated": truncated, "warnings": ["output truncated"] if truncated else []}
+    truncated = completed.stdout_truncated or len(encoded) > max_bytes
+    content = encoded[:max_bytes].decode("utf-8", errors="ignore")
+    return {
+        "is_repo": True, "repo_path": repo.display, "rev": rev, "content": content,
+        "files": _parse_diff_files(content), "truncated": truncated,
+        "warnings": ["output truncated"] if truncated else [],
+    }
 
 
 def git_blame(workspace: Any, args: Mapping[str, Any]) -> dict[str, Any]:
-    requested_path = str(args.get("path", ""))
-    resolved = workspace.resolve_existing(requested_path)
-    if resolved.path.is_dir():
-        raise ReCTMError("IS_DIRECTORY", "Path is a directory.", category="validation")
-    if not _is_repo(workspace.root):
-        return {"is_repo": False, "path": resolved.display, "lines": [], "truncated": False, "warnings": []}
-    start = int(args.get("start_line", 1))
-    max_lines = int(args.get("max_lines", 200))
-    requested_end = int(args.get("end_line", start + max_lines - 1))
-    if requested_end < start:
-        raise invalid_argument("end_line must be >= start_line")
+    requested_path = args.get("path", "")
+    if not isinstance(requested_path, str) or not requested_path:
+        raise invalid_argument("path is required for git_blame")
+    repo = _select_repository(workspace, args)
+    if repo is None:
+        return {"is_repo": False, "path": requested_path, "lines": [], "truncated": False, "warnings": []}
+    path = repo.filters(workspace, args)[0]
+    start = _git_integer(args, "start_line", 1, 1)
+    max_lines = _git_integer(args, "max_lines", 200, 1, 1000)
+    end = _git_integer(args, "end_line", start, start) if "end_line" in args else None
+    ref = _validate_ref(args["rev"]) if "rev" in args else None
+    if ref is not None:
+        source = _git(repo.command("show") + ["--no-ext-diff", "--no-textconv", "--no-show-signature", f"{ref}:{path}"])
+        _git_check(source, "git blame source lookup failed")
+        _git_complete(source)
+        total = source.stdout.count("\n") + int(bool(source.stdout) and not source.stdout.endswith("\n"))
+    else:
+        source_path = (repo.root / path).relative_to(workspace.root).as_posix()
+        total = workspace.read_file(source_path, max_lines=1, max_bytes=4096)["total_lines"]
+    requested_end = min(end, total) if end is not None else total
     final = min(requested_end, start + max_lines - 1)
-    ref = _validate_ref(str(args["rev"])) if args.get("rev") else None
-    command = ["git", "-C", str(workspace.root), "blame", "--line-porcelain", "-L", f"{start},{final}"]
-    if ref:
+    result: dict[str, Any] = {
+        "is_repo": True, "repo_path": repo.display, "path": path, "rev": ref,
+        "start_line": start, "end_line": max(start, final), "max_lines": max_lines,
+        "lines": [], "truncated": False, "warnings": [],
+    }
+    if start > requested_end:
+        return result
+    command = repo.command("blame") + ["--no-textconv", "--line-porcelain", "-L", f"{start},{final}"]
+    if ref is not None:
         command.append(ref)
-    command += ["--", resolved.display]
-    completed = _git(command)
-    if completed.returncode != 0:
-        raise ReCTMError("GIT_ERROR", completed.stderr.strip() or "git blame failed", category="runtime")
+    completed = _git(command + ["--", path])
+    _git_check(completed, "git blame failed")
+    _git_complete(completed)
     lines = _parse_blame(completed.stdout)
+    if len(lines) != final - start + 1:
+        raise ReCTMError("GIT_ERROR", "Incomplete Git blame records.", category="runtime")
     truncated = requested_end > final
-    result: dict[str, Any] = {"is_repo": True, "path": resolved.display, "rev": ref, "start_line": start, "end_line": final, "max_lines": max_lines, "lines": lines[:max_lines], "truncated": truncated, "warnings": ["line limit reached"] if truncated else []}
+    result.update(lines=lines, truncated=truncated, warnings=["line limit reached"] if truncated else [])
     if truncated:
-        result["next_action"] = {"tool": "git_blame", "arguments": {"path": requested_path, "start_line": final + 1, "end_line": requested_end, "max_lines": max_lines}}
+        next_args = dict(args)
+        next_args.update(repo_path=repo.display, path=path, start_line=final + 1, end_line=requested_end)
+        result["next_action"] = {"tool": "git_blame", "arguments": next_args}
     return result
 
 
@@ -695,7 +912,181 @@ def _find_all(lines: list[str], needle: list[str]) -> list[int]:
     return [index for index in range(max(0, len(lines) - len(needle) + 1)) if lines[index : index + len(needle)] == needle]
 
 
-def _git(command: list[str]) -> subprocess.CompletedProcess[str]:
+@dataclass(frozen=True)
+class _GitRepository:
+    root: Path
+    display: str
+    git_dir: Path
+
+    def command(self, operation: str) -> list[str]:
+        return [
+            "git", "--no-pager", "--literal-pathspecs", "--no-optional-locks",
+            "-C", str(self.root), f"--git-dir={self.git_dir}", f"--work-tree={self.root}",
+            "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null",
+            "-c", "color.ui=false", "-c", "diff.external=", "-c", "log.showSignature=false",
+            "-c", "diff.submodule=short", "-c", "status.submoduleSummary=false",
+            "-c", "submodule.recurse=false", operation,
+        ]
+
+    def filters(self, workspace: Any, args: Mapping[str, Any]) -> list[str]:
+        values: list[str] = []
+        if "path" in args:
+            if not isinstance(args["path"], str):
+                raise invalid_argument("path must be a string")
+            if args["path"]:
+                values.append(args["path"])
+        if "paths" in args:
+            if not isinstance(args["paths"], list) or any(not isinstance(p, str) for p in args["paths"]):
+                raise invalid_argument("paths must be an array of strings")
+            values.extend(args["paths"])
+        if len(values) > 256:
+            raise invalid_argument("at most 256 Git file filters are supported")
+        filters: list[str] = []
+        for value in values:
+            relative = workspace._validate_text(value)
+            existing = self.root.joinpath(*relative.parts)
+            # Missing historical files still have a bounded, existing ancestor.
+            while True:
+                try:
+                    existing.lstat()
+                except FileNotFoundError:
+                    existing = existing.parent
+                    continue
+                resolved = existing.resolve(strict=True)
+                workspace._assert_inside(resolved, existing)
+                if not resolved.is_relative_to(self.root):
+                    raise ReCTMError(
+                        "GIT_PATH_OUTSIDE_REPOSITORY", "File filter escapes the selected repository.",
+                        category="security",
+                    )
+                break
+            filters.append(relative.as_posix())
+        return filters
+
+
+def _select_repository(
+    workspace: Any, args: Mapping[str, Any], *, fallback: Any = ".",
+) -> _GitRepository | None:
+    raw = args.get("repo_path", fallback)
+    if not isinstance(raw, str) or ("repo_path" in args and not raw):
+        raise invalid_argument("repo_path must be a nonempty directory path")
+    requested = workspace.resolve_existing(raw)
+    if not requested.path.is_dir():
+        raise ReCTMError(
+            "NOT_A_DIRECTORY", "repo_path selects a directory; use path/paths for file filters.",
+            category="validation",
+        )
+    directory = requested.path
+    while True:
+        marker = directory / ".git"
+        try:
+            marker.lstat()
+        except FileNotFoundError:
+            if directory == workspace.root:
+                return None
+            directory = directory.parent
+            continue
+        marker_path = marker.resolve(strict=True)
+        workspace._assert_inside(marker_path, marker)
+        if marker_path.is_dir():
+            git_dir = marker_path
+        else:
+            pointer = _git_pointer(marker_path).strip()
+            if not pointer.startswith("gitdir: ") or not pointer[8:]:
+                raise invalid_argument("invalid Git directory pointer")
+            git_dir = (directory / pointer[8:]).resolve(strict=True)
+        workspace._assert_inside(git_dir, marker)
+        if not git_dir.is_dir():
+            raise invalid_argument("Git metadata must name a directory")
+        common = git_dir / "commondir"
+        try:
+            common.lstat()
+        except FileNotFoundError:
+            pass
+        else:
+            common_path = common.resolve(strict=True)
+            workspace._assert_inside(common_path, common)
+            pointer = _git_pointer(common_path).strip()
+            if not pointer:
+                raise invalid_argument("Git common directory pointer is empty")
+            target = (git_dir / pointer).resolve(strict=True)
+            workspace._assert_inside(target, common)
+            if not target.is_dir():
+                raise invalid_argument("Git common metadata must be a directory")
+        repo = _GitRepository(directory, directory.relative_to(workspace.root).as_posix(), git_dir)
+        _git_check_read_config(repo)
+        return repo
+
+
+def _git_check_read_config(repo: _GitRepository) -> None:
+    # Read commands can execute filters or fetch missing promisor objects. Inspect
+    # effective config (including includes/worktree config) using key names only;
+    # arbitrary driver names make command-line overrides unsafe.
+    completed = _git(repo.command("config") + [
+        "--includes", "--null", "--name-only", "--get-regexp", r"^(filter|extensions|remote)\.",
+    ])
+    if completed.returncode not in {0, 1}:
+        raise ReCTMError(
+            "GIT_CONFIG_UNSAFE", "Git configuration could not be safely inspected.",
+            category="security",
+        )
+    _git_complete(completed)
+    for key in completed.stdout.split("\0"):
+        key = key.lower()
+        if key.startswith("filter.") and key.rsplit(".", 1)[-1] in {"clean", "smudge", "process"}:
+            raise ReCTMError(
+                "GIT_FILTER_DENIED", "Git read tools cannot use repositories with external filters configured.",
+                category="security",
+            )
+        if key == "extensions.partialclone" or (key.startswith("remote.") and key.endswith(".promisor")):
+            raise ReCTMError(
+                "GIT_PROMISOR_DENIED", "Git read tools cannot use repositories with automatic object fetching configured.",
+                category="security",
+            )
+
+
+def _git_reject_submodules(repo: _GitRepository) -> None:
+    # Parent reads may spawn Git in submodules, whose metadata/config has not been
+    # validated. Inspect only the index and fail explicitly instead of returning
+    # a misleading clean result by silently ignoring submodule state.
+    completed = _git(repo.command("ls-files") + ["--stage", "-z"])
+    if completed.returncode != 0:
+        raise ReCTMError(
+            "GIT_REPOSITORY_UNSAFE", "Git repository index could not be safely inspected.",
+            category="security",
+        )
+    _git_complete(completed)
+    if any(record.startswith("160000 ") for record in completed.stdout.split("\0")):
+        raise ReCTMError(
+            "GIT_SUBMODULE_UNSUPPORTED",
+            "Git working-tree tools cannot inspect repositories containing submodules; select a repository explicitly with repo_path.",
+            category="security",
+        )
+
+
+def _git_pointer(path: Path) -> str:
+    metadata = path.stat()
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 4096:
+        raise invalid_argument("Git metadata pointer must be a bounded regular file")
+    with path.open("rb") as stream:
+        data = stream.read(4097)
+    if len(data) > 4096:
+        raise invalid_argument("Git metadata pointer exceeded its bound")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise invalid_argument("Git metadata pointer must be UTF-8") from exc
+
+
+@dataclass(frozen=True)
+class _GitOutput:
+    returncode: int
+    stdout: str
+    stderr: str
+    stdout_truncated: bool = False
+
+
+def _git(command: list[str], *, max_bytes: int = 2_000_000) -> _GitOutput:
     if shutil.which("git") is None:
         raise ReCTMError("GIT_NOT_FOUND", "git executable is not available.", category="runtime")
     env = {
@@ -705,39 +1096,75 @@ def _git(command: list[str]) -> subprocess.CompletedProcess[str]:
         "GIT_CONFIG_GLOBAL": "/dev/null",
         "GIT_PAGER": "cat",
         "GIT_TERMINAL_PROMPT": "0",
+        "GIT_NO_LAZY_FETCH": "1",
+        "GIT_ALLOW_PROTOCOL": "",
         "LC_ALL": "C.UTF-8",
     }
-    return subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15, env=env, check=False)
+    # Drain both pipes, retaining only bounded prefixes; subprocess.run/communicate
+    # would collect unbounded structured output before the parser could reject it.
+    buffers = {"stdout": bytearray(), "stderr": bytearray()}
+    limits = {"stdout": max_bytes + 1, "stderr": 65_536}
+    deadline = time.monotonic() + 15
+    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env) as process:
+        try:
+            with selectors.DefaultSelector() as selector:
+                selector.register(process.stdout, selectors.EVENT_READ, "stdout")
+                selector.register(process.stderr, selectors.EVENT_READ, "stderr")
+                while selector.get_map():
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(command, 15)
+                    for key, _ in selector.select(remaining):
+                        chunk = os.read(key.fileobj.fileno(), 65_536)
+                        if not chunk:
+                            selector.unregister(key.fileobj)
+                            continue
+                        buffer = buffers[key.data]
+                        available = limits[key.data] - len(buffer)
+                        if available > 0:
+                            buffer.extend(chunk[:available])
+            returncode = process.wait(timeout=max(0, deadline - time.monotonic()))
+        except BaseException:
+            process.kill()
+            process.wait()
+            raise
+    truncated = len(buffers["stdout"]) > max_bytes
+    raw_stdout = bytes(buffers["stdout"][:max_bytes])
+    try:
+        stdout = raw_stdout.decode("utf-8", errors="ignore" if truncated else "strict")
+    except UnicodeDecodeError as exc:
+        raise ReCTMError("BINARY_FILE", "Git output must be UTF-8 text.", category="validation") from exc
+    return _GitOutput(returncode, stdout, buffers["stderr"].decode("utf-8", errors="replace"), truncated)
 
 
-def _is_repo(path: Path) -> bool:
-    completed = _git(["git", "-C", str(path), "rev-parse", "--is-inside-work-tree"])
-    return completed.returncode == 0 and completed.stdout.strip() == "true"
+def _git_check(completed: _GitOutput, message: str, *, allowed: tuple[int, ...] = (0,)) -> None:
+    if completed.returncode not in allowed:
+        raise ReCTMError("GIT_ERROR", completed.stderr.strip() or message, category="runtime")
 
 
-def _validate_ref(value: str) -> str:
-    if not value or value.startswith("-") or any(char.isspace() for char in value) or "\x00" in value:
-        raise invalid_argument("invalid git revision", rev=value)
+def _git_complete(completed: _GitOutput) -> None:
+    if completed.stdout_truncated:
+        raise ReCTMError(
+            "GIT_OUTPUT_TRUNCATED", "Git output exceeded the parse limit; narrow the requested scope.",
+            category="validation",
+        )
+
+
+def _git_integer(
+    args: Mapping[str, Any], key: str, default: int, minimum: int, maximum: int | None = None,
+) -> int:
+    value = args.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise invalid_argument(f"{key} must be an integer >= {minimum}")
+    if maximum is not None and value > maximum:
+        raise invalid_argument(f"{key} must be <= {maximum}")
     return value
 
 
-def _path_filters(workspace: Any, args: Mapping[str, Any]) -> list[str]:
-    values: list[str] = []
-    if isinstance(args.get("path"), str):
-        values.append(str(args["path"]))
-    if isinstance(args.get("paths"), list):
-        values.extend(str(item) for item in args["paths"])
-    result: list[str] = []
-    for value in values:
-        if value in {"", "."}:
-            continue
-        try:
-            result.append(workspace.resolve_existing(value).display)
-        except ReCTMError as exc:
-            if exc.code != "NOT_FOUND":
-                raise
-            result.append(workspace.resolve_for_write(value).display)
-    return result
+def _validate_ref(value: str) -> str:
+    if not isinstance(value, str) or not value or value.startswith("-") or any(char.isspace() for char in value) or "\x00" in value:
+        raise invalid_argument("invalid git revision")
+    return value
 
 
 def _parse_branch(text: str) -> tuple[str, str, int, int]:
@@ -771,8 +1198,8 @@ def _parse_diff_files(text: str) -> list[dict[str, Any]]:
 def _parse_blame(text: str) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     current: dict[str, Any] = {}
-    for line in text.splitlines():
-        if re.match(r"^[0-9a-f]{40} \d+ \d+(?: \d+)?$", line):
+    for line in text.split("\n"):
+        if re.match(r"^(?:[0-9a-f]{40}|[0-9a-f]{64}) \d+ \d+(?: \d+)?$", line):
             parts = line.split()
             current = {"commit": parts[0], "original_line": int(parts[1]), "line": int(parts[2])}
         elif line.startswith("author "):

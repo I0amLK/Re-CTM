@@ -1,0 +1,1007 @@
+{
+  "source_revision": "b5dbd2577869d2aaf7b0933373df6671d104581c",
+  "overlays": {
+    "all": [
+      {
+        "path": [
+          "mathematical_research_contract"
+        ],
+        "value": {
+          "version": 1,
+          "advisory_only": true,
+          "advisory_layer": "bounded_research_state",
+          "advisory_context_field": "mathematical_research_state",
+          "identity": "Plan and node identifiers returned by the server are canonical. Caller labels are never authority identifiers.",
+          "records": "Write concise mathematical conclusions and evidence locators, not web transcripts or hidden reasoning traces.",
+          "server_owned_fields": [
+            "record_type",
+            "record_id",
+            "actor_role",
+            "actor_domain_id",
+            "round_index",
+            "created_at"
+          ],
+          "counterexample_semantics": "Use found only with a concrete witness. not_found_within_scope is bounded negative evidence, never a proof.",
+          "route_solved_semantics": "route_solved means a generator or branch reports a usable route; only the existing verifier/finalizer can publish proof_verified.tex.",
+          "final_artifact": "proof_verified.tex"
+        }
+      }
+    ],
+    "assess": [
+      {
+        "path": [
+          "write_contract"
+        ],
+        "value": [
+          {
+            "resource": "memory:generation:immediate_conclusions",
+            "content_schema": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "example": {
+              "summary": "State the cheapest verified deductions and their status."
+            }
+          },
+          {
+            "resource": "memory:generation:events",
+            "content_schema": {
+              "type": "object",
+              "required": [
+                "event_type",
+                "summary"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "event_type": {
+                  "const": "assessment"
+                },
+                "summary": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 8192
+                }
+              }
+            },
+            "example": {
+              "event_type": "assessment",
+              "summary": "Record the initial reasoning/retrieval plan."
+            }
+          }
+        ]
+      },
+      {
+        "path": [
+          "minimal_submission",
+          "writes"
+        ],
+        "value": [
+          {
+            "resource": "memory:generation:immediate_conclusions",
+            "content": {
+              "summary": "Verified initial deductions."
+            }
+          },
+          {
+            "resource": "memory:generation:events",
+            "content": {
+              "event_type": "assessment",
+              "summary": "Initial assessment and reasoning plan recorded."
+            }
+          }
+        ]
+      }
+    ],
+    "explore": [
+      {
+        "path": [
+          "write_contract"
+        ],
+        "value": [
+          {
+            "resource": "memory:generation:events",
+            "required": true,
+            "content_schema": {
+              "description": "One typed exploration event. The schema mirrors the protocol-3 record validator, including required fields and conditional reference rules.",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "event_type",
+                    "node_id",
+                    "outcome",
+                    "summary"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "event_type": {
+                      "const": "toy_example_result"
+                    },
+                    "node_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "outcome": {
+                      "type": "string",
+                      "enum": [
+                        "progress",
+                        "refuted",
+                        "inconclusive"
+                      ]
+                    },
+                    "summary": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 8192
+                    },
+                    "evidence_ids": {
+                      "type": "array",
+                      "maxItems": 32,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "event_type",
+                    "outcome",
+                    "summary"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "event_type": {
+                      "const": "retrieval_assessment"
+                    },
+                    "node_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "outcome": {
+                      "type": "string",
+                      "enum": [
+                        "new_material",
+                        "no_new_material",
+                        "inconclusive"
+                      ]
+                    },
+                    "summary": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 8192
+                    },
+                    "query": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096
+                    },
+                    "reference_ids": {
+                      "type": "array",
+                      "maxItems": 32,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024
+                      }
+                    }
+                  },
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "outcome": {
+                            "const": "new_material"
+                          }
+                        },
+                        "required": [
+                          "outcome"
+                        ]
+                      },
+                      "then": {
+                        "required": [
+                          "reference_ids"
+                        ],
+                        "properties": {
+                          "reference_ids": {
+                            "minItems": 1
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "event_type",
+                    "statement",
+                    "summary"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "event_type": {
+                      "const": "new_candidate_lemma"
+                    },
+                    "statement": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 16384
+                    },
+                    "summary": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 8192
+                    },
+                    "depends_on": {
+                      "type": "array",
+                      "maxItems": 64,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                      }
+                    },
+                    "critical": {
+                      "type": "boolean"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "lemma",
+                        "construction",
+                        "definition"
+                      ]
+                    },
+                    "evidence_ids": {
+                      "type": "array",
+                      "maxItems": 32,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "event_type",
+                    "symbol",
+                    "resolution",
+                    "summary"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "event_type": {
+                      "const": "notation_resolution"
+                    },
+                    "node_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "symbol": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "resolution": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 8192
+                    },
+                    "summary": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 8192
+                    },
+                    "evidence_ids": {
+                      "type": "array",
+                      "maxItems": 32,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "example": {
+              "event_type": "toy_example_result",
+              "node_id": "target",
+              "outcome": "progress",
+              "summary": "The smallest nontrivial cases support the proposed reduction.",
+              "evidence_ids": []
+            }
+          },
+          {
+            "resource": "memory:generation:counterexamples",
+            "required": false,
+            "content_schema": {
+              "type": "object",
+              "required": [
+                "node_id",
+                "outcome",
+                "summary",
+                "probe_scope"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "node_id": {
+                  "type": "string"
+                },
+                "outcome": {
+                  "type": "string",
+                  "enum": [
+                    "found",
+                    "not_found_within_scope",
+                    "inconclusive"
+                  ]
+                },
+                "summary": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "probe_scope": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "witness": {
+                  "type": "string"
+                },
+                "evidence_ids": {
+                  "type": "array",
+                  "maxItems": 32,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "example": {
+              "node_id": "target",
+              "outcome": "not_found_within_scope",
+              "summary": "No counterexample was found in the stated finite scope.",
+              "probe_scope": "All cases with q<=5 and dimension<=4.",
+              "evidence_ids": []
+            }
+          }
+        ]
+      },
+      {
+        "path": [
+          "required_records"
+        ],
+        "value": [
+          "memory:generation:events"
+        ]
+      },
+      {
+        "path": [
+          "minimal_submission",
+          "writes"
+        ],
+        "value": [
+          {
+            "resource": "memory:generation:events",
+            "content": {
+              "event_type": "toy_example_result",
+              "node_id": "target",
+              "outcome": "inconclusive",
+              "summary": "Initial diagnostic examples do not yet decide the main obstruction.",
+              "evidence_ids": []
+            }
+          }
+        ]
+      }
+    ],
+    "propose_plans": [
+      {
+        "path": [
+          "commit_payload_schema"
+        ],
+        "value": {
+          "type": "object",
+          "required": [
+            "plans"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "plans": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 64,
+              "items": {
+                "type": "object",
+                "required": [
+                  "summary",
+                  "subgoals"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "plan_id": {
+                    "type": "string",
+                    "description": "Optional caller label only."
+                  },
+                  "summary": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "subgoals": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 64,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "key",
+                        "statement",
+                        "depends_on",
+                        "critical"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+                        },
+                        "statement": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "depends_on": {
+                          "type": "array",
+                          "maxItems": 64,
+                          "uniqueItems": true,
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "critical": {
+                          "type": "boolean"
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "lemma",
+                            "construction",
+                            "definition"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "motivation": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "dependencies": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "risks": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "path": [
+          "minimal_submission",
+          "payload"
+        ],
+        "value": {
+          "plans": [
+            {
+              "summary": "First materially distinct route",
+              "subgoals": [
+                {
+                  "key": "local",
+                  "statement": "Prove the local lemma.",
+                  "depends_on": [],
+                  "critical": true,
+                  "kind": "lemma"
+                }
+              ],
+              "motivation": [
+                "Why this route may work"
+              ],
+              "dependencies": [],
+              "risks": [
+                "Main risk"
+              ]
+            },
+            {
+              "summary": "Second materially distinct route",
+              "subgoals": [
+                {
+                  "key": "global",
+                  "statement": "Prove the global reduction.",
+                  "depends_on": [],
+                  "critical": true,
+                  "kind": "lemma"
+                }
+              ],
+              "motivation": [
+                "Why this route differs"
+              ],
+              "dependencies": [],
+              "risks": [
+                "Main risk"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "path": [
+          "server_derives"
+        ],
+        "value": [
+          "canonical plan_id values",
+          "canonical node_id and subgoal_id values",
+          "validated acyclic dependency edges",
+          "memory:generation:subgoals decomposition_plan records"
+        ]
+      }
+    ],
+    "direct_proving": [
+      {
+        "path": [
+          "commit_payload_schema"
+        ],
+        "value": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "screening": {
+              "type": "object",
+              "description": "Map canonical plan_id to a map of canonical subgoal_id to result.",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "summary",
+                    "method"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "solved",
+                        "partial",
+                        "stuck"
+                      ]
+                    },
+                    "summary": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "method": {
+                      "type": "string",
+                      "enum": [
+                        "direct",
+                        "reduction",
+                        "toy_example",
+                        "counterexample",
+                        "retrieval",
+                        "computation",
+                        "synthesis",
+                        "repair"
+                      ]
+                    },
+                    "obstruction": {
+                      "type": "string",
+                      "enum": [
+                        "false_claim",
+                        "missing_hypothesis",
+                        "missing_lemma",
+                        "missing_reference",
+                        "computational_bottleneck",
+                        "notation_mismatch",
+                        "circular_dependency",
+                        "incompatible_partial_results",
+                        "no_progress",
+                        "unknown"
+                      ]
+                    },
+                    "evidence_ids": {
+                      "type": "array",
+                      "maxItems": 32,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "selected_plan_id": {
+              "type": "string"
+            },
+            "proof_route": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      {
+        "path": [
+          "screening_research_fields"
+        ],
+        "value": {
+          "method": [
+            "direct",
+            "reduction",
+            "toy_example",
+            "counterexample",
+            "retrieval",
+            "computation",
+            "synthesis",
+            "repair"
+          ],
+          "obstruction": [
+            "false_claim",
+            "missing_hypothesis",
+            "missing_lemma",
+            "missing_reference",
+            "computational_bottleneck",
+            "notation_mismatch",
+            "circular_dependency",
+            "incompatible_partial_results",
+            "no_progress",
+            "unknown"
+          ],
+          "rule": "stuck requires obstruction; solved forbids obstruction; evidence_ids are bounded locators."
+        }
+      },
+      {
+        "path": [
+          "minimal_submission_template",
+          "payload"
+        ],
+        "value": {
+          "screening": {
+            "<server plan_id>": {
+              "<server subgoal_id>": {
+                "status": "solved",
+                "summary": "Why this subgoal is solved.",
+                "method": "direct"
+              }
+            }
+          },
+          "proof_route": "Required when at least one complete plan is solved."
+        }
+      },
+      {
+        "path": [
+          "write_contract"
+        ],
+        "value": []
+      },
+      {
+        "path": [
+          "required_records"
+        ],
+        "value": []
+      },
+      {
+        "path": [
+          "minimal_submission_template",
+          "writes"
+        ],
+        "value": []
+      }
+    ],
+    "branch_run": [
+      {
+        "path": [
+          "commit_payload_schema"
+        ],
+        "value": {
+          "type": "object",
+          "required": [
+            "status",
+            "summary"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "solved",
+                "partial",
+                "failed"
+              ]
+            },
+            "summary": {
+              "type": "string",
+              "minLength": 1
+            },
+            "proof_route": {
+              "type": "string"
+            },
+            "proved_subgoals": {
+              "type": "array",
+              "maxItems": 64,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "description": "Canonical node_id assigned to this branch plan."
+              }
+            },
+            "unproved_subgoals": {
+              "type": "array",
+              "maxItems": 64,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "description": "Canonical node_id assigned to this branch plan."
+              }
+            },
+            "failure_evidence": {
+              "type": "array",
+              "maxItems": 64,
+              "items": {
+                "type": "string"
+              }
+            },
+            "obstructions": {
+              "type": "array",
+              "maxItems": 64,
+              "items": {
+                "type": "object",
+                "required": [
+                  "node_id",
+                  "class",
+                  "summary"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "node_id": {
+                    "type": "string"
+                  },
+                  "class": {
+                    "type": "string",
+                    "enum": [
+                      "false_claim",
+                      "missing_hypothesis",
+                      "missing_lemma",
+                      "missing_reference",
+                      "computational_bottleneck",
+                      "notation_mismatch",
+                      "circular_dependency",
+                      "incompatible_partial_results",
+                      "no_progress",
+                      "unknown"
+                    ]
+                  },
+                  "summary": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "evidence_ids": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    ],
+    "identify_failures": [
+      {
+        "path": [
+          "commit_payload_schema"
+        ],
+        "value": {
+          "type": "object",
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "summary": {
+              "type": "object",
+              "required": [
+                "obstruction",
+                "next_step",
+                "affected_node_ids",
+                "obstruction_class"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "obstruction": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "next_step": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "affected_node_ids": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 64,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "obstruction_class": {
+                  "type": "string",
+                  "enum": [
+                    "false_claim",
+                    "missing_hypothesis",
+                    "missing_lemma",
+                    "missing_reference",
+                    "computational_bottleneck",
+                    "notation_mismatch",
+                    "circular_dependency",
+                    "incompatible_partial_results",
+                    "no_progress",
+                    "unknown"
+                  ]
+                },
+                "excluded_plan_ids": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "preserved_node_ids": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "required_hypotheses": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "required_reference_queries": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "selected_focus_node_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "path": [
+          "minimal_submission",
+          "payload"
+        ],
+        "value": {
+          "summary": {
+            "obstruction": "Main recurring obstruction.",
+            "next_step": "How the next plan generation must change.",
+            "affected_node_ids": [
+              "target"
+            ],
+            "obstruction_class": "no_progress"
+          }
+        }
+      }
+    ],
+    "replan": [
+      {
+        "path": [
+          "commit_payload_schema"
+        ],
+        "value": {
+          "type": "object",
+          "required": [
+            "decision"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "decision": {
+              "type": "object",
+              "required": [
+                "reason"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "superseded_plan_ids": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "preserved_node_ids": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "new_constraints": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "selected_focus_node_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "path": [
+          "minimal_submission",
+          "payload"
+        ],
+        "value": {
+          "decision": {
+            "reason": "What new evidence justifies the materially improved direction."
+          }
+        }
+      }
+    ]
+  }
+}

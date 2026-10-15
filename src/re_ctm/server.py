@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 
 MAX_REQUEST_BYTES = 1_048_576
 MCP_PATH = "/mcp"
+MCP_PROTECTED_RESOURCE_METADATA_PATH = "/.well-known/oauth-protected-resource/mcp"
 
 
 def _first_header_value(value: str | None) -> str:
@@ -151,6 +152,10 @@ class ReCTMHandler(http.server.BaseHTTPRequestHandler):
                 base = self._oauth_base_url(trace_id=trace)
                 self._send_json(self.app.oauth.protected_resource_metadata(base_url=base))
                 return
+            if path == MCP_PROTECTED_RESOURCE_METADATA_PATH:
+                base = self._oauth_base_url(trace_id=trace)
+                self._send_json(self.app.oauth.protected_mcp_resource_metadata(base_url=base))
+                return
             if path == "/.well-known/mcp.json":
                 base = self._oauth_base_url(trace_id=trace)
                 self._send_json(
@@ -158,7 +163,7 @@ class ReCTMHandler(http.server.BaseHTTPRequestHandler):
                         "name": "re-ctm",
                         "title": "Re-CTM",
                         "endpoint": base + MCP_PATH,
-                        "oauth": self.app.oauth.protected_resource_metadata(base_url=base),
+                        "oauth": self.app.oauth.protected_mcp_resource_metadata(base_url=base),
                         "tool_count": len(self.app.tools.list_tools()),
                         "tool_catalog_stable": True,
                         "manual_validation_required": True,
@@ -473,7 +478,7 @@ class ReCTMHandler(http.server.BaseHTTPRequestHandler):
                 status=401,
                 extra_headers={
                     "WWW-Authenticate": (
-                        f'Bearer realm="re-ctm", resource_metadata="{base}/.well-known/oauth-protected-resource"'
+                        f'Bearer realm="re-ctm", resource_metadata="{base}{MCP_PROTECTED_RESOURCE_METADATA_PATH}"'
                     )
                 },
             )
@@ -606,7 +611,7 @@ def run_server(
     if terminal_session is None:
         print(
             f"Re-CTM OAuth MCP listening on http://{host}:{port}{MCP_PATH}; "
-            f"{oauth_mode}; complete browser workflow requires post-push manual validation.",
+            f"{oauth_mode}; complete browser workflow requires target-host and browser manual validation.",
             file=sys.stderr,
         )
     try:
