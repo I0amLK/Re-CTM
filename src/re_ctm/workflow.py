@@ -984,7 +984,7 @@ class WorkflowEngine:
         )
         if current is not None:
             return current
-        domain_id = f"{role.value}-{state.value}-{run['epoch']}-{secrets.token_hex(3)}"
+        domain_id = f"{role.value}-{state.value}-{run['epoch']}-{secrets.token_hex(16)}"
         domain = self.store.create_domain(
             domain_id=domain_id,
             run_id=run_id,

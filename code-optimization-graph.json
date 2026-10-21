@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "graph_id": "re-ctm-code-optimization",
   "title": "Re-CTM 功能优先代码优化图",
-  "updated_at": "2026-10-15T07:19:00Z",
+  "updated_at": "2026-10-21T07:54:03.793493Z",
   "one_sentence_rule": "只做能够以功能正确性、安全边界、可靠性、可维护性或可验证性能收益证明价值的最小代码改进。",
   "purpose": "记录代码清理与重构的原因、功能收益、依赖、执行顺序、验收条件和不可覆盖的执行回执，防止为了优化而优化。",
   "governance": {
@@ -1159,6 +1159,49 @@
         "Actual short-command operator use and publication remain unperformed."
       ],
       "implementation_status": "helper_review_and_regressions_passed_host_activation_pending"
+    },
+    {
+      "id": "OPT-026",
+      "kind": "reliability_fix",
+      "title": "Widen workflow domain random identifiers without changing persisted authority",
+      "status": "completed",
+      "priority": "P0",
+      "problem": "Non-branch domain IDs share a global primary key but use only a 24-bit random suffix without run_id. Same-role/state/epoch runs can collide and fail initial assess task issuance with INTERNAL_ERROR / IntegrityError.",
+      "functional_outcome": "Use a 128-bit random suffix for newly created workflow domains while preserving existing domain IDs, capabilities, schema and durable submission replay.",
+      "evidence": [
+        "Disposable source and public-tool reproduction on e97d8d9: two successful starts, identical forced 3-byte suffixes, second initial rethlas_step fails UNIQUE constraint failed: domains.domain_id; a fresh suffix recovers.",
+        "src/re_ctm/workflow.py _ensure_domain uses secrets.token_hex(3); src/re_ctm/storage_schema.py defines domain_id as a global primary key.",
+        "User explicitly requested the minimal repair and testing on 2026-10-21.",
+        "Deterministic regression suite failed 3/3 before the one-line repair and passed 3/3 afterward; affected suite 53/53 and complete local suite 554/554 passed with all six aggregate gates successful."
+      ],
+      "scope": [
+        "One production-line change from secrets.token_hex(3) to secrets.token_hex(16).",
+        "Deterministic public-tool regression tests for former short-suffix collisions, persisted short-domain capabilities and exact submission replay.",
+        "Append optimization/progress evidence and run focused plus full local checks."
+      ],
+      "non_goals": [
+        "No collision retry loop, schema migration, identifier rewriting or unrelated refactor.",
+        "No installation, live-state access, service/tunnel restart, OAuth/isolation change, commit or push."
+      ],
+      "acceptance_criteria": [
+        "Former short-suffix collision fixture fails before the production change and passes afterward with 32-hex-digit new suffixes.",
+        "Existing short domain IDs and issued capabilities still resume after database reopen.",
+        "Submissions return fresh next tasks and exact replay remains historical with no duplicate writes.",
+        "Focused tests and full local checks pass; any baseline or environment failures remain explicit and prevent a completed claim."
+      ],
+      "validation_commands": [
+        "PYTHONPATH=src:tests python3 -B -m unittest test_domain_identifiers -v",
+        "PYTHONPATH=src:tests python3 -B -m unittest test_domain_identifiers test_mcp test_workflow test_protocol3_workflow test_submission_recovery_integration -v",
+        "python3 scripts/validate_code_optimization_graph.py",
+        "python3 scripts/run_local_checks.py"
+      ],
+      "rollback": "Restore only the OPT-026 production line and tests after review, retaining evidence. Existing longer IDs remain opaque and valid; no persisted state rollback or migration.",
+      "risk": "Low: only new identifier entropy changes. Keep opaque legacy IDs, capability binding, role/state authorization, receipts and finalizer boundaries unchanged. Random collisions become negligible, not mathematically impossible.",
+      "dependencies": [],
+      "receipt_required": true,
+      "stop_condition": "Stop scope expansion if compatibility needs a schema/authority change or testing would touch live state; report unrelated full-gate blockers without weakening checks.",
+      "started_at": "2026-10-21T07:50:21.297686Z",
+      "implementation_status": "one_line_repair_and_all_local_gates_passed"
     }
   ],
   "edges": [
@@ -2996,6 +3039,72 @@
       "receipt_id": "REC-2026-10-15-030",
       "status_before": "in_progress",
       "status_after": "blocked"
+    },
+    {
+      "receipt_id": "REC-2026-10-21-031",
+      "optimization_id": "OPT-026",
+      "started_at": "2026-10-21T07:50:21.297686Z",
+      "completed_at": "2026-10-21T07:54:03.793493Z",
+      "status_before": "in_progress",
+      "status_after": "completed",
+      "functional_goal": "Use a 128-bit random suffix for newly created workflow domains while preserving existing domain IDs, capabilities, schema and durable submission replay.",
+      "files_changed": [
+        "src/re_ctm/workflow.py",
+        "tests/test_domain_identifiers.py",
+        "code-optimization-graph.json",
+        "project-progress.json"
+      ],
+      "commands": [
+        {
+          "command": "python3 scripts/run_local_checks.py (pre-repair baseline)",
+          "exit_code": 0,
+          "result": "551/551 tests and all six aggregate checks passed. Local disposable report: .release-validation/opt026/baseline.json."
+        },
+        {
+          "command": "python3 scripts/validate_code_optimization_graph.py",
+          "exit_code": 0,
+          "result": "Authorized OPT-026 in_progress plan and actionable TODO validated before source modification."
+        },
+        {
+          "command": "PYTHONPATH=src:tests python3 -B -m unittest test_domain_identifiers -v (before production repair)",
+          "exit_code": 1,
+          "result": "3/3 regressions failed as expected: initial assess tool error, postcommit response missing next task, and newly created suffix still only six hex digits."
+        },
+        {
+          "command": "PYTHONPATH=src:tests python3 -B -m unittest test_domain_identifiers -v (after production repair)",
+          "exit_code": 0,
+          "result": "3/3 passed: repeated former short suffix does not block assess or next-task issuance; legacy persisted short ID and capability survive reopen; exact replay does not duplicate writes."
+        },
+        {
+          "command": "PYTHONPATH=src:tests python3 -B -m unittest test_domain_identifiers test_mcp test_workflow test_protocol3_workflow test_submission_recovery_integration -v",
+          "exit_code": 0,
+          "result": "53/53 related tests passed."
+        },
+        {
+          "command": "python3 scripts/run_local_checks.py (patched source)",
+          "exit_code": 0,
+          "result": "554/554 tests passed; compileall, engineering graph, optimization graph, error contract and documentation consistency also passed. Local disposable report: .release-validation/opt026/patched.json."
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "result": "No whitespace errors in the tracked production and governance diff."
+        }
+      ],
+      "tests": [
+        "Two same-role/state/epoch runs with identical former 24-bit suffixes both receive assess tasks with distinct 128-bit suffixes.",
+        "Existing six-hex-digit domain ID is reused without randomness after database reopen; its pre-reopen capability remains authorized for reading and submitting.",
+        "Both runs receive fresh explore tasks after committed submissions; exact and recover_only retries return historical receipts, no fresh authority and no additional writes or transitions.",
+        "Before/after complete local checks: 551 existing tests passed, then 554 including the three new regressions passed."
+      ],
+      "behavior_before": "Only 24 random bits separated global domain IDs in the same role/state/epoch bucket. Forced collision caused INTERNAL_ERROR at initial assess, or a committed submission returned only a historical receipt without its next task.",
+      "behavior_after": "New non-branch domain suffixes use 128 random bits (32 hex characters); former short-suffix collision fixtures receive current tasks. Existing short IDs and opaque capability handles remain unchanged.",
+      "risk_review": "Single production-line entropy change; no dependency, tool catalog, protocol, database schema, transaction, role ACL, OAuth, Native isolation or finalizer modification. No live state or installed runtime touched. Collision probability is reduced to negligible, not eliminated by retry logic.",
+      "rollback": "Restore only the OPT-026 production line and tests after review, retaining evidence. Existing longer IDs remain opaque and valid; no persisted state rollback or migration.",
+      "unresolved": [
+        "Installed-runtime, live-service, real browser and target-PC acceptance were not performed for this repair and are not implied by deterministic local tests; existing manual-validation status remains pending_target_validation."
+      ],
+      "decision": "accepted"
     }
   ]
 }

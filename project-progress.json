@@ -3,7 +3,7 @@
     "name": "Re-CTM",
     "status": "runtime_machine_accepted_final_launcher_activation_pending",
     "target": "A single installable OAuth MCP runtime combining exact CTM computer tools, a Rethlas-derived verified mathematical workflow, and a private cross-run Verified Research Workspace.",
-    "updated_at": "2026-10-15T07:07:00Z",
+    "updated_at": "2026-10-21T07:54:03.793493Z",
     "source_references": {
       "cmt_local_repo": "../coding-tools-mcp",
       "rethlas_local_repo": "../Rethlas",
@@ -1156,6 +1156,14 @@
     {
       "timestamp": "2026-10-15T07:19:00Z",
       "event": "Final source aggregate 550 tests had 544 pass plus the same six connector physical-isolation blocks; all other validators passed. New package fixture exposed a test-only overbroad /workspace prefix assertion; corrected exact filenames and independent 23/23 source regression passed. Final host package+launcher driver requires a successful fresh package report before activation. No denied interpreter retried."
+    },
+    {
+      "timestamp": "2026-10-21T07:50:21.297686Z",
+      "event": "Started user-authorized OPT-026: repair reproduced 24-bit domain-ID collisions with the same one-line 128-bit suffix change as MTM. Add deterministic collision/legacy-capability/replay tests; baseline and full local gates are required. No live state, installation, security settings, service, commit or push changes."
+    },
+    {
+      "timestamp": "2026-10-21T07:54:03.793493Z",
+      "event": "Completed OPT-026 locally: production code changes only secrets.token_hex(3) to secrets.token_hex(16). New collision/legacy-capability/receipt-replay regressions failed 3/3 on the old line and pass 3/3 on the repair; related tests 53/53 and full local gate 554/554 plus all validators pass. Existing short IDs survive reopening and exact replays do not duplicate writes. No install, live-state change, commit or push; manual target/browser acceptance remains unchanged."
     }
   ],
   "opt024_source_checkpoint": {
@@ -1193,5 +1201,36 @@
     "publication": "not performed",
     "scope": "Bounded engineering acceptance only; mathematical quality and broader model/provider claims remain unvalidated.",
     "package_status": "final_source_fixture_corrected_host_package_revalidation_pending"
+  },
+  "opt026_domain_identifiers": {
+    "status": "completed_local_source_validation",
+    "production_scope": "secrets.token_hex(3) -> secrets.token_hex(16) in _ensure_domain only",
+    "regressions_before_fix": {
+      "tests": 3,
+      "failures": 3,
+      "expected": true
+    },
+    "regressions_after_fix": {
+      "tests": 3,
+      "passed": 3
+    },
+    "related_tests": {
+      "tests": 53,
+      "passed": 53
+    },
+    "baseline_full_local_checks": {
+      "tests": 551,
+      "passed": 551,
+      "all_six_checks_passed": true
+    },
+    "patched_full_local_checks": {
+      "tests": 554,
+      "passed": 554,
+      "all_six_checks_passed": true
+    },
+    "evidence": "code-optimization-graph.json REC-2026-10-21-031; .release-validation/opt026/",
+    "validation_scope": "Disposable local source/public-tool tests only; no installed, live-service, target-PC or browser acceptance.",
+    "installation": "unchanged",
+    "publication": "not_performed"
   }
 }
