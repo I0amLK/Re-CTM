@@ -51,7 +51,7 @@ RISKY_ENV_NAMES = {
 
 
 def check_command_policy(mode: str, cmd: str, env: Mapping[str, str]) -> None:
-    """Preserve CTM's permission-mode gates before entering the hard sandbox."""
+    """Preserve CTM's Native permission-mode gates before command launch."""
 
     if mode == "dangerous":
         return

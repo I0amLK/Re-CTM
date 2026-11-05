@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Bounded, offline target acceptance. Run from an ordinary target-host terminal.
 
+Historical Linux isolation harness: not migrated to OPT-027 host acceptance.
+Its old backend fixtures must not qualify the host-source candidate.
+
 Exit 0 means all requested evidence passed, 1 means a machine gate failed or was
 blocked, and 2 means only manual/explicitly omitted evidence remains. This driver
 never marks manual-validation.json passed and never modifies an existing service.
@@ -29,6 +32,7 @@ ROOT_FILES = (
     "AGENTS.md", "LICENSE", "NOTICE", "README.md", "pyproject.toml", "MANIFEST.in",
     "config.example.env", "engineering-graph.json", "code-optimization-graph.json",
     "project-progress.json", "manual-validation.json", "local-validation.json",
+    "DEVELOPMENT_STATUS.md", "Re-CTM_TASK_RECORD.md",
     "native-isolation-validation.json", ".gitignore",
 )
 SOURCE_DIRS = ("src", "tests", "scripts", "docs", ".github")

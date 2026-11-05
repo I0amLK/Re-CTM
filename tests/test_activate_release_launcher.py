@@ -23,7 +23,7 @@ class ReleaseLauncherTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.repo = self.root / "repo with ' quote $ and 中文"
         self.home = self.root / "home with ' quote $ and 中文"
         (self.repo / ".local-install/workspace").mkdir(parents=True)
@@ -168,46 +168,27 @@ class ReleaseLauncherTests(unittest.TestCase):
         self.assertEqual(json.loads(receipt.read_text()), {"status": "prepared"})
         self.assertEqual(list(self.root.glob(".receipt-*")), [])
 
-    def _main_patches(self, stack):
-        installation = self.repo / ".local-install-0.4.1"
-        installation.mkdir()
-        (installation / "install-report.json").write_text(json.dumps({"installation_root": str(installation)}))
-        stack.enter_context(patch.object(ACT, "__file__", str(self.repo / "scripts/activate_release_launcher.py")))
-        stack.enter_context(patch.object(ACT.Path, "home", return_value=self.home))
-        stack.enter_context(patch.object(ACT, "verify_install", return_value={"version": "0.4.1", "runtime_files": 55}))
-        stack.enter_context(patch.object(ACT, "check_path_target"))
-        stack.enter_context(patch.object(ACT, "smoke_launcher", return_value={"passed": True}))
-        stack.enter_context(patch.object(ACT.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "re-ctm 0.4.1\n", "")))
-        stack.enter_context(patch("sys.argv", ["activate_release_launcher.py", "--activate"]))
-        stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
-
-    def test_main_persists_verified_evidence(self) -> None:
+    def test_retired_activation_refuses_before_install_or_launcher_access(self) -> None:
         self.target.write_text("old")
-        with contextlib.ExitStack() as stack:
-            self._main_patches(stack)
-            self.assertEqual(ACT.main(), 0)
-        receipt = next((self.repo / ".release-validation").glob("launcher-*/activation.json"))
-        data = json.loads(receipt.read_text())
-        self.assertEqual(data["status"], "activated_verified")
-        self.assertEqual(data["version_output"], "re-ctm 0.4.1")
-        self.assertTrue(data["smoke"]["passed"])
-        self.assertEqual(data["verified"]["runtime_files"], 55)
-
-    def test_final_receipt_failure_rolls_back_launcher(self) -> None:
-        self.target.write_text("old")
-        original = ACT.write_receipt
-        def fail_verified(path, receipt):
-            if receipt["status"] == "activated_verified":
-                raise OSError("failure")
-            return original(path, receipt)
-        with contextlib.ExitStack() as stack:
-            self._main_patches(stack)
-            stack.enter_context(patch.object(ACT, "write_receipt", side_effect=fail_verified))
-            with self.assertRaises(OSError):
-                ACT.main()
+        with patch("sys.argv", ["activate_release_launcher.py", "--activate"]), \
+                contextlib.redirect_stderr(io.StringIO()), \
+                patch.object(ACT, "verify_install") as verify, \
+                self.assertRaises(SystemExit) as stopped:
+            ACT.main()
+        self.assertEqual(stopped.exception.code, 2)
+        verify.assert_not_called()
         self.assertEqual(self.target.read_text(), "old")
-        receipt = next((self.repo / ".release-validation").glob("launcher-*/activation.json"))
-        self.assertEqual(json.loads(receipt.read_text())["status"], "rolled_back")
+        self.assertFalse((self.repo / ".release-validation").exists())
+
+    def test_retired_check_only_cannot_create_new_acceptance_evidence(self) -> None:
+        with patch("sys.argv", ["activate_release_launcher.py", "--check-only"]), \
+                contextlib.redirect_stderr(io.StringIO()), \
+                patch.object(ACT, "write_receipt") as receipt, \
+                self.assertRaises(SystemExit) as stopped:
+            ACT.main()
+        self.assertEqual(stopped.exception.code, 2)
+        receipt.assert_not_called()
+        self.assertFalse(self.target.exists())
 
     def test_smoke_template_starts_and_stops_only_fixture_server(self) -> None:
         python = self.repo / ".local-install-0.4.1/venv/bin/python"
@@ -234,7 +215,7 @@ finally: server.server_close()
         self.assertNotIn("fixture-secret", json.dumps(report))
 
 
-    def test_smoke_uses_actual_cli_terminal_discovery_and_interrupt_contract(self) -> None:
+    def test_historical_launcher_cannot_qualify_current_host_runtime(self) -> None:
         import re_ctm
         python = self.repo / ".local-install-0.4.1/venv/bin/python"
         python.parent.mkdir(parents=True)
@@ -243,16 +224,12 @@ finally: server.server_close()
             "#!" + sys.executable + "\n"
             "import sys\n"
             "sys.path.insert(0, " + repr(package_root) + ")\n"
-            "from unittest.mock import patch\n"
             "from re_ctm.cli import main\n"
-            # No Native command is run. Only the unavailable nested physical
-            # attestation is mocked; actual CLI/config/OAuth/TUI/shutdown run.
-            "with patch('re_ctm.app.BubblewrapExecBackend.attest', return_value={}):\n"
-            "    raise SystemExit(main(sys.argv[5:]))\n")
+            # Current configuration must refuse the historical bwrap launcher.
+            "raise SystemExit(main(sys.argv[5:]))\n")
         python.chmod(0o755)
-        report = ACT.smoke_launcher(self.repo)
-        self.assertTrue(report["loopback_oauth_discovery"])
-        self.assertEqual(report["owned_shutdown_exit_code"], 130)
+        with self.assertRaisesRegex(ValueError, "did not reach"):
+            ACT.smoke_launcher(self.repo)
 
 
 

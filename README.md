@@ -2,7 +2,7 @@
 
 Re-CTM 是一个通过网页 MCP 客户端使用的本地服务。安装后只需要运行一个 Re-CTM，不需要另外安装 Rethlas，也不需要目标电脑安装 Codex。
 
-当前源码版本：**Re-CTM v0.4.1**，修复 Native 异步命令随 HTTP 请求线程结束而被终止的问题。新候选须完成目标机验收；历史发布验收不代表本次源码已发布。
+当前发行候选：**Re-CTM v0.5.0rc1**，用于 OPT-027 宿主执行迁移。安装文件、升级差异及用户验证步骤见 [RELEASE_NOTES.md](RELEASE_NOTES.md)。本轮只构建和核对包文件，后续安装、真实浏览器与数学质量验收由用户执行。此前 dev03（版本字段 0.4.1）的 573 项源码测试与 17 组 Mac 实测记录保留在[验证报告](docs/validation/OPT-027-macos-host-validation.json)，不自动转为新安装包验收。
 
 当前源码已加入基于 MTM 的兼容性更新：无损文件分页、workspace 内多 Git 仓库选择、并发密钥初始化、`/mcp` OAuth 资源发现、简洁/详细 TUI 和 LaTeX 字面文本检查。变更范围、兼容边界与验收限制见 [MTM 功能移植说明](docs/MTM_BACKPORT.md)。这不是新的已发布或目标机验收版本。经用户批准，当前源码进一步迁移到 MTM v11 的 25 工具契约、protocol 3 与新状态格式；升级差异和安全边界见 [MTM 契约迁移说明](docs/MTM_MIGRATION.md)。
 
@@ -16,22 +16,24 @@ proof_verified.tex
 
 推荐环境：
 
-- Linux
+- macOS（当前迁移目标；实机验证待用户安排）或 POSIX 宿主
 - Python 3.11 或更高版本
 - 支持 OAuth MCP 的网页客户端
-- 如果需要 `exec_command`：安装 `bubblewrap`（命令通常为 `bwrap`）
+- 如果需要 `exec_command`：显式选择 `host` 后端，使用服务账户的本机程序；不提供 OS 沙箱
 - 如果需要正式 LaTeX 编译验收：安装 `latexmk` 和可用的 TeX Live/LaTeX 环境
 
 Ubuntu/Debian 可先安装：
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-venv bubblewrap latexmk texlive-latex-base texlive-latex-recommended texlive-latex-extra
+sudo apt install -y python3 python3-venv latexmk texlive-latex-base texlive-latex-recommended texlive-latex-extra
 ```
 
 如果只想先连接网页并使用文件读取、搜索和修改功能，`latexmk` 可以稍后安装。
 
 ## 2. 安装 Re-CTM
+
+本次 `0.5.0rc1` 使用交付的 wheel，建议装入独立环境，具体命令见 [发行说明](RELEASE_NOTES.md#用户安装步骤)。下列 GitHub 安装命令取决于用户随后推送或发布的仓库内容；本轮没有执行发布。
 
 使用 uv：
 
@@ -57,7 +59,7 @@ pipx install git+https://github.com/I0amLK/Re-CTM.git
 pipx upgrade re-ctm
 ```
 
-已有本机验收通过的 0.4.1 隔离安装时，可使用[可回滚的短命令激活](docs/DEPLOYMENT.md#accepted-local-launcher)替换旧的 PATH 入口，无需重新安装或每次输入长环境命令。
+旧 0.4.1 Linux 固定 launcher 不适用于本候选；它的历史模板和回滚说明见[部署文档](docs/DEPLOYMENT.md#accepted-local-launcher)。本次不替换已有命令入口或运行环境。
 
 安装后确认：
 
@@ -90,13 +92,15 @@ export RE_CTM_PRIVATE_ROOT="$HOME/.re-ctm/private"
 export RE_CTM_DEBUG_ROOT="$HOME/.re-ctm/debug"
 
 export RE_CTM_NATIVE_MODE=dangerous
+# 接受服务账户权限且没有 OS 沙箱后才启用；省略时为 disabled。
+export RE_CTM_NATIVE_EXEC_BACKEND=host
 export RE_CTM_LATEX_POLICY=required
 
-# 可选：仅当某个 CLI 工具链的依赖目录无法从 PATH/symlink 自动推断时使用。
+# 可选：通用程序搜索目录，不是只读挂载或权限边界。
 # export RE_CTM_NATIVE_EXEC_ALLOW_ROOTS="/opt/vendor-suite:/srv/shared-math-runtime"
 ```
 
-Linux 上如果安装了 `bwrap`，Re-CTM 会自动选择内置 Bubblewrap 执行后端并在每次启动时做 fail-closed 隔离自检；不需要额外设置 `RE_CTM_NATIVE_EXEC_BACKEND` 或 `RE_CTM_NATIVE_ISOLATION_ATTESTED=1`。如果没有可用的 Bubblewrap，任意命令执行仍会保持关闭。
+Native 默认 `disabled`，macOS 与 Linux 均不会自动启用宿主执行。显式 `host` 使用服务账户权限，可接触同账户可访问的私有文件。旧 `bubblewrap` / `external` 及 helper/attestation 配置会被拒绝，须由操作员明确迁移。
 
 `RE_CTM_SERVER_URL` 不是必填项。未设置时，只要 Re-CTM 绑定在 loopback（例如 `127.0.0.1`），它会根据实际请求的 Host 和可信的本机反向代理头自动确定 OAuth issuer/resource。这适合 Cloudflare Quick Tunnel。
 
@@ -314,13 +318,13 @@ rethlas_artifact
 如果刚才的命令还没有结束，停止它。
 ```
 
-`exec_command` 必须只给 `argv` 或 `cmd` 其中一种。`argv` 直接传递程序与参数，`cmd` 使用非 login 的 `/bin/sh -c`。总运行期限默认 300000 ms、最大 600000 ms；首次等待仍默认 10000 ms。可显式提供 `env.PATH`，可执行文件检查与实际 sandbox 使用同一个 PATH 和 workspace-relative workdir。每次结果通过 `operation_outcome` 区分 running、exited_0、exited_nonzero、timeout 与 signal；非零子进程退出不会被误报为 MCP 传输失败。
+`exec_command` 必须只给 `argv` 或 `cmd` 其中一种。`argv` 直接传递程序与参数，`cmd` 使用非 login 的 `/bin/sh -c`。总运行期限默认 300000 ms、最大 600000 ms；首次等待仍默认 10000 ms。可显式提供 `env.PATH`，可执行文件检查与实际宿主子进程使用同一个 PATH 和 workspace-relative workdir；这只约束起始目录，不能限制子进程访问宿主文件。每次结果通过 `operation_outcome` 区分 running、exited_0、exited_nonzero、timeout 与 signal；非零子进程退出不会被误报为 MCP 传输失败。
 
 `apply_changes` 支持 create/write/edit/delete/move/copy。修改已有文件前先 `read_file`，把同次读取返回的 `revision` 原样放入 change；move/copy 目标必须不存在。`dry_run` 不创建文件或目录。`apply_patch` 和 `apply_changes` 可使用 caller-scoped `idempotency_key`，但该内存回执不跨进程重启持久化。遇到 unknown outcome 或 rollback failure，应检查并协调文件，不能仅换一个 key 重试。完整限制见 [迁移说明](docs/MTM_MIGRATION.md)。
 
 命令结束后还会返回 `termination` provenance。Re-CTM 会区分自身 command timeout、显式 `kill_command`、服务关闭，以及只能观察到外部 signal 的 `external_or_unknown`。例如程序收到 `SIGKILL` 而 Re-CTM 从未发送 KILL 时，结果不会猜测为 OOM，而会明确标记原因未知。这个诊断是 additive metadata，不改变原 CTM 的 timeout/TERM/KILL 生命周期语义。
 
-需要 `exec_command`、`write_stdin`、`kill_command` 这组完整生命周期功能时，Linux 上推荐按下一节启用 Bubblewrap backend。
+需要命令执行与完整生命周期功能时，按第 9 节显式启用宿主后端。
 
 ## 8. Native 权限模式
 
@@ -332,83 +336,25 @@ export RE_CTM_NATIVE_MODE=dangerous
 
 升级前的 `safe` / `trusted` 配置会被拒绝，应在审核本次权限契约变化后修改配置。若不需要任意命令执行，可设置 `RE_CTM_NATIVE_EXEC_BACKEND=disabled`；不要把旧模式名称当作仍然生效的保护。
 
-`dangerous` 不会跳过 OAuth、workspace/private-root 隔离、Rethlas capability、verifier 或 finalizer。执行后端仍必须通过硬隔离 attestation，LaTeX 固定 adapter 仍明确隔离网络。`request_permissions` 只返回兼容信息，不创建新的权限授权状态。
+`dangerous` 不会跳过 OAuth、直接文件工具的 workspace 检查、目录不重叠规则、Rethlas capability、verifier 或 finalizer。宿主命令及 LaTeX 编译均没有 OS 沙箱或网络隔离；同账户文件无法靠这些 API 检查隔离。`request_permissions` 只返回 Native 兼容信息，不创建 Rethlas 权限。
 
 ## 9. 启用 exec_command
 
-Linux 上安装 Bubblewrap 后，Re-CTM 默认自动启用隔离的 `exec_command`：
+选择服务启动环境中的程序与 PATH，然后明确启用：
 
 ```bash
-bwrap --version
+export RE_CTM_NATIVE_EXEC_BACKEND=host
+re-ctm tui
+# 也可显式传参：re-ctm tui --native-exec-backend host
 ```
 
-服务启动时会自动做隔离 attestation；失败则服务不会开放该执行后端。
+这会以服务账户权限运行本机程序，没有 OS 沙箱；workspace 外的同账户文件（包括私有数据库和密钥）可能可访问。Native 不会因此获得任何 Rethlas API 权限或 VERIFIED 状态。没有 `host` 配置时保留 `disabled`。
 
-公开 Native 使用 `dangerous`，硬隔离和工具链只读挂载仍独立生效。Re-CTM 不维护 Sage、Magma、Mathematica 等软件名单，而是使用统一的 **Native Toolchain Exposure Policy**：
+`argv` 支持绝对程序路径，也按服务启动 PATH 与单次 `env.PATH` 覆盖查找程序；相对 PATH 项相对于该命令的工作目录解析。`cmd` 原样交给非 login `/bin/sh -c`，由 shell 处理内建命令、PATH 赋值和展开。不会自动激活环境或按软件名称猜测位置。
 
-```text
-系统只读 roots
-  ∪ PATH 自动发现的工具链 prefix
-  ∪ executable symlink 的真实 target prefix
-  ∪ RE_CTM_NATIVE_EXEC_ALLOW_ROOTS 显式 roots
-        ↓ canonicalize / 去重 / ancestor collapse
-        ↓ 拒绝 workspace、data root、private root 与过宽根目录
-        ↓ Bubblewrap --ro-bind
-```
+`RE_CTM_NATIVE_EXEC_ALLOW_ROOTS` 可选，用平台路径分隔符列出已有绝对目录，通用发现 root、`bin`、`sbin`、`Executables`。仍拒绝过宽、缺失、相对或与 workspace/data/private 重叠的配置目录；这些目录只增加搜索路径，不是进程允许列表或只读挂载。单次 `env.PATH` 会替换整个基础 PATH。
 
-`dangerous` 会继承经验证的宿主 PATH 并自动发现其中的非系统工具链。内部隔离 adapter 的模式不是公开配置选项。Conda/venv 的 `bin` 会提升到环境 prefix，普通 `bin`/`sbin`/`Executables` 会提升到产品 prefix，PATH 中的 symlink 会解析真实 target。整个过程不检查应用名称。
-
-因此只要程序能从启动 Re-CTM 时的终端 PATH 找到，或其运行根通过显式 roots 声明，类似命令都可以通过同一机制执行：
-
-```bash
-sage -c 'print(2+3)'
-magma
-wolframscript -code '2+3'
-python3 script.py
-```
-
-某些软件把可执行文件、库或数据库分散在 PATH 无法推断的目录中。这时使用 Linux 的 `:` 分隔绝对路径：
-
-```bash
-export RE_CTM_NATIVE_EXEC_ALLOW_ROOTS="/opt/Wolfram/Mathematica/15.0:/srv/shared-cas-runtime"
-```
-
-这些目录必须已经存在，不能是 `/`、完整 `$HOME`、`/home`、`/var`、`/opt` 等过宽聚合根，不能与 workspace、`~/.re-ctm` 或它们的祖先/后代重叠；应声明具体产品/运行时子目录，最终只读挂载。`re-ctm check-config` 与 `check_exec_environment` 会显示解析后的 toolchain exposure plan。
-
-显式 roots 当前只由内置 Bubblewrap 后端实现；与 `RE_CTM_NATIVE_EXEC_BACKEND=external` 同时配置会直接拒绝启动，避免第三方 helper 静默忽略目录。
-
-Re-CTM 的 data/private roots 不会因为 `dangerous` 被挂进执行环境。你仍可以手工检查隔离状态：
-
-```bash
-re-ctm attest-native \
-  --backend bubblewrap \
-  --workspace "$PWD" \
-  --data-root "$HOME/.re-ctm" \
-  --private-root "$HOME/.re-ctm/private" \
-  --allow-root /opt/vendor-suite
-```
-
-没有显式 roots 时删去 `--allow-root`；有多个时重复该参数。
-
-如果这里通过，从源码仓库继续运行完整隔离测试：
-
-```bash
-python3 scripts/manual_native_isolation_test.py \
-  --backend bubblewrap \
-  --workspace "$PWD" \
-  --data-root "$HOME/.re-ctm" \
-  --private-root "$HOME/.re-ctm/private" \
-  --allow-root /opt/vendor-suite \
-  --output native-isolation-validation.json
-```
-
-没有显式 roots 时删去 `--allow-root`；有多个时重复该参数。报告会验证这些 roots 在真实目标机上可见但不可写。
-
-确认报告包含：
-
-```json
-"passed": true
-```
+`check_exec_environment` 返回实际基础 PATH 与宿主权限说明。旧 `attest-native` 只返回迁移错误，打包入口不再提供 `re-ctm-native-helper`。现有 Linux 隔离适配器和专项验收脚本仅保留作历史回归，不是宿主模式的启动步骤或验收证明。
 
 ## 10. 使用 Rethlas 数学模式
 
@@ -433,7 +379,7 @@ python3 scripts/manual_native_isolation_test.py \
 
 启动后请保留返回的 `run_id`。后续查看进度、恢复、干预和取最终结果都使用同一个 `run_id`。
 
-历史 v0.2.0 的新 run 使用 workflow protocol 2；当前 0.4.1 新 run 默认使用 protocol 3，已有 protocol 1/2 run 保留原契约。当前默认 `workflow_mode=auto`：server 在 `assess` 后决定走 full research workflow，还是走 compact verified lane。Compact 只压缩生成侧的 explore/multi-plan/branch 成本，仍然必须经过完整 LaTeX gate、独立 verifier、wrong→repair 和机械 finalizer；如果 compact assembler 发现需要研究性探索，可以主动升级到 full，compact 连续两次 verifier wrong 也会由 server 自动升级到 `explore`。`workflow_mode=full` 可以显式要求完整路线，`workflow_mode=compact` 只是 compact 请求，不会绕过 server 的安全判断。
+历史 v0.2.0 的新 run 使用 workflow protocol 2；当前 0.5.0rc1 新 run 默认使用 protocol 3，已有 protocol 1/2 run 保留原契约。当前默认 `workflow_mode=auto`：server 在 `assess` 后决定走 full research workflow，还是走 compact verified lane。Compact 只压缩生成侧的 explore/multi-plan/branch 成本，仍然必须经过完整 LaTeX gate、独立 verifier、wrong→repair 和机械 finalizer；如果 compact assembler 发现需要研究性探索，可以主动升级到 full，compact 连续两次 verifier wrong 也会由 server 自动升级到 `explore`。`workflow_mode=full` 可以显式要求完整路线，`workflow_mode=compact` 只是 compact 请求，不会绕过 server 的安全判断。
 
 如果你在做一篇论文或一组互相依赖的定理，可以先创建一个 research project，再把 run 绑定到某个 claim。Project registry 保存在 Re-CTM private trust domain，不在 native workspace 中；`dangerous` Native 权限不会因此获得 project authority。一个已验证 claim 的 revision 是 immutable，后续加强或修订会生成新 revision，并可记录 `depends_on`、`supersedes` 和条件假设。
 
@@ -555,10 +501,11 @@ export RE_CTM_LATEX_POLICY=required
 需要安装：
 
 ```text
-bubblewrap
 latexmk
 TeX Live / LaTeX
 ```
+
+编译在新临时目录中通过现有命令管理器执行宿主 `latexmk`，禁用 RC 加载和 shell escape，保留静态外部文件检查及超时。`required` 需要编译成功且本轮产生有效 PDF；缺工具、非零退出、超时或缺产物都会失败，不自动降级。这不是 OS 隔离，也不替代 Verifier / Finalizer。
 
 仅调试流程时可以使用：
 
@@ -638,7 +585,7 @@ python3 scripts/collect_debug_bundle.py <run-id> \
 
 ### `NATIVE_ISOLATION_REQUIRED`
 
-说明 `exec_command` 尚未启用隔离。按照第 9 节完成 Bubblewrap 验证。
+这是保留的禁用执行错误码。当前 Native 后端为 `disabled`；确认接受宿主账户权限后，按第 9 节明确选择 `host`。旧隔离配置会另行报告 `INVALID_NATIVE_EXEC_BACKEND`，不会自动变成宿主执行。
 
 ### `TRUST_DOMAIN_OVERLAP`
 
@@ -665,7 +612,6 @@ curl http://127.0.0.1:8765/health
 检查：
 
 ```bash
-bwrap --version
 latexmk -v
 ```
 
@@ -679,7 +625,7 @@ latexmk -v
 manual-validation.json
 ```
 
-在实际部署环境中按当前 RC-001 至 RC-011 验收，并为每一项保留实际候选版本的脱敏证据。旧 MV 检查及原始证据保存在同一文件的历史清单中，已被当前契约清单取代，不代表本次通过。脚本化 loopback OAuth、单元测试、static_only LaTeX 或关闭 Native 执行都不能替代真实客户端、硬隔离、真实编译和数学质量验收。
+在实际部署环境中按当前 RC-001 至 RC-011 验收，并为每一项保留实际候选版本的脱敏证据。旧 MV 检查及原始证据保存在同一文件的历史清单中，已被当前契约清单取代，不代表本次通过。脚本化 loopback OAuth、单元测试、static_only LaTeX 或关闭 Native 执行都不能替代真实客户端、真实编译和数学质量验收。当前 host 模式没有 OS 硬隔离，不把这一缺失记为隔离验收通过。
 
 本机部署验证不要求先推送仓库，也不包含发布、创建公网 tunnel 或访问生产私有状态的授权。只完成当前已获授权的验证；需要真实网页/公网入口或人工数学评审的项目在证据齐备前继续保持 pending。
 
@@ -692,11 +638,11 @@ docs/DEPLOYMENT.md
 
 ## 新契约迁移与事实图
 
-0.4.1 源码提供 25 个公开工具、默认 protocol 3、schema 8 的创建/提交回执与恢复，
+0.5.0rc1 源码提供 25 个公开工具、默认 protocol 3、schema 8 的创建/提交回执与恢复，
 以及通过机械最终化晋升的事实图和有界项目记忆。旧隐藏工具别名已退役。
 操作员的 `fact-graph export` / `fact-graph revoke`、备份和回滚边界见
-[迁移说明](docs/MTM_MIGRATION.md)。本次只修改和验证源码/临时测试数据，没有迁移运行中的用户数据库。
+[迁移说明](docs/MTM_MIGRATION.md)。此前测试使用源码和临时状态；本轮只准备发行候选包，没有迁移运行中的用户数据库。
 
 ## 当前目标机发布验收
 
-普通终端验收命令、安全边界、证据路径与剩余门槛见 [TARGET_VALIDATION.md](docs/TARGET_VALIDATION.md)。当前候选尚未达到 release 验收；MTM connector 的嵌套命名空间限制不能通过关闭隔离绕过。
+本候选的用户安装与后续验证入口见 [RELEASE_NOTES.md](RELEASE_NOTES.md)。[TARGET_VALIDATION.md](docs/TARGET_VALIDATION.md) 中保留旧 Linux/MTM 验收记录；这些记录不替代新 host 候选的安装、客户端和数学质量验收。

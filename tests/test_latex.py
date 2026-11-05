@@ -3,7 +3,6 @@ from __future__ import annotations
 import tempfile
 import unittest
 import shutil
-import sys
 from pathlib import Path
 
 from re_ctm.enums import LatexPolicy
@@ -46,10 +45,10 @@ Hello $x^2$.
         self.assertTrue(any("external_graphic" in error for error in result.errors))
 
     @unittest.skipUnless(
-        sys.platform.startswith("linux") and shutil.which("bwrap") and shutil.which("latexmk"),
-        "isolated latexmk integration requires Linux, bubblewrap, and latexmk",
+        shutil.which("latexmk"),
+        "real host latexmk is required",
     )
-    def test_required_policy_compiles_inside_bubblewrap(self) -> None:
+    def test_required_policy_compiles_on_host_without_bubblewrap(self) -> None:
         source = r"""\documentclass{article}
 \begin{document}
 Hello $x^2$.
@@ -61,12 +60,14 @@ Hello $x^2$.
         self.assertTrue(result.compile_attempted)
         self.assertTrue(result.compile_passed)
         self.assertTrue(result.gate_passed)
+        self.assertEqual(result.compile_backend, "host")
+        self.assertFalse(result.os_sandbox)
 
     @unittest.skipUnless(
-        sys.platform.startswith("linux") and shutil.which("bwrap") and shutil.which("latexmk"),
-        "isolated latexmk integration requires Linux, bubblewrap, and latexmk",
+        shutil.which("latexmk"),
+        "real host latexmk is required",
     )
-    def test_required_policy_cannot_read_host_absolute_class(self) -> None:
+    def test_required_policy_restricts_tex_absolute_class_reads(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             workdir = Path(temp)
             host_class = workdir / "host-secret.cls"
@@ -80,14 +81,15 @@ Hello $x^2$.
             source = (
                 f"\\documentclass{{{class_path}}}\n"
                 "\\begin{document}\n"
-                "Host file must be hidden.\n"
+                "External class reads must be refused by TeX IO policy.\n"
                 "\\end{document}\n"
             )
             result = LatexGate(LatexPolicy.REQUIRED).validate(source, workdir / "compile")
-        self.assertTrue(result.static_valid)
-        self.assertTrue(result.compile_attempted)
+        self.assertFalse(result.static_valid)
+        self.assertFalse(result.compile_attempted)
         self.assertFalse(result.compile_passed)
         self.assertFalse(result.gate_passed)
+        self.assertIn("external_or_dynamic_class_package", " ".join(result.errors))
 
 
 if __name__ == "__main__":

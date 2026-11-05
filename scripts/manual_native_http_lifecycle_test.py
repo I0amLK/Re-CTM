@@ -8,6 +8,10 @@ This never targets an installed/running service. Bubblewrap startup attestation
 is mandatory. A nested-namespace denial is a failed check, never a reason to
 disable isolation. The report is candidate-specific and does not claim browser,
 LaTeX, mathematical-workflow, or general release acceptance.
+
+The command-line driver is historical Linux isolation acceptance and cannot
+qualify OPT-027. Its shared HTTP exercise also supports explicit host fixtures
+in the current source tests; those fixtures claim source behavior only.
 """
 from __future__ import annotations
 
@@ -47,7 +51,7 @@ try:
     stage = "settings"
     settings = replace(Settings.from_env(), token_secret=secrets.token_bytes(32),
                        capability_secret=secrets.token_bytes(32))
-    assert settings.native_exec_backend == "bubblewrap"
+    assert settings.native_exec_backend in {"bubblewrap", "host"}
     stage = "build_application_and_attest"
     application = build_application(settings)
     stage = "bind_http"
@@ -246,7 +250,7 @@ class Session:
 
     def start(self, script: str, **options: Any) -> dict[str, Any]:
         return self.tool("exec_command", {
-            "argv": ["/usr/bin/python3", "-I", "-B", "-c", script], "workdir": ".",
+            "argv": [sys.executable if getattr(self, "host_fixture", False) else "/usr/bin/python3", "-I", "-B", "-c", script], "workdir": ".",
             "yield_time_ms": 50, "timeout_ms": 5000, "verbosity": "full", **options,
         })
 
@@ -320,17 +324,19 @@ def _alive(processes: dict[int, str]) -> list[int]:
     return live
 
 
-def _exercise(session: Session, report: dict[str, Any]) -> None:
+def _exercise(session: Session, report: dict[str, Any], *, host: bool = False) -> None:
     info = session.tool("server_info", {})["native"]
     attestation = info["native_exec_attestation"]
     required = ("hard_isolation", "workspace_mounted", "forbidden_paths_hidden",
                 "no_privilege_escalation", "mount_namespace", "user_namespace", "pid_namespace")
-    passed = (info["native_exec_backend"] == "BubblewrapExecBackend"
+    passed = (info["native_exec_backend"] == "HostExecBackend" and attestation is None
+              and info["os_sandbox"] is False and info["private_vault_visible"] is True) if host else (
+              info["native_exec_backend"] == "BubblewrapExecBackend"
               and all(attestation.get(key) is True for key in required)
               and attestation.get("private_vault_mounted") is False)
-    _record(report, "real_bubblewrap_startup_attestation", passed, attestation=attestation)
+    _record(report, "explicit_host_without_os_sandbox" if host else "real_bubblewrap_startup_attestation", passed, attestation=attestation)
     if not passed:
-        raise RuntimeError("Mandatory attestation properties missing")
+        raise RuntimeError("Selected execution backend properties do not match the test contract")
 
     script = "import time; time.sleep(.6); print('native-complete', flush=True)"
     sync = session.start(script, yield_time_ms=1000)
@@ -344,11 +350,11 @@ def _exercise(session: Session, report: dict[str, Any]) -> None:
             and final["collected_stdout"].strip() == "native-complete",
             initial=_summary(initial), final=_summary(final))
 
-    # READY proves bwrap started its payload before the HTTP creator can exit.
+    # READY proves the payload started before the HTTP creator can exit.
     # The release file prevents completion from racing the response boundary.
     initial = session.start(
         "import time\nfrom pathlib import Path\nprint('PARENT-READY',flush=True)\n"
-        "while not Path('/workspace/async.release').exists(): time.sleep(.01)\n"
+        f"while not Path({'async.release' if host else '/workspace/async.release'!r}).exists(): time.sleep(.01)\n"
         "print('native-complete',flush=True)\n", yield_time_ms=500,
     )
     armed_before_return = "PARENT-READY" in initial.get("stdout", "")

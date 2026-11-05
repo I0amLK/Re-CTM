@@ -15,7 +15,7 @@ validate_manual_validation: Callable[[dict[str, Any]], int] = VALIDATOR["validat
 class DocumentationConsistencyTestCase(unittest.TestCase):
     def test_stable_documentation_facts_match_runtime_contracts(self) -> None:
         summary = validate_documentation()
-        self.assertEqual(summary["version"], "0.4.1")
+        self.assertEqual(summary["version"], "0.5.0rc1")
         self.assertEqual(summary["native_tool_count"], 19)
         self.assertEqual(summary["rethlas_tool_count"], 6)
         self.assertEqual(summary["public_tool_count"], 25)
@@ -33,6 +33,18 @@ class DocumentationConsistencyTestCase(unittest.TestCase):
         manifest = self._manual_manifest()
         manifest["current_contract"]["public_tool_count"] = 24
         with self.assertRaisesRegex(ValueError, "active contract"):
+            validate_manual_validation(manifest)
+
+    def test_active_manual_contract_rejects_false_host_isolation(self) -> None:
+        manifest = self._manual_manifest()
+        manifest["current_contract"]["native_os_sandbox"] = True
+        with self.assertRaisesRegex(ValueError, "active contract"):
+            validate_manual_validation(manifest)
+
+    def test_historical_evidence_cannot_pass_host_candidate(self) -> None:
+        manifest = self._manual_manifest()
+        manifest["checks"][0]["status"] = "passed"
+        with self.assertRaisesRegex(ValueError, "scope-specific evidence"):
             validate_manual_validation(manifest)
 
     def test_manual_pass_requires_scope_specific_evidence(self) -> None:

@@ -83,7 +83,8 @@ def main() -> int:
         "local_claim": (
             "Only deterministic graph, compile, unit, loopback OAuth/MCP, authorization, "
             "state-machine, capability-gated external-retrieval integration, native fail-closed and "
-            "reference bubblewrap isolation, debug-redaction, and isolated/static LaTeX behavior was tested. "
+            "legacy isolation regressions, debug-redaction, and host/static LaTeX fixtures were checked. "
+            "This is not evidence that real host commands or required LaTeX ran successfully. "
             "Target-PC and real webpage acceptance remain separate."
         ),
         "not_locally_validated": [

@@ -156,6 +156,17 @@ class CommandOutcomeV11TestCase(unittest.TestCase):
                         self.start("exit 0", timeout_ms=timeout)
                     spawn.assert_not_called()
 
+    def test_process_cwd_is_per_command_and_does_not_change_server_cwd(self) -> None:
+        server_cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as temporary:
+            for name in ("first directory", "second directory"):
+                directory = Path(temporary) / name
+                directory.mkdir()
+                result = self.start("pwd -P", cwd=str(directory))
+                self.assertEqual(result["operation_outcome"], "exited_0")
+                self.assertEqual(result["stdout"].strip(), str(directory.resolve()))
+                self.assertEqual(os.getcwd(), server_cwd)
+
 
 class NativeConfigurationV11TestCase(unittest.TestCase):
     def setUp(self) -> None:
@@ -188,10 +199,10 @@ class NativeConfigurationV11TestCase(unittest.TestCase):
                     with self.assertRaises(ReCTMError):
                         Settings.from_env()
 
-    def test_dangerous_does_not_relax_isolation(self) -> None:
+    def test_dangerous_does_not_silently_migrate_retired_backend(self) -> None:
         with self.assertRaises(ReCTMError) as denied:
             replace(self.settings, native_exec_backend="external").validate()
-        self.assertEqual(denied.exception.code, "NATIVE_ISOLATION_REQUIRED")
+        self.assertEqual(denied.exception.code, "INVALID_NATIVE_EXEC_BACKEND")
 
     def test_helper_timeout_default_and_typed_bounds(self) -> None:
         request = {

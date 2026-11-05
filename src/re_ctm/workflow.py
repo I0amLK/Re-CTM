@@ -2549,7 +2549,7 @@ class WorkflowEngine:
             "transition_count": int(run.get("transition_seq", 0)),
             "manual_checks_still_required": [
                 "real webpage OAuth and MCP compatibility",
-                "target-PC hard isolation under native dangerous mode",
+                "target host Native behavior and accepted same-account access without an OS sandbox",
                 "real external theorem and web retrieval",
                 "multi-turn mathematical quality and domain switching",
                 "target LaTeX toolchain reproduction",

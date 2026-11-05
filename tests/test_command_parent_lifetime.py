@@ -406,7 +406,7 @@ class NativeHTTPLifecycleHarnessTestCase(unittest.TestCase):
     def test_server_bootstrap_compiles_without_source_path_injection(self) -> None:
         compile(self.harness.SERVER_CHILD, "<native-http-server-child>", "exec")
         self.assertNotIn("sys.path", self.harness.SERVER_CHILD)
-        self.assertIn('settings.native_exec_backend == "bubblewrap"', self.harness.SERVER_CHILD)
+        self.assertIn('settings.native_exec_backend in {"bubblewrap", "host"}', self.harness.SERVER_CHILD)
         self.assertIn("build_application(settings)", self.harness.SERVER_CHILD)
 
     def test_oauth_exchange_uses_s256_and_matching_resource(self) -> None:
@@ -499,11 +499,10 @@ class NativeHTTPLifecycleHarnessTestCase(unittest.TestCase):
     def _bootstrap_fixture(
         self, root: Path, *, startup_error: Exception | None = None,
     ) -> dict[str, Any]:
-        """Run the exact bootstrap with real app/OAuth/HTTP and a test-only backend.
+        """Run the bootstrap with actual source app/OAuth/HTTP/host commands.
 
-        The fixture never spawns bwrap. Native command construction still passes
-        product validation, then only this test maps its two sandbox file paths
-        to this test's temporary workspace and runs the ordinary Python child.
+        Only installed-prefix metadata is mocked; this is source-level evidence,
+        not validation of an installed candidate or a private-vault OS sandbox.
         """
         import importlib.metadata
         import re_ctm
@@ -519,7 +518,7 @@ class NativeHTTPLifecycleHarnessTestCase(unittest.TestCase):
             "RE_CTM_WORKSPACE": str(workspace), "RE_CTM_DATA_ROOT": str(root / "data"),
             "RE_CTM_PRIVATE_ROOT": str(root / "data/private"),
             "RE_CTM_DEBUG_ROOT": str(root / "data/debug"),
-            "RE_CTM_NATIVE_EXEC_BACKEND": "bubblewrap", "RE_CTM_NATIVE_MODE": "dangerous",
+            "RE_CTM_NATIVE_EXEC_BACKEND": "host", "RE_CTM_NATIVE_MODE": "dangerous",
             "RE_CTM_LATEX_POLICY": "static_only", "RE_CTM_OAUTH_PASSWORD": "fixture-password",
         }
         captured: dict[str, Any] = {"report": {"checks": []}}
@@ -534,28 +533,6 @@ class NativeHTTPLifecycleHarnessTestCase(unittest.TestCase):
             captured["application"] = application
             return application
 
-        def attest(backend: Any, **kwargs: Any) -> dict[str, Any]:
-            backend.forbidden_paths = tuple(kwargs["forbidden_paths"])
-            backend.attestation = {
-                "backend": "bubblewrap", "hard_isolation": True, "workspace_mounted": True,
-                "forbidden_paths_hidden": True, "private_vault_mounted": False,
-                "network_isolated": True, "no_privilege_escalation": True,
-                "mount_namespace": True, "user_namespace": True, "pid_namespace": True,
-            }
-            return backend.attestation
-
-        def fixture_command(**kwargs: Any) -> list[str]:
-            self.assertEqual(kwargs["workspace"], workspace)
-            self.assertEqual(kwargs["mode"], "dangerous")
-            argv = list(kwargs["argv"])
-            self.assertEqual(argv[:4], ["/usr/bin/python3", "-I", "-B", "-c"])
-            # No replacement can escape this fixture's own temporary workspace.
-            for basename in ("async.release", "heartbeat"):
-                argv[4] = argv[4].replace("/workspace/" + basename, str(workspace / basename))
-            for basename in ("async.release", "heartbeat"):
-                self.assertNotIn(repr("/workspace/" + basename), argv[4])
-            return argv
-
         def serve(server: Any, **_kwargs: Any) -> None:
             worker = threading.Thread(
                 target=original_serve, args=(server,), kwargs={"poll_interval": 0.01}, daemon=True,
@@ -563,10 +540,11 @@ class NativeHTTPLifecycleHarnessTestCase(unittest.TestCase):
             worker.start()
             try:
                 session = self.harness.Session.__new__(self.harness.Session)
+                session.host_fixture = True
                 session.root, session.workspace = root, workspace
                 session.port, session.sequence = server.server_address[1], 0
                 session.token = self.harness._oauth(session.port, environment["RE_CTM_OAUTH_PASSWORD"])
-                self.harness._exercise(session, captured["report"])
+                self.harness._exercise(session, captured["report"], host=True)
             finally:
                 server.shutdown()
                 worker.join(timeout=3)
@@ -580,8 +558,6 @@ class NativeHTTPLifecycleHarnessTestCase(unittest.TestCase):
             ))
             patches.enter_context(mock.patch.object(importlib.metadata, "version", return_value=re_ctm.__version__))
             patches.enter_context(mock.patch.object(re_ctm.app, "build_application", side_effect=build))
-            patches.enter_context(mock.patch.object(re_ctm.native.BubblewrapExecBackend, "attest", attest))
-            patches.enter_context(mock.patch.object(re_ctm.native, "_bubblewrap_command", fixture_command))
             patches.enter_context(mock.patch.object(re_ctm.server.ReCTMHTTPServer, "serve_forever", serve))
             if startup_error is None:
                 try:
@@ -595,16 +571,14 @@ class NativeHTTPLifecycleHarnessTestCase(unittest.TestCase):
                 self.assertEqual(stopped.exception.code, 1)
         return captured
 
-    @unittest.skipUnless(sys.platform.startswith("linux"), "Native lifecycle fixture is Linux-specific")
-    def test_bootstrap_rewrites_paths_inside_workspace_mounted_temporary_root(self) -> None:
-        # Package checks intentionally put TMPDIR below their source workspace.
-        # The rewritten host path may still begin /workspace; only the exact
-        # two original sandbox filenames must disappear from the child script.
+    @unittest.skipUnless(os.name == "posix", "POSIX host execution required")
+    def test_host_bootstrap_uses_workspace_relative_files_in_nested_temporary_root(self) -> None:
+        # A nested source fixture must not rely on any /workspace alias.
         with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1]) as temporary:
             captured = self._bootstrap_fixture(Path(temporary))
             self.assertTrue(all(check["passed"] for check in captured["report"]["checks"]))
 
-    @unittest.skipUnless(sys.platform.startswith("linux"), "Native lifecycle fixture is Linux-specific")
+    @unittest.skipUnless(os.name == "posix", "POSIX host execution required")
     def test_exact_bootstrap_generates_secrets_and_exercises_real_http_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -618,7 +592,7 @@ class NativeHTTPLifecycleHarnessTestCase(unittest.TestCase):
             self.assertFalse((root / "startup-error.json").exists())
             checks = captured["report"]["checks"]
             self.assertEqual({check["name"] for check in checks}, {
-                "real_bubblewrap_startup_attestation", "synchronous_success",
+                "explicit_host_without_os_sandbox", "synchronous_success",
                 "async_short_yield_success", "async_success_after_ready_and_http_request_return",
                 "initial_stdin_after_request_return", "tty_stdin_in_later_http_request",
                 "explicit_kill", "command_timeout",

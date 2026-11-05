@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Verify and activate the accepted local 0.4.1 launcher with a disposable startup rehearsal.
+"""Historical Linux 0.4.1 launcher helper; activation is retired for OPT-027.
 
-This operator helper is deliberately separate from runtime defaults. It preserves
-the accepted local deployment roots and does not read or migrate private state.
+The frozen launcher template and receipts remain historical evidence. Rollback
+remains available; this helper cannot qualify or activate the host-source candidate.
 """
 from __future__ import annotations
 
@@ -267,40 +267,7 @@ def main() -> int:
     if args.rollback:
         print(json.dumps(rollback(args.rollback), indent=2))
         return 0
-    repo = Path(__file__).resolve().parents[1]
-    home = Path.home().resolve()
-    verified = verify_install(repo, home)
-    content = launcher_bytes(repo, home)
-    if args.check_only:
-        print(json.dumps({"passed": True, "installed": verified,
-                          "launcher_sha256": hashlib.sha256(content).hexdigest(),
-                          "scope": "Read-only candidate check; host launcher unchanged."}, indent=2))
-        return 0
-    report = json.loads((repo / ".local-install-0.4.1/install-report.json").read_text())
-    if str(repo / ".local-install-0.4.1") != report["installation_root"]:
-        raise ValueError("Run activation on the ordinary host, not a relocated or sandbox mount")
-    target = home / ".local/bin/re-ctm"
-    check_path_target(target)
-    smoke = smoke_launcher(repo)
-    evidence = repo / ".release-validation" / ("launcher-" + uuid.uuid4().hex)
-    result = publish_launcher(target, content, evidence)
-    try:
-        actual = subprocess.run([str(target), "--version"], capture_output=True, text=True,
-                                check=True, timeout=30)
-        if actual.stdout.strip() != "re-ctm " + VERSION:
-            raise ValueError("Activated launcher version mismatch")
-        result["verified"] = verified
-        result["smoke"] = smoke
-        result["version_output"] = actual.stdout.strip()
-        result["status"] = "activated_verified"
-        result["receipt"] = str(evidence / "activation.json")
-        write_receipt(evidence / "activation.json", result)
-    except (OSError, ValueError, subprocess.SubprocessError):
-        rollback(evidence / "activation.json")
-        raise
-    result["next"] = "hash -r; re-ctm --version; re-ctm tui --quick-tunnel --native-mode dangerous"
-    print(json.dumps(result, indent=2))
-    return 0
+    parser.error("This pinned Linux launcher is retired for OPT-027. Host source is untested and has no qualified launcher; do not activate it using old acceptance evidence.")
 
 
 if __name__ == "__main__":

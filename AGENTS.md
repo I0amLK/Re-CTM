@@ -1,5 +1,35 @@
 # Re-CTM engineering rules
 
+## Current release artifact preparation (OPT-028, 2026-11-05)
+
+The user requested release installation packages and will perform later
+validation. Prepare a distinct 0.5.0rc1 wheel/sdist, release notes and SHA256
+manifest using existing build tools. Build and archive/metadata consistency
+checks are authorized; do not install, create a venv, execute packaged runtime
+or repeat application/browser/mathematical acceptance in this phase. No live
+service, launcher, private state, public ingress, commit, tag, push or publication
+changes. Preserve dev03/0.4.1 evidence and keep new-candidate acceptance pending.
+
+## Current macOS host-source migration (OPT-027, 2026-11-05)
+
+The user invoked `Re-CTM_TASK_RECORD.md` and explicitly accepted same-account
+host execution without an OS sandbox. For this source-only migration, explicit
+`host` / `disabled` selection replaces the earlier mandatory Bubblewrap/native
+hard-isolation and read-only toolchain-mount requirements below. Native and
+LaTeX active paths must not require Bubblewrap. Keep direct file-tool workspace
+checks, workspace/data/private non-overlap and every Rethlas API authorization,
+verifier and finalizer rule intact. Never claim host commands cannot reach
+same-account private state. Legacy isolation settings must not silently enable
+host mode. Earlier Linux acceptance records remain historical.
+
+The source-delivery phase ran no tests. The user subsequently said “开始测试”
+on 2026-11-05, authorizing current Mac source tests, validators, compilation and
+actual host-command/required-LaTeX probes with fresh disposable roots. Synchronize
+affected test contracts and fix reproduced defects within OPT-027. No installation,
+live-service restart, production-state access, public ingress, Git commits or
+pushes. Keep OPT-027 in_progress until its actual acceptance criteria are met;
+local tests alone do not certify browser, installed-package or mathematical quality.
+
 ## Current target-host validation scope (2026-10-14)
 
 The user subsequently authorized deployment and validation on the selected MTM

@@ -45,7 +45,7 @@
   "@type": "EngineeringGraph",
   "schema_version": "1.0.0",
   "generated_for": "Re-CTM",
-  "updated_at": "2026-10-14T12:50:00Z",
+  "updated_at": "2026-11-04T18:09:59.368672Z",
   "purpose": "A graph-theoretic engineering specification for implementing one OAuth MCP runtime that combines native CMT computer tools and a Rethlas-derived mathematical reasoning workflow without a Codex dependency.",
   "source_baselines": {
     "cmt_repository": "../coding-tools-mcp",
@@ -55,7 +55,7 @@
   },
   "graph_semantics": {
     "vertex": "A runtime component, trust domain, persistent resource, validation gate, or external actor.",
-    "directed_edge": "A permitted call, controlled data transfer, authority delegation, state transition, or observability path.",
+    "directed_edge": "A permitted call, controlled data transfer, authority delegation, state transition, or observability path. For OPT-027 this describes application API paths; same-account host OS access is explicitly outside the graph isolation claim (see host_execution_scope).",
     "undirected_projection": "Used only for connectivity, articulation-point, bridge, two-core, and cycle-rank analysis. Edge direction and guard remain authoritative for security.",
     "cycle_rank_formula": "mu = E - V + C after parallel edges are collapsed in the undirected projection.",
     "security_rule": "Graph reachability never implies authorization. Every protected edge must still have an explicit server-side guard."
@@ -111,7 +111,7 @@
     },
     {
       "id": "PC-013",
-      "constraint": "Native CLI compatibility is application-agnostic. The Bubblewrap toolchain view is the validated union of system roots, non-system host-PATH discovery, executable-symlink target prefixes, and operator-declared RE_CTM_NATIVE_EXEC_ALLOW_ROOTS. Every non-system root is canonicalized, ancestor-collapsed, forbidden from overlapping workspace/data/private trust domains, and mounted read-only."
+      "constraint": "Native program discovery is application-agnostic: use the actual child PATH, command cwd, executable symlinks and supplied absolute paths. Explicit roots may add generic executable directories but are neither read-only mounts nor an executable allowlist; reject broad/missing/relative/workspace/data/private-overlapping configuration roots. Never guess or hardcode application/environment names."
     },
     {
       "id": "PC-014",
@@ -198,7 +198,8 @@
       "MCP server instructions and the rethlas_start tool contract route concrete mathematical work into the capability-gated workflow; every model-active Rethlas task now exposes a zero-guess write/commit contract and valid example/template, while rethlas_step combines task submission and advancement, returns explicit recoverable/retryable correction semantics with retained-write guidance, exposes stable plan/subgoal ids, accepts incremental screening, and performs idempotent workspace export when terminal done is reached.",
       "v0.2 adds a versioned additive SQLite migration layer, private project/claim/revision registry, frozen project snapshots, proof manifests, conditional-dependency propagation, idempotent/concurrency-checked mechanical promotion, reference/source provenance, mechanical reference-audit coverage, compact verified routing with full-workflow escalation, fixed-provider paper retrieval, and native termination provenance without expanding the 24-tool public catalog.",
       "manual-validation.json remains the authority for browser, target-PC, external-retrieval, real-LaTeX, and 95-percent methodology acceptance.",
-      "The authorized 0.4.0 MTM migration is being integrated in native_catalog/native_changes/native_replay, storage_creation/storage_receipts/storage_recovery/storage_actions, research_state, workflow_creation/workflow_submission/workflow_actions and fact_memory/fact_store. Historical entries above describe earlier checkpoints; current validation is pending final full-suite review, with parity evidence tracked in docs/MTM_MIGRATION.md."
+      "The authorized 0.4.0 MTM migration is being integrated in native_catalog/native_changes/native_replay, storage_creation/storage_receipts/storage_recovery/storage_actions, research_state, workflow_creation/workflow_submission/workflow_actions and fact_memory/fact_store. Historical entries above describe earlier checkpoints; current validation is pending final full-suite review, with parity evidence tracked in docs/MTM_MIGRATION.md.",
+      "2026-11-05 OPT-027 source edits connect explicit host/disabled Native selection and CommandManager execution, actual child PATH/cwd resolution and host LaTeX without bwrap. All tests, validators and target/browser/LaTeX/mathematical acceptance are deferred by user instruction. Earlier Bubblewrap entries are historical snapshots, not current execution guarantees."
     ]
   },
   "vertices": [
@@ -276,11 +277,11 @@
       "kind": "security_component",
       "trust_domain": "native_plane",
       "responsibilities": [
-        "Implement safe, trusted, and dangerous native modes",
-        "Preserve the invariant that dangerous does not grant workflow access",
-        "Fail closed when hard native/private isolation is unavailable"
+        "Expose only public dangerous Native mode",
+        "Keep Native authority independent of every Rethlas API capability",
+        "Require explicit host selection; default disabled and reject legacy backend settings"
       ],
-      "implementation_status": "planned"
+      "implementation_status": "host_source_modified_unvalidated"
     },
     {
       "id": "V07",
@@ -296,33 +297,32 @@
     },
     {
       "id": "V08",
-      "name": "native_isolation_boundary",
-      "kind": "security_boundary",
-      "trust_domain": "os_boundary",
+      "name": "native_backend_selection",
+      "kind": "configuration_gate",
+      "trust_domain": "native_plane",
       "responsibilities": [
-        "Make the private Rethlas vault unreachable to native commands even in dangerous mode",
-        "Require a container, mount namespace, separate OS identity, or an equivalent tested isolation backend",
-        "Refuse native arbitrary execution when isolation is not attested",
-        "Build and validate one application-agnostic read-only toolchain exposure plan from system roots, PATH discovery, symlink targets, and explicit allow roots",
-        "Reject every toolchain root that overlaps the writable workspace or Re-CTM data/private state"
+        "Keep host execution explicit and disabled by default",
+        "Preserve direct-file workspace checks and configured root non-overlap",
+        "State that host execution has no OS sandbox and may access same-account private state",
+        "Use actual child PATH and generic optional discovery roots without application names",
+        "Reject legacy backend configuration instead of silently converting it to host access"
       ],
-      "implementation_status": "planned_fail_closed"
+      "implementation_status": "host_source_modified_unvalidated"
     },
     {
       "id": "V09",
       "name": "native_exec_worker",
       "kind": "runtime_component",
-      "trust_domain": "native_plane_isolated",
+      "trust_domain": "host_service_account",
       "responsibilities": [
-        "Run bounded native commands",
-        "Retain command_id state for write_stdin, read_output, and kill_command lifecycle operations",
-        "Support POSIX TTY interaction when requested",
-        "Honor native policy",
-        "Execute against the validated toolchain mount plan without application-name special cases",
-        "Expose no private-vault mount",
-        "Return structured diagnostics"
+        "Run bounded host commands through the existing CommandManager in the single service",
+        "Retain command_id state for stdin, output paging, timeout, kill and shutdown",
+        "Support POSIX TTY and independent per-command cwd without global chdir",
+        "Resolve literal argv in the real child PATH and pass shell text unchanged to non-login sh",
+        "Operate with service-account permissions without private-vault OS isolation",
+        "Return bounded output and structured redacted diagnostics"
       ],
-      "implementation_status": "manual_integration_required"
+      "implementation_status": "host_source_modified_unvalidated"
     },
     {
       "id": "V10",
@@ -682,17 +682,17 @@
       "id": "E008",
       "source": "V06",
       "target": "V08",
-      "type": "isolation_requirement",
-      "guard": "Arbitrary native execution requires attested hard isolation",
-      "debug_event": "native.isolation_check"
+      "type": "explicit_backend_selection",
+      "guard": "Native execution is disabled unless the host backend is explicitly selected; host access is not OS isolated",
+      "debug_event": "native.host_execution_selected"
     },
     {
       "id": "E009",
       "source": "V08",
       "target": "V09",
-      "type": "isolated_command_launch",
-      "guard": "Private vault absent from worker namespace",
-      "debug_event": "native.exec_launch"
+      "type": "host_command_launch",
+      "guard": "Validated request/cwd and actual child PATH; service-account OS permissions without a sandbox",
+      "debug_event": "native.exec_requested"
     },
     {
       "id": "E010",
@@ -1159,9 +1159,9 @@
     },
     {
       "id": "INV-002",
-      "statement": "The native workspace and private vault have no direct data edge.",
-      "formal": "all cross-plane data transfers pass through V28",
-      "test": "Graph validator rejects any V07<->V14 edge and runtime adversarial test attempts native reads of the private root."
+      "statement": "Direct Native file APIs and the private vault have no direct data edge. Host commands can access same-account private files outside this API graph.",
+      "formal": "all controlled API cross-plane exports pass through V28; host OS file access is not isolated",
+      "test": "Reject Native direct-file API reads outside workspace and unexpected API graph edges; separately report accepted same-account host access without claiming process confinement."
     },
     {
       "id": "INV-003",
@@ -1183,7 +1183,7 @@
     },
     {
       "id": "INV-006",
-      "statement": "The model cannot set verdict=correct or publish proof_verified.tex directly; automatic workspace publication occurs only after mechanical finalization.",
+      "statement": "Only mechanical workflow API finalization confers a formal verified result and exports its controlled artifact. A host-created filename or modified raw private file is not mathematical verification.",
       "formal": "finalize_authority originates only at V25 after V23 pass and empty findings; auto_export => state=done AND sealed AND verified_artifact",
       "test": "Attempt finalize from generator, assembler, verifier, repair, and native dangerous contexts; complete a valid run through MCP rethlas_next, assert the default workspace file is created, repeat the terminal call to prove idempotence, and refuse a conflicting different target."
     },
@@ -1213,15 +1213,15 @@
     },
     {
       "id": "INV-011",
-      "statement": "Every non-system native toolchain mount is canonical, read-only, and disjoint from workspace/data/private trust domains.",
-      "formal": "ExposedRoots = Validate(SystemRoots U PathRoots U SymlinkTargetRoots U ExplicitRoots); forall r in ExposedRoots_non_system: canonical(r) AND mount(r)=read_only AND disjoint(r,workspace,data_root,private_root)",
-      "test": "Use arbitrary non-product-named PATH, symlink-target, Conda-style, Executables-style, and explicit roots; prove execution succeeds, writes to toolchains fail, overlapping/missing/relative/broad roots fail closed, private-target symlinks are excluded, and helper-side revalidation rejects a protected root even if the planner is bypassed."
+      "statement": "Host program discovery is generic and truthful, with explicit opt-in and no read-only mount or private-vault isolation claim.",
+      "formal": "host_start => explicit_host_backend AND native_dangerous AND valid_workspace_cwd; host_start != workflow_authority; discovery_roots != OS_access_allowlist",
+      "test": "When testing is authorized, cover child PATH/cwd, absolute paths, symlinks, per-command env.PATH and rejection of invalid discovery-root configuration; never infer private-state OS isolation."
     },
     {
       "id": "INV-012",
-      "statement": "Project VERIFIED/CONDITIONAL authority originates only downstream of a mechanically finalized correct run; verified revisions are immutable, promotion failure cannot invalidate the verified proof, and Native dangerous cannot create or mutate them.",
+      "statement": "Project VERIFIED/CONDITIONAL authority originates only downstream of a mechanically finalized correct run; verified revisions are immutable, promotion failure cannot invalidate the verified proof, and Native dangerous grants no API authority to create or mutate them; same-account host OS access remains outside this API guarantee.",
       "formal": "promote_verified(run) => state(run)=done AND latex_passed AND verdict=correct AND final_artifact_hash; promotion_error => run remains done/correct AND retryable_pending; model/native set_verified = deny",
-      "test": "Create OPEN claims through owner project control, deny any direct VERIFIED mutation path, complete a project-linked run, assert exactly one immutable promoted revision is created, inject a transient promotion failure and prove a later terminal call retries it without re-running or invalidating the proof, repeat terminal delivery to prove idempotence, and assert native dangerous cannot read or write registry state."
+      "test": "Create OPEN claims through owner project control, deny any direct VERIFIED mutation path, complete a project-linked run, assert exactly one immutable promoted revision is created, inject a transient promotion failure and prove a later terminal call retries it without re-running or invalidating the proof, repeat terminal delivery to prove idempotence, and assert Native direct-file APIs cannot read/write registry state and Native authority cannot call workflow promotion APIs; do not claim that host processes cannot access the raw files."
     },
     {
       "id": "INV-013",
@@ -1553,7 +1553,7 @@
     "not_claimed_locally": [
       "Compatibility with the final webpage MCP host",
       "Full browser OAuth redirect behavior",
-      "Hard isolation on the final target PC or container runtime",
+      "Actual host command/lifecycle behavior and accepted same-account access; host mode offers no OS isolation",
       "Real external theorem/web search quality and availability",
       "Mathematical reasoning quality of the web model over many turns",
       "Cognitive independence equivalent to fresh model contexts",
@@ -1614,11 +1614,24 @@
       "V31"
     ],
     "interpretation": {
-      "V08": "The native isolation boundary is an articulation point because the current native execution worker has exactly one trusted entrance. This is intentional and must fail closed; availability can later be improved with multiple equivalent isolated workers behind the same boundary.",
+      "V08": "The explicit Native backend selection gate is the sole application entrance to managed host execution. It is not an OS isolation boundary; same-account process file access is outside this graph.",
       "V11": "The workflow engine is an articulation point because it owns the state-machine contract. Its durability depends on transactional state in V13 and replayable events in V29.",
-      "V08-V09": "The isolated command worker is a leaf service in the current graph. Its loss disables native arbitrary execution but must not affect the Rethlas workflow plane.",
+      "V08-V09": "The managed host command worker uses the existing CommandManager inside the single service; it introduces no additional service or authority over Rethlas APIs.",
       "V11-V13": "The run-state store is represented as a leaf persistence service. Debug replay and backups are required so this bridge is not a silent operational single point of failure.",
       "cycle_rank": "Thirty independent undirected cycle directions reflect the deliberately feedback-heavy workflow: search-memory, branch-join, proof-repair, authorization-dispatch, and debug-validation loops. They are not import cycles."
     }
+  },
+  "host_execution_scope": {
+    "optimization": "OPT-027",
+    "status": "source_modified_not_run_not_validated",
+    "explicit_backends": [
+      "disabled",
+      "host"
+    ],
+    "default_backend": "disabled",
+    "os_sandbox": false,
+    "same_account_private_file_access": "possible; explicitly accepted by user",
+    "graph_scope": "Application API authorization and controlled workflow transitions only. Host processes can access same-account OS resources outside this API graph; graph separation does not imply OS isolation.",
+    "historical_graph": "docs/validation/engineering-graph-before-opt027.json"
   }
 }

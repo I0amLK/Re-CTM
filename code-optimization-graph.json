@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "graph_id": "re-ctm-code-optimization",
   "title": "Re-CTM 功能优先代码优化图",
-  "updated_at": "2026-10-21T07:54:03.793493Z",
+  "updated_at": "2026-11-05T05:45:12.168388Z",
   "one_sentence_rule": "只做能够以功能正确性、安全边界、可靠性、可维护性或可验证性能收益证明价值的最小代码改进。",
   "purpose": "记录代码清理与重构的原因、功能收益、依赖、执行顺序、验收条件和不可覆盖的执行回执，防止为了优化而优化。",
   "governance": {
@@ -75,6 +75,85 @@
     ]
   },
   "nodes": [
+    {
+      "id": "OPT-027",
+      "kind": "macos_host_execution",
+      "title": "用户授权：单服务 macOS 宿主执行，移除 Bubblewrap 运行依赖",
+      "status": "in_progress",
+      "priority": "P0",
+      "problem": "The selected Mac cannot execute git or python through the current DisabledExecBackend. Mandatory Linux isolation prevents basic local development.",
+      "functional_outcome": "Explicit host mode runs local tools and real LaTeX without Bubblewrap or new services; Rethlas API authorization and finalization stay unchanged.",
+      "evidence": [
+        "Baseline c6c0424c9faa3eb4287ae404f23be2060acec74e is clean.",
+        "Current connector rejects python3 --version with NATIVE_ISOLATION_REQUIRED.",
+        "User accepted host-command access risks and requested implementation for macOS.",
+        "2026-11-02 macOS CTM evidence: conda prefix /Users/lk/miniconda3/envs/sage, sage and sagelib 10.9; absolute-path and temporary-PATH sage -c print(2+3) both produced stdout 5, exit code 0. This does not validate Re-CTM host execution.",
+        "2026-11-05 current workspace source inspection and applied edits: config/app/native host chain and latex CommandManager path are written. No runtime commands, test suite or compiler were invoked. Original uploaded ZIP/dev01 artifacts are not present here; cumulative delivery is based on current c6c0424 working tree and preserves its existing changes.",
+        "User explicitly said 开始测试 on 2026-11-05 after source delivery; this supersedes the earlier no-testing phase only. Baseline failures reproduce stale backend fixtures and a strict documentation-contract mismatch.",
+        "First targeted Mac run: 121 tests, failures=1, errors=1, skipped=13. Actual host TeX compiled a class loaded by absolute filename despite openin_any=p; add a precompile literal class/package-name gate to retain self-contained external-file policy. New test helper also incorrectly applied a None facade output schema. Evidence: targeted-tests-01.log."
+      ],
+      "scope": [
+        "Explicit host/disabled Native configuration and CommandManager execution with actual child PATH/cwd",
+        "Independent host LaTeX compilation preserving static and required gates",
+        "Truthful configuration/environment diagnostics, retirement of obsolete public helper/launcher entrypoints and cumulative source delivery",
+        "2026-11-05 user began testing: synchronize affected fixtures, add host execution/required-LaTeX regressions, run current Mac source checks and actual loopback host probes in fresh disposable roots; no installation or live-state access.",
+        "Bounded reproduced LaTeX repair: reject external/dynamic class/package loader arguments before host compilation; retain normal literal system class/package names and no OS sandbox claim."
+      ],
+      "non_goals": [
+        "No additional service, agent, VM, container or daemon thread",
+        "No production installation, restart, database migration, commits or pushes",
+        "No changes to Rethlas capability/role/state/verifier/finalizer rules",
+        "No claim of Windows or real-Mac acceptance without execution evidence"
+      ],
+      "acceptance_criteria": [
+        "Host git/Python and per-command cwd work without bwrap",
+        "Re-CTM host backend must generically resolve actual child PATH and absolute executables (including Conda/venv); Mac Sage 10.9 is a replaceable acceptance fixture, not an application-specific branch or hardcoded environment path.",
+        "Real required LaTeX succeeds or fails honestly",
+        "Existing Rethlas authorization regressions remain intact",
+        "No active runtime import or invocation depends on Bubblewrap",
+        "Fresh-root macOS tests and full local checks pass before completion"
+      ],
+      "validation_commands": [
+        "python3 scripts/validate_code_optimization_graph.py",
+        "python3 scripts/run_local_checks.py"
+      ],
+      "rollback": "Revert only OPT-027 workspace changes and select the previous installation/configuration. No database migration. Do not reset user changes or the active connector.",
+      "risk": "high: host commands and TeX may access same-account private files; explicitly accepted by user",
+      "dependencies": [],
+      "receipt_required": true,
+      "stop_condition": "Do not bypass connector execution denial, touch production state or weaken Rethlas API gates.",
+      "implementation_status": "mac_source_checks_and_real_host_probes_passed_release_acceptance_pending",
+      "status_record": "docs/MACOS_HOST_MIGRATION_STATUS.md",
+      "validation_state": "Current Mac: full local gate exits 0; 573 tests, 550 pass, 23 platform/legacy skips; all six checks pass. 17 real source HTTP/OAuth/Native/tool/required-LaTeX/finalization/cleanup groups pass. Magma requires the existing HOME environment in this fixture; fresh-HOME failure is preserved. See docs/validation/OPT-027-macos-host-validation.json. Installed-package, real browser and operator mathematical acceptance remain pending.",
+      "historical_blockers": [
+        "Active connector rejects python3 --version with NATIVE_ISOLATION_REQUIRED; no tests ran.",
+        "The platform safety check blocked the host-execution implementation patch. The earlier partial native.py edit was reverted; its SHA256 again equals the baseline. No alternate tool or route was used to bypass the denial."
+      ],
+      "historical_validation_state": "2026-11-02 macOS CTM connector: python3 scripts/run_local_checks.py exited 0 (compileall, unittest 555 with 27 skipped, engineering graph, optimization graph, error contract and documentation all passed). Covers current source portability fixes and optional cwd regression only, NOT host backend, removal of Bubblewrap, real LaTeX, target release or Rethlas OS isolation. No deployment, restart, commit, push or production private-state access occurred. 2026-11-02: macOS CTM verified SageMath 10.9 by absolute path and temporary PATH (stdout 5, exit 0); added pending Re-CTM acceptance criteria without changing runtime.",
+      "pending_acceptance": [
+        "Installed-package/launcher qualification has not been performed; no installation is authorized.",
+        "Actual intended browser/client and operator mathematical-quality acceptance remain pending.",
+        "User review/release acceptance; no production deployment, commits, pushes or publication were performed."
+      ],
+      "validation_runs": [
+        {
+          "timestamp": "2026-11-04T20:19:50.426100Z",
+          "phase": "authorized_current_mac_source_validation",
+          "report": "docs/validation/OPT-027-macos-host-validation.json",
+          "local_gate_exit_code": 0,
+          "tests_run": 573,
+          "passed": 550,
+          "skipped": 23,
+          "real_host_groups_passed": 17,
+          "status": "bounded_source_engineering_validation_passed",
+          "scope_limitations": [
+            "Installed-package/launcher qualification has not been performed; no installation is authorized.",
+            "Actual intended browser/client and operator mathematical-quality acceptance remain pending.",
+            "User review/release acceptance; no production deployment, commits, pushes or publication were performed."
+          ]
+        }
+      ]
+    },
     {
       "id": "OPT-013",
       "kind": "release_readiness",
@@ -1202,6 +1281,92 @@
       "stop_condition": "Stop scope expansion if compatibility needs a schema/authority change or testing would touch live state; report unrelated full-gate blockers without weakening checks.",
       "started_at": "2026-10-21T07:50:21.297686Z",
       "implementation_status": "one_line_repair_and_all_local_gates_passed"
+    },
+    {
+      "id": "OPT-028",
+      "kind": "release_artifact_preparation",
+      "title": "用户授权：0.5.0rc1 宿主迁移安装包与发布材料",
+      "status": "in_progress",
+      "priority": "P0",
+      "problem": "The host migration still shares version 0.4.1 with an older Linux package; current packaging/CI helpers expect a retired console command and omit new required root documents from snapshots. User now requests release installation artifacts and will perform subsequent validation.",
+      "functional_outcome": "Deliver uniquely versioned wheel and sdist plus release notes, source manifest and SHA256 checksums, without installation, service changes, commit, push or publication.",
+      "evidence": [
+        "User said: realse 安装包处理一下，后面的验证我自己来.",
+        "Current pyproject.toml and runtime __version__ are 0.4.1, already used by the historical accepted Linux wheel.",
+        "release_package_checks.py still invokes re-ctm-native-helper and SOURCE_ITEMS omits DEVELOPMENT_STATUS.md/Re-CTM_TASK_RECORD.md; CI also calls the retired helper and expects an obsolete checklist status.",
+        "Local build tooling is already available: build 1.6.1, setuptools 84.0.0, wheel 0.48.0."
+      ],
+      "scope": [
+        "Version only the new candidate as 0.5.0rc1; preserve historical 0.4.1 records.",
+        "Synchronize current version assertions, release instructions, packaging manifests and obsolete package/CI helper references.",
+        "Build isolated source snapshots offline with existing tools; inspect archive contents, metadata, entry points and runtime-byte identity; provide hashes.",
+        "Preserve source test evidence as historical and leave current RC installed/browser/operator validation pending for the user."
+      ],
+      "non_goals": [
+        "No runtime Native/Rethlas behavior or database changes.",
+        "No installation, new venv, service/launcher activation, private-state access, public ingress, commit, tag, push or publication.",
+        "No repetition of unit/full/host/browser/mathematical acceptance in this packaging phase."
+      ],
+      "acceptance_criteria": [
+        "Build both re_ctm-0.5.0rc1.tar.gz and re_ctm-0.5.0rc1-py3-none-any.whl from one explicit source snapshot.",
+        "Wheel metadata and __version__ agree; expose only re-ctm and retain methodology/protocol-3/engineering resources.",
+        "Runtime files other than the version marker remain byte-identical to the tested dev03 source.",
+        "Archives exclude private/runtime state, local environment files, caches and previous build artifacts; sdist contains required documents/tests/scripts.",
+        "Deliver SHA256SUMS, release notes and a manifest explicitly stating that install/browser/mathematical validation was not run."
+      ],
+      "validation_commands": [
+        "python3 scripts/validate_code_optimization_graph.py",
+        "python3 scripts/validate_documentation_consistency.py",
+        "python3 -m build --no-isolation --outdir <fresh-artifact-directory> <fresh-source-snapshot>",
+        "Archive metadata/content and SHA256 inspection without executing the packaged runtime."
+      ],
+      "dependencies": [],
+      "receipt_required": true,
+      "risk": "Release metadata could mislabel prior validation as acceptance of the new candidate; all current RC checks stay pending and old reports remain immutable.",
+      "rollback": "Revert only OPT-028 version/packaging/documentation changes and remove only this newly generated candidate output; retain all earlier source work, packages, reports and live installations.",
+      "stop_condition": "Stop for unsupported build tooling, source/metadata drift, unintended artifact contents or any step that would install, publish, access live state or run deferred acceptance.",
+      "approval_basis": "Explicit user request for release installation artifacts; subsequent validation delegated to user.",
+      "implementation_status": "candidate_build_and_archive_checks_passed_user_validation_pending",
+      "validation_runs": [
+        {
+          "timestamp": "2026-11-05T05:45:12.168388Z",
+          "stage": "preliminary_offline_distribution_build",
+          "command": "python3 -B -u .release-validation/opt028-20261105T054043Z/build-artifacts.py preliminary",
+          "exit_code": 0,
+          "report": "/Users/lk/Desktop/Re-CMT/.release-validation/opt028-20261105T054043Z/preliminary/archive-checks.json",
+          "archive_checks": {
+            "sdist_source_exact": true,
+            "wheel_runtime_exact": true,
+            "metadata_version": "0.5.0rc1",
+            "requires_python": ">=3.11",
+            "wheel_tag": "py3-none-any",
+            "console_scripts": {
+              "re-ctm": "re_ctm.cli:main"
+            },
+            "retired_helper_console_absent": true,
+            "record_integrity": true,
+            "runtime_file_count": 55,
+            "source_file_count": 156,
+            "resources": [
+              "methodology.json",
+              "methodology_protocol3.json",
+              "engineering-graph.json"
+            ],
+            "private_state_and_cache_excluded": true
+          },
+          "runtime_changes_from_tested_dev03": [
+            "src/re_ctm/__init__.py"
+          ],
+          "installation_performed": false,
+          "packaged_runtime_executed": false,
+          "application_tests_run": false
+        }
+      ],
+      "pending_acceptance": [
+        "User-owned 0.5.0rc1 local/full and installed-package validation; no tests repeated during packaging.",
+        "User-owned actual client/browser and mathematical-quality acceptance.",
+        "GitHub publication is a separate user action; no commit, tag or push performed."
+      ]
     }
   ],
   "edges": [
@@ -1505,6 +1670,38 @@
         "Exact evidence, paths, hashes and explicit operator activation boundary."
       ],
       "stop_condition": "Stop if runtime/state/security changes or bypassing the connector boundary are required."
+    },
+    {
+      "order": 9,
+      "optimization_id": "OPT-027",
+      "phase": "macos_host_execution",
+      "functional_goal": "Restore local developer-tool use without Bubblewrap or additional services.",
+      "start_condition": "User invoked Re-CTM_TASK_RECORD.md for source development; no tests or deployment in this phase.",
+      "tasks": [
+        "Preserve passing current-Mac source/host/required-LaTeX evidence and cumulative tested source.",
+        "Keep real browser, installed-package and operator mathematical acceptance pending at their own scopes.",
+        "Do not deploy, install, activate a launcher, touch production private state, commit or push without later authorization."
+      ],
+      "receipt_expectations": [
+        "Record exact changes and distinguish static review from unrun target tests."
+      ],
+      "stop_condition": "Do not bypass active connector isolation denial or claim unrun tests passed."
+    },
+    {
+      "order": 10,
+      "optimization_id": "OPT-028",
+      "phase": "release_artifact_preparation",
+      "functional_goal": "Prepare distinct 0.5.0rc1 wheel/sdist, notes and checksums for user-controlled validation.",
+      "start_condition": "User requested release installation package handling and retained later validation.",
+      "tasks": [
+        "Synchronize candidate version and package/CI contracts.",
+        "Build and inspect archive structure offline without installing.",
+        "Hand off artifacts with current-candidate validation pending."
+      ],
+      "receipt_expectations": [
+        "Record exact artifact hashes and bounded build/metadata checks; do not claim installation or release acceptance."
+      ],
+      "stop_condition": "No installation, live-service changes, production-state access, commits, tags, pushes or publication."
     }
   ],
   "receipt_contract": {
@@ -3105,6 +3302,76 @@
         "Installed-runtime, live-service, real browser and target-PC acceptance were not performed for this repair and are not implied by deterministic local tests; existing manual-validation status remains pending_target_validation."
       ],
       "decision": "accepted"
+    },
+    {
+      "receipt_id": "REC-2026-11-05-033",
+      "optimization_id": "OPT-027",
+      "started_at": "2026-11-05",
+      "completed_at": "2026-11-04T18:09:59.368672Z",
+      "status_before": "blocked",
+      "status_after": "in_progress",
+      "functional_goal": "Explicit host mode runs local tools and real LaTeX without Bubblewrap or new services; Rethlas API authorization and finalization stay unchanged.",
+      "files_changed": [
+        "src/re_ctm/config.py",
+        "src/re_ctm/app.py",
+        "src/re_ctm/native.py",
+        "src/re_ctm/native_exec.py",
+        "src/re_ctm/latex.py",
+        "src/re_ctm/toolchains.py",
+        "src/re_ctm/cli.py",
+        "src/re_ctm/tools.py",
+        "src/re_ctm/native_catalog.py",
+        "src/re_ctm/ctm_compat.py",
+        "src/re_ctm/workflow.py (manual validation label only)",
+        "src/re_ctm/diagnostics.py (manual validation label only)",
+        "pyproject.toml",
+        "config.example.env",
+        "scripts/activate_release_launcher.py",
+        "scripts/run_local_checks.py (claim text only)",
+        "AGENTS.md",
+        "docs/CODE_QUALITY.md",
+        "README.md",
+        "docs/DEPLOYMENT.md",
+        "engineering-graph.json",
+        "src/re_ctm/resources/engineering-graph.json",
+        "manual-validation.json",
+        "docs/validation/manual-validation-before-opt027.json",
+        "docs/validation/engineering-graph-before-opt027.json",
+        "Re-CTM_TASK_RECORD.md",
+        "docs/MACOS_HOST_MIGRATION_STATUS.md",
+        "DEVELOPMENT_STATUS.md",
+        "code-optimization-graph.json",
+        "project-progress.json",
+        "MANIFEST.in",
+        "scripts/release_target_checks.py (historical scope label and source allowlist only)",
+        "docs/MTM_MIGRATION.md (host-scope override)"
+      ],
+      "commands": [
+        {
+          "command": "git status --short",
+          "exit_code": 0,
+          "result": "Read-only source inventory: existing process and portability-test changes retained."
+        },
+        {
+          "command": "git log -1 --oneline",
+          "exit_code": 0,
+          "result": "Baseline c6c0424 fix(workflow): widen random domain identifiers [OPT-026]."
+        }
+      ],
+      "tests": [
+        "NOT RUN by explicit user instruction: no unit/full checks, graph/document/error validators, compile validation, tool trials, real LaTeX or release acceptance.",
+        "No new tests or test-fixture expansion in this source-delivery phase; existing user-edited test files are preserved. Historical backend-specific fixtures need synchronization when testing is scheduled."
+      ],
+      "behavior_before": "Native initialization and exec_command require the Linux isolated backend; LaTeX separately requires bwrap. macOS host entry is disconnected.",
+      "behavior_after": "Source selects host only explicitly, delegates Native to CommandManager with actual child PATH/cwd and uses CommandManager for independent host latexmk; diagnostics state no OS sandbox. Not executed or functionally validated.",
+      "risk_review": "User explicitly accepted host and TeX same-account OS file access; no private-state isolation is claimed. Direct file-tool checks and root non-overlap remain. OAuth, capability/role/state, verifier and mechanical finalizer authorization logic are unchanged; workflow.py changes only a manual-validation label. No live private files were read.",
+      "rollback": "Revert only OPT-027 workspace changes and select the previous installation/configuration. No database migration. Do not reset user changes or the active connector.",
+      "unresolved": [
+        "User-scheduled synchronization/execution of host contract regressions and full local checks",
+        "Actual Mac Native/LaTeX lifecycle and Rethlas authorization acceptance",
+        "Candidate-specific package/browser/operator evidence; no production deployment authorized"
+      ],
+      "decision": "partial"
     }
   ]
 }

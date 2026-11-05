@@ -16,12 +16,11 @@ from .config import Settings, materialize_secrets
 from .enums import LatexPolicy, NativeMode
 from .engineering_graph import main as validate_engineering_graph
 from .errors import ReCTMError
-from .native import BubblewrapExecBackend, ExternalHelperExecBackend, NativeWorkspace
 from .quick_tunnel import QuickTunnel
 from .server import run_server
 from .storage import STATE_SCHEMA_VERSION, StateStore
 from .terminal_ui import TerminalSession
-from .toolchains import build_toolchain_exposure_plan, parse_native_exec_allow_roots
+from .toolchains import host_command_environment, host_toolchain_summary
 
 
 class _SingleFactOption(argparse.Action):
@@ -60,6 +59,8 @@ def build_parser() -> argparse.ArgumentParser:
         )
         command.add_argument("--workspace")
         command.add_argument("--native-mode", choices=[NativeMode.DANGEROUS.value])
+        command.add_argument("--native-exec-backend", choices=["disabled", "host"],
+                             help="Explicit host execution uses account permissions without an OS sandbox.")
         command.add_argument("--latex-policy", choices=[item.value for item in LatexPolicy])
     tui.add_argument(
         "--quick-tunnel",
@@ -86,7 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--state-db", action=_SingleFactOption)
     attest = subcommands.add_parser(
         "attest-native",
-        help="Probe a native isolation helper without enabling command execution.",
+        help="Retired isolation command; returns migration instructions without running a helper.",
     )
     attest.add_argument("--backend", choices=["bubblewrap", "external"], default="bubblewrap")
     attest.add_argument("--helper", help="External helper path when --backend=external.")
@@ -97,7 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--allow-root",
         action="append",
         default=[],
-        help="Additional absolute Bubblewrap toolchain root; repeatable.",
+        help="Retired isolation option; no helper will be executed.",
     )
     return parser
 
@@ -114,78 +115,12 @@ def main(argv: list[str] | None = None) -> int:
             checkout = (source_root / "src" / "re_ctm" / "cli.py").resolve() == Path(__file__).resolve()
             return validate_engineering_graph(graph if checkout and graph.is_file() else None)
         if args.command == "attest-native":
-            workspace = Path(
-                args.workspace or os.environ.get("RE_CTM_WORKSPACE") or os.getcwd()
-            ).expanduser().resolve()
-            data_root = Path(
-                args.data_root or os.environ.get("RE_CTM_DATA_ROOT") or "~/.re-ctm"
-            ).expanduser().resolve()
-            private_root = Path(
-                args.private_root
-                or os.environ.get("RE_CTM_PRIVATE_ROOT")
-                or str(data_root / "private")
-            ).expanduser().resolve()
-            NativeWorkspace(workspace, private_root=private_root)
-            if args.backend == "external":
-                if args.allow_root or os.environ.get("RE_CTM_NATIVE_EXEC_ALLOW_ROOTS"):
-                    raise ReCTMError(
-                        "NATIVE_TOOLCHAIN_ROOTS_UNSUPPORTED",
-                        "--allow-root and RE_CTM_NATIVE_EXEC_ALLOW_ROOTS require the built-in Bubblewrap backend.",
-                        category="validation",
-                    )
-                if not args.helper:
-                    raise ReCTMError(
-                        "NATIVE_HELPER_REQUIRED",
-                        "--helper is required with --backend=external.",
-                        category="validation",
-                    )
-                backend = ExternalHelperExecBackend(Path(args.helper))
-                exposure: dict[str, object] = {
-                    "policy": "external_helper_owned",
-                    "resolved_read_only_root_count": 0,
-                }
-            else:
-                explicit_roots = (
-                    *parse_native_exec_allow_roots(
-                        os.environ.get("RE_CTM_NATIVE_EXEC_ALLOW_ROOTS")
-                    ),
-                    *(Path(value).expanduser() for value in args.allow_root),
-                )
-                plan = build_toolchain_exposure_plan(
-                    mode=NativeMode.DANGEROUS,
-                    workspace=workspace,
-                    forbidden_paths=(data_root, private_root),
-                    explicit_roots=explicit_roots,
-                    host_path=os.environ.get("PATH", ""),
-                )
-                backend = BubblewrapExecBackend(exposure_plan=plan)
-                exposure = plan.summary(include_paths=True)
-            attestation = backend.attest(
-                workspace=workspace,
-                forbidden_paths=(data_root, private_root),
+            raise ReCTMError(
+                "INVALID_NATIVE_EXEC_BACKEND",
+                "attest-native is retired. Host execution has no OS sandbox or isolation attestation. Remove legacy helper/attestation settings and explicitly select RE_CTM_NATIVE_EXEC_BACKEND=host, or keep disabled.",
+                category="validation",
             )
-            print(
-                json.dumps(
-                    {
-                        "ok": True,
-                        "backend": args.backend,
-                        "workspace": str(workspace),
-                        "data_root": str(data_root),
-                        "private_root": str(private_root),
-                        "toolchain_exposure": exposure,
-                        "attestation": attestation,
-                        "operator_action": (
-                            "Retain this as target-specific evidence. The built-in Bubblewrap "
-                            "backend will repeat fail-closed attestation at service startup."
-                            if args.backend == "bubblewrap"
-                            else "After independent review succeeds, configure the external helper and set RE_CTM_NATIVE_ISOLATION_ATTESTED=1."
-                        ),
-                    },
-                    indent=2,
-                )
-            )
-            return 0
-        settings = Settings.from_env()
+        settings = Settings.from_env(backend_override=getattr(args, "native_exec_backend", None))
         quick_tunnel_requested = bool(
             args.command == "tui" and getattr(args, "quick_tunnel", False)
         )
@@ -198,21 +133,11 @@ def main(argv: list[str] | None = None) -> int:
         if getattr(args, "latex_policy", None):
             settings = replace(settings, latex_policy=LatexPolicy(args.latex_policy))
         settings.validate()
-        settings = materialize_secrets(settings)
         if args.command == "check-config":
             exposure = (
-                build_toolchain_exposure_plan(
-                    mode=settings.native_mode,
-                    workspace=settings.workspace,
-                    forbidden_paths=(settings.data_root, settings.private_root),
-                    explicit_roots=settings.native_exec_allow_roots,
-                    host_path=os.environ.get("PATH", ""),
-                ).summary(include_paths=True)
-                if settings.native_exec_backend == "bubblewrap"
-                else {
-                    "policy": "unavailable",
-                    "resolved_read_only_root_count": 0,
-                }
+                host_toolchain_summary(
+                    host_command_environment(extra_roots=settings.native_exec_allow_roots), include_paths=True,
+                ) if settings.native_exec_backend == "host" else {"policy": "disabled", "mount_mode": "none"}
             )
             print(
                 json.dumps(
@@ -228,15 +153,10 @@ def main(argv: list[str] | None = None) -> int:
                             str(path) for path in settings.native_exec_allow_roots
                         ],
                         "toolchain_exposure": exposure,
-                        "native_startup_attestation": (
-                            "automatic_fail_closed"
-                            if settings.native_exec_backend == "bubblewrap"
-                            else (
-                                "operator_acknowledged_external"
-                                if settings.native_exec_backend == "external"
-                                else "not_applicable"
-                            )
-                        ),
+                        "native_startup_attestation": "not_provided",
+                        "native_os_sandbox": False,
+                        "host_account_private_state_access": settings.native_exec_backend == "host",
+                        "latex_execution_backend": "host",
                         "latex_policy": settings.latex_policy.value,
                         "oauth_server_url": settings.oauth_server_url,
                         "oauth_server_url_mode": (
@@ -257,13 +177,15 @@ def main(argv: list[str] | None = None) -> int:
                             "reference_audit": True,
                             "paper_search_provider": "https://api.openalex.org/works",
                         },
-                        "secrets_present": True,
+                        "secrets_present": bool(settings.token_secret and settings.capability_secret),
+                        "secret_materialization": "deferred_until_service_start",
                         "complete_flow_locally_validated": False,
                     },
                     indent=2,
                 )
             )
             return 0
+        settings = materialize_secrets(settings)
         generated_oauth_password = not bool(settings.oauth_password)
         if generated_oauth_password:
             settings = replace(settings, oauth_password=secrets.token_urlsafe(32))

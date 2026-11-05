@@ -2,13 +2,13 @@
 
 This document is an operational guide, not evidence that a target has passed validation. The authoritative acceptance state remains in `manual-validation.json`.
 
-Current source version: **Re-CTM v0.4.1**, a Native asynchronous-command lifetime repair candidate. It retains the 0.4.0 tool/protocol/schema contracts; this does not certify fresh target-PC acceptance.
+Current distribution candidate: **Re-CTM v0.5.0rc1**. The user requested wheel/sdist artifacts and will perform subsequent validation. This phase builds and inspects archive metadata/files only; it does not install or execute the package. Earlier dev03 (version marker 0.4.1) Mac source checks and host/LaTeX evidence remain historical, not acceptance of this installed candidate. See [release notes](../RELEASE_NOTES.md), [source delivery status](../DEVELOPMENT_STATUS.md) and the [prior source validation report](validation/OPT-027-macos-host-validation.json).
 
 ## 1. Required software
 
 - Python 3.11 or newer.
-- Linux with user namespaces enabled for the packaged reference isolation backend.
-- `bubblewrap` for native command execution and required LaTeX compilation.
+- macOS (the current unvalidated migration target) or a POSIX host.
+- Explicit Native `host` selection for same-account command execution without an OS sandbox; the default is `disabled`.
 - `latexmk` plus the required TeX Live packages when `RE_CTM_LATEX_POLICY=required`.
 - An HTTPS reverse proxy or tunnel for non-loopback browser access.
 
@@ -58,19 +58,17 @@ RE_CTM_PRIVATE_ROOT=/var/lib/re-ctm/private
 RE_CTM_ALLOWED_ORIGINS=https://the-real-web-client.example
 RE_CTM_LATEX_POLICY=required
 RE_CTM_NATIVE_MODE=dangerous
+# Explicit opt-in after accepting same-account access without an OS sandbox:
+RE_CTM_NATIVE_EXEC_BACKEND=host
 ```
 
-On Linux, if `bwrap` is installed and `RE_CTM_NATIVE_EXEC_BACKEND` is omitted, Re-CTM automatically selects the built-in Bubblewrap backend and performs mandatory startup attestation. Set `RE_CTM_NATIVE_EXEC_BACKEND=disabled` only when command execution should be intentionally unavailable.
+The Native backend is `disabled` unless `host` is explicitly selected, on every platform. Legacy `bubblewrap` / `external` backends and helper/attestation settings are rejected with migration guidance. There is no automatic conversion to host execution or isolation attestation.
 
-Native scientific/computer tools are exposed by policy rather than by an application allowlist. The dangerous profile derives read-only toolchain roots from non-system PATH entries and executable symlink targets. For split or non-PATH installations, declare additional absolute directories with the platform path separator (`:` on Linux):
+Host children use the service account's OS permissions. They may read or alter same-account private files, databases or keys; workspace-relative starting directories and direct-file API checks do not sandbox those processes. OAuth, run ownership, capabilities, role/state checks, verifier and finalizer rules remain application-layer requirements. Required LaTeX also uses host permissions, independently of whether Native commands are disabled.
 
-```bash
-RE_CTM_NATIVE_EXEC_ALLOW_ROOTS=/opt/vendor-suite:/srv/shared-runtime
-```
+Program discovery is generic. Native argv accepts absolute paths or resolves names using the real child PATH, including per-command `env.PATH` replacement. Shell text goes unchanged to non-login `/bin/sh -c`. No named environment is guessed or activated. Optional `RE_CTM_NATIVE_EXEC_ALLOW_ROOTS` adds existing absolute roots and their bin/sbin/Executables directories to the base PATH; broad/missing/relative/workspace/data/private-overlapping configuration roots remain rejected. These additions are neither an executable allowlist nor read-only mounts. `check_exec_environment` reports the actual base PATH and no-sandbox status.
 
-Every declared root must exist and is canonicalized before startup. Re-CMT rejects `/`, the complete service-account home, broad aggregate roots such as `/home`, `/var`, and `/opt`, workspace/data/private overlaps, and unsupported backends; declare a specific product/runtime subtree instead. Accepted roots are ancestor-collapsed and mounted read-only. `re-ctm check-config` prints the effective exposure plan; `check_exec_environment` reports the live plan after startup.
-
-The current external-helper protocol does not promise operator-declared roots; configuring `RE_CTM_NATIVE_EXEC_ALLOW_ROOTS` with `RE_CTM_NATIVE_EXEC_BACKEND=external` fails closed instead of silently ignoring the roots.
+`re-ctm check-config` checks configuration without creating directories, secrets or private databases. Secret materialization remains a service-start operation.
 
 `RE_CTM_OAUTH_PASSWORD` is optional for an interactive operator launch. If omitted, `re-ctm serve` and `re-ctm tui` generate a high-entropy authorization key and reveal it once to the local operator terminal after the HTTP bind succeeds. When a password is explicitly configured, the TUI reports `configured externally` and does not echo the configured secret. Set a stable password only when operator policy or automation requires it.
 
@@ -96,61 +94,17 @@ The public surface is now 19 Native plus six workflow tools (`mtm-tools-v11`), 2
 
 `exec_command` requires exactly one of `argv` or `cmd`; `cmd` runs non-login `/bin/sh -c`. The total lifetime default is 300000 ms (maximum 600000), while polling yield remains 10000 ms by default. Requested PATH/workdir executable facts are revalidated immediately before start. Native write keys are caller-scoped in-memory receipts, not durable exactly-once execution. Unknown results and rollback failures require file reconciliation, even after restart. See [Native migration details](MTM_MIGRATION.md).
 
-## 5. Validate native isolation
+## 5. Host migration and later validation
 
-The built-in Bubblewrap backend attests itself every time the service starts and fails closed if the required isolation properties are not proven. For release/target evidence, also probe it explicitly:
+The user has now authorized current Mac source testing with fresh disposable roots. Actual changed Re-CTM HTTP probes cover installed tools resolved by absolute path and single-call PATH, command lifecycle, stdin/PTY, timeout, kill and shutdown. Tests also cover per-command cwd and bounded output. A successful CTM connector command is not Re-CTM evidence. Magma passed using the existing operator HOME environment; the artificial fresh-HOME failure is retained as an environment limitation, without a product-specific workaround.
 
-```bash
-re-ctm attest-native \
-  --backend bubblewrap \
-  --workspace /srv/re-ctm/workspace \
-  --data-root /var/lib/re-ctm \
-  --private-root /var/lib/re-ctm/private \
-  --allow-root /opt/vendor-suite
-```
+Required LaTeX uses host `latexmk` in a fresh scratch directory through the existing command manager, with RC loading and shell escape disabled plus restrictive TeX IO settings. Static external-file checks remain mandatory. A successful compiler exit, no timeout and a fresh regular PDF with a PDF header are required together; missing tools, errors, timeouts or missing output cannot silently select `static_only`. Compilation does not confer a mathematical verdict or skip the independent verifier/finalizer.
 
-Omit or repeat `--allow-root` to match the configured explicit roots.
+Host mode cannot pass a private-vault OS invisibility test: that guarantee has explicitly been removed. Verify direct file-tool confinement and the complete Rethlas API authorization boundaries separately. The active checklist is [manual-validation.json](../manual-validation.json); the previous Linux checklist and evidence are preserved under docs/validation. Historical `attest-native`, `re-ctm-native-helper`, manual isolation/HTTP-Bubblewrap harnesses and the pinned Linux launcher do not qualify this candidate. `attest-native` returns a migration error and the helper console entry is removed. The pinned launcher allows rollback only.
 
-Then run the adversarial target harness from the repository:
+The original 0.4.1 parent-thread repair remains in the legacy adapter for historical regressions. Host children are created directly with per-child cwd, without the Bubblewrap parent-death owner thread; output readers and watchdogs remain the existing command-manager mechanism. Preserve termination provenance and distinguish self-issued signals from external/unknown termination.
 
-```bash
-python3 scripts/manual_native_isolation_test.py \
-  --backend bubblewrap \
-  --workspace /srv/re-ctm/workspace \
-  --data-root /var/lib/re-ctm \
-  --private-root /var/lib/re-ctm/private \
-  --allow-root /opt/vendor-suite \
-  --output native-isolation-validation.json
-```
-
-Omit `--allow-root` when none are configured; repeat it for every declared root. The report includes a target-specific read-only write probe for those roots.
-
-Review the JSON before treating that target as accepted for production. `RE_CTM_NATIVE_ISOLATION_ATTESTED=1` remains required only for an operator-supplied external helper. `dangerous` still does not grant a workflow capability: it changes native-tool policy inside the attested namespace. Host-PATH discovery and explicit toolchain roots use one canonical, read-only mount plan while the configured workspace/data/private trust domains remain excluded.
-
-Long-running command results include `operation_outcome` and additive `termination` provenance. The default lifetime is now 300000 ms; the existing timeout/TERM/KILL termination sequence is preserved. Review `source`, `requested_timeout_ms`, `elapsed_ms`, `observed_signal`, `term_sent_by_re_ctm`, and `kill_sent_by_re_ctm` before diagnosing a killed CAS computation. A signal observed without a matching Re-CTM action is reported as `external_or_unknown`, not guessed to be an OOM event.
-
-### Asynchronous HTTP command lifetime (0.4.1)
-
-Actual connected-client testing of 0.4.0 found that a Native command could return
-`running` and then receive SIGKILL when its HTTP request thread exited.
-Linux parent-death signaling follows the creating thread. The repair creates
-each managed child in a dedicated owner thread which stays alive until the child
-is terminal; it retains Bubblewrap's `--die-with-parent`, namespaces,
-process-group signaling and the existing timeout/kill authority.
-
-Keep the previously running installation and evidence intact. Qualify a fresh
-0.4.1 candidate with `scripts/manual_native_http_lifecycle_test.py` on the
-ordinary host, including async completion, stdin/PTY, explicit kill, timeout
-and service-exit cleanup after each initiating HTTP request has finished.
-Do not remove `--die-with-parent` or disable isolation to make this pass.
-Direct in-process tests and old 0.4.0 acceptance cannot establish this repair.
-
-Install the accepted wheel into a separate venv. Stop/restart a live service only
-at an operator-approved point; do not overwrite its active venv, change existing
-signing keys, or open its private database merely to test an upgrade. Protocol 3,
-schema 8, the 25-tool catalog and persisted workflow contracts are unchanged.
-A Quick Tunnel restart may assign a new public URL and the interactive OAuth
-authorization key is generated anew; reconnect the intended client explicitly.
+Keep existing installations, running services, signing keys and private databases untouched. Source/package version equality with an older installation is not evidence of identical runtime bytes. The current source has no new target, browser, compiler or mathematical acceptance.
 
 ## 6. Start Re-CTM
 
@@ -242,7 +196,7 @@ The active gates separate:
 
 - RC-001/002: deterministic/package evidence and the 25-tool MTM v11 contract;
 - RC-003/004: scripted loopback OAuth/MCP versus actual browser/client authorization, routing and resume;
-- RC-005/006: target hard isolation and real required LaTeX compilation/final delivery;
+- RC-005/006: actual host Native behavior, truthful no-sandbox access and real required LaTeX compilation/final delivery;
 - RC-007/008/009: protocol-3 role barriers, disposable schema-8/recovery tests, project facts and source-backed reference audits;
 - RC-010/011: optional terminal/approved ingress behavior and operator mathematical-quality review.
 
@@ -286,12 +240,14 @@ Paper-aware retrieval uses a fixed HTTPS OpenAlex trust domain; theorem retrieva
 Do not mark the full workflow validated until all manual checks have evidence. In particular, local unit tests do not prove:
 
 - compatibility with the final webpage MCP host;
-- hard isolation on a different target kernel/packaging;
+- actual host command behavior or absence of an OS sandbox's same-account access risks;
 - mathematical proof quality or 95-percent Rethlas equivalence;
 - cognitive independence equivalent to truly fresh model contexts.
 
 
 ## Accepted local launcher
+
+**Historical Linux deployment only. OPT-027 retires activation by this pinned helper; the following accepted-root description and commands are retained for earlier receipts. Rollback remains available. They do not apply to the host-source candidate.**
 
 The accepted local 0.4.1 installation can be activated without reinstalling it,
 changing runtime code, reading/migrating data, or restarting a running service.

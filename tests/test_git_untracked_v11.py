@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import os
 import shutil
 import stat
@@ -7,6 +8,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -181,7 +183,12 @@ class GitUntrackedV11TestCase(unittest.TestCase):
 
     def test_non_utf8_filename_fails_closed(self) -> None:
         path = os.fsencode(self.root) + b"/bad-\xff"
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT, 0o600)
+        try:
+            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT, 0o600)
+        except OSError as exc:
+            if sys.platform == "darwin" and exc.errno == errno.EILSEQ:
+                self.skipTest("macOS filesystem refuses invalid UTF-8 filenames")
+            raise
         os.close(descriptor)
         with self.assertRaises(ReCTMError) as error:
             self.diff()

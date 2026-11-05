@@ -38,6 +38,37 @@ _UNSAFE_EXACT_ROOTS = tuple(
 _EXECUTABLE_DIRECTORY_NAMES = frozenset({"bin", "sbin", "executables"})
 
 
+def host_command_environment(
+    *, extra_roots: Iterable[Path] = (), environment: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Inherit the host tool environment without forwarding Re-CTM credentials.
+
+    This is environment hygiene, not an OS access boundary. The caller may
+    override PATH per command; roots only add generic program directories.
+    """
+    child = {
+        key: value for key, value in (os.environ if environment is None else environment).items()
+        if not key.startswith("RE_CTM_")
+    }
+    path = child.get("PATH", os.defpath)
+    roots = tuple(extra_roots)
+    child["PATH"] = _extend_path_for_explicit_roots(path, roots, preserve_empty=True) if roots else path
+    return child
+
+
+def host_toolchain_summary(environment: dict[str, str], *, include_paths: bool = False) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "policy": "host_path_and_absolute_executables",
+        "mount_mode": "none",
+        "host_path_inherited": True,
+        "resolved_read_only_root_count": 0,
+        "access_restricted_by_roots": False,
+    }
+    if include_paths:
+        payload["effective_path"] = environment["PATH"]
+    return payload
+
+
 @dataclass(frozen=True)
 class ToolchainExposurePlan:
     """Validated read-only toolchain view for one Bubblewrap runtime."""
@@ -180,9 +211,16 @@ class _RootPolicy:
         source: str,
         strict: bool,
     ) -> Path | None:
+        if not raw_path.expanduser().is_absolute():
+            if strict:
+                raise ReCTMError(
+                    "INVALID_NATIVE_EXEC_ALLOW_ROOT", "Declared native toolchain root must be absolute.",
+                    category="validation",
+                )
+            return None
         try:
             path = raw_path.expanduser().resolve(strict=True)
-        except OSError as exc:
+        except (OSError, RuntimeError) as exc:
             if strict:
                 raise ReCTMError(
                     "INVALID_NATIVE_EXEC_ALLOW_ROOT",
@@ -221,7 +259,7 @@ class _RootPolicy:
         if strict:
             raise ReCTMError(
                 "NATIVE_TOOLCHAIN_ROOT_DENIED",
-                "Native toolchain root violates the isolation policy.",
+                "Native toolchain root violates the root configuration policy.",
                 category="security",
                 details={"root": str(path), "source": source, "reason": reason},
             )
@@ -300,8 +338,10 @@ def _prefix_for_executable_directory(path: Path) -> Path:
     return path
 
 
-def _extend_path_for_explicit_roots(base_path: str, roots: Iterable[Path]) -> str:
-    entries = [item for item in base_path.split(os.pathsep) if item]
+def _extend_path_for_explicit_roots(
+    base_path: str, roots: Iterable[Path], *, preserve_empty: bool = False,
+) -> str:
+    entries = base_path.split(os.pathsep) if preserve_empty else [item for item in base_path.split(os.pathsep) if item]
     seen = set(entries)
     for root in roots:
         candidates = [root]

@@ -91,6 +91,7 @@
 - 状态转换、权限规则、工具 schema、错误恢复和持久化迁移各自应有单一权威来源。
 - 同一业务规则如果必须在文档、schema、运行时和测试中重复，必须有机械一致性检查或明确生成关系。
 - Native workspace、数据根目录和 private vault 的隔离不得为了代码复用而弱化。
+- OPT-027 是用户明确接受的宿主权限架构变更，见 `Re-CTM_TASK_RECORD.md`；`host` 不提供 OS 沙箱。它不改变直接文件工具的路径边界或 Rethlas API 授权。源码交付阶段没有运行测试；用户随后明确要求“开始测试”，仅授权当前 Mac 的源码、校验器及一次性宿主/LaTeX/loopback 测试，不授权安装或操作生产服务、私有状态。
 - 最终证明、项目 VERIFIED/CONDITIONAL revision 和 reference audit 的机械门禁不得改成模型可控流程。
 
 ### 文档职责边界

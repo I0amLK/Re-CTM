@@ -22,6 +22,7 @@ COMPLETED_COMMAND_TTL_SECONDS = 300
 DEFAULT_COMMAND_TIMEOUT_MS = 300_000
 MAX_COMMAND_TIMEOUT_MS = 600_000
 HARD_KILL_SIGNAL = getattr(signal, "SIGKILL", signal.SIGTERM)
+COMMAND_TIMEOUT_GRACE_SECONDS = 1.0
 
 
 def terminate_process_group(
@@ -51,7 +52,15 @@ def spawn_process(
     *,
     env: dict[str, str],
     tty: bool,
+    cwd: str | None = None,
+    creator_thread_required: bool = True,
 ) -> tuple[subprocess.Popen[bytes], int | None]:
+    if not creator_thread_required:
+        # Ordinary host children have no Bubblewrap parent-death contract.
+        # Spawn directly; output readers and the existing timeout watchdog
+        # continue to manage the process after the request returns.
+        return _spawn_process_owned(command, env=env, tty=tty, cwd=cwd)
+
     # Linux parent-death signals follow the creating thread, not just its
     # process. HTTP request threads may exit as soon as "running" is returned,
     # so the owner of a --die-with-parent child must live until that child exits.
@@ -61,7 +70,7 @@ def spawn_process(
 
     def supervise() -> None:
         try:
-            spawned = _spawn_process_owned(command, env=env, tty=tty)
+            spawned = _spawn_process_owned(command, env=env, tty=tty, cwd=cwd)
         except BaseException as exc:
             outcomes.put(exc)
             return
@@ -92,8 +101,11 @@ def _spawn_process_owned(
     *,
     env: dict[str, str],
     tty: bool,
+    cwd: str | None = None,
 ) -> tuple[subprocess.Popen[bytes], int | None]:
     popen_kwargs: dict[str, Any] = {"start_new_session": True}
+    if cwd is not None:
+        popen_kwargs["cwd"] = cwd
     if not tty:
         process = subprocess.Popen(
             command,
@@ -142,6 +154,9 @@ class CommandRun:
     command_id: str
     process: subprocess.Popen[bytes]
     timeout_at: float | None = None
+    # New commands use a monotonic deadline. Retain the wall-clock field for
+    # callers that construct CommandRun directly and for compatibility.
+    timeout_monotonic_at: float | None = None
     requested_timeout_ms: int | None = None
     warnings: list[str] = field(default_factory=list)
     stdout: bytearray = field(default_factory=bytearray)
@@ -160,7 +175,9 @@ class CommandRun:
     lock: threading.Lock = field(default_factory=threading.Lock)
     reader_threads: list[threading.Thread] = field(default_factory=list)
     started_at: float = field(default_factory=time.time)
+    started_monotonic: float = field(default_factory=time.monotonic)
     completed_at: float | None = None
+    completed_monotonic: float | None = None
     exit_code: int | None = None
     signal_name: str | None = None
     timed_out: bool = False
@@ -256,11 +273,13 @@ class CommandRun:
         with self._status_lock:
             if self.completed_at is not None:
                 return
-            expired = (
-                self.timeout_at is not None
-                and not self.timed_out
-                and time.time() >= self.timeout_at
-            )
+            if self.timed_out:
+                expired = False
+            elif self.timeout_monotonic_at is not None:
+                expired = time.monotonic() >= self.timeout_monotonic_at
+            else:
+                # Compatibility for older manually constructed command runs.
+                expired = self.timeout_at is not None and time.time() >= self.timeout_at
         if expired:
             self.request_termination(signal.SIGTERM, source="command_timeout")
         code = self.process.poll()
@@ -282,6 +301,7 @@ class CommandRun:
                 if self.termination_source is None:
                     self.termination_source = "external_or_unknown"
             self.completed_at = time.time()
+            self.completed_monotonic = time.monotonic()
 
     def observe_status(self) -> dict[str, Any]:
         """Return one coherent observation and report its first terminal state.
@@ -306,7 +326,10 @@ class CommandRun:
             first_terminal = terminal and not self._terminal_observed
             if terminal:
                 self._terminal_observed = True
-            elapsed_ms = int(((self.completed_at or time.time()) - self.started_at) * 1000)
+            elapsed_ms = int((
+                (self.completed_monotonic if self.completed_monotonic is not None else time.monotonic())
+                - self.started_monotonic
+            ) * 1000)
             payload: dict[str, Any] = {
                 "command_id": self.command_id,
                 "operation_outcome": outcome,
@@ -329,9 +352,13 @@ class CommandRun:
         return payload
 
     def drain_readers(self, timeout: float = 0.25) -> None:
-        deadline = time.time() + timeout
+        deadline = time.monotonic() + timeout
         for thread in list(self.reader_threads):
-            remaining = max(0.0, deadline - time.time())
+            # An output reader may have been registered immediately before
+            # Thread.start() failed. Unstarted threads cannot be joined.
+            if thread.ident is None:
+                continue
+            remaining = max(0.0, deadline - time.monotonic())
             if remaining <= 0:
                 break
             thread.join(timeout=remaining)
@@ -457,6 +484,8 @@ class CommandManager:
         tty: bool,
         verbosity: str | None,
         preview_bytes: int,
+        cwd: str | None = None,
+        creator_thread_required: bool = True,
     ) -> dict[str, Any]:
         if type(timeout_ms) is not int or not 1 <= timeout_ms <= MAX_COMMAND_TIMEOUT_MS:
             raise invalid_argument("timeout_ms must be between 1 and 600000")
@@ -474,27 +503,54 @@ class CommandManager:
                     retryable=True,
                     details={"max_active_commands": MAX_ACTIVE_COMMANDS},
                 )
-            # Keep admission, the spawn handshake and registration atomic with
-            # close() and other starts. The owner thread never takes this lock.
+            # Keep admission, spawn and registration atomic with close() and
+            # other starts. The optional creator-owner thread never takes this lock.
             command_id = secrets.token_urlsafe(18)
-            process, pty_master_fd = spawn_process(command_argv, env=env, tty=tty)
+            process, pty_master_fd = spawn_process(
+                command_argv, env=env, tty=tty, cwd=cwd,
+                creator_thread_required=creator_thread_required,
+            )
             command = CommandRun(
                 command_id=command_id,
                 process=process,
                 timeout_at=time.time() + timeout_ms / 1000.0,
+                timeout_monotonic_at=time.monotonic() + timeout_ms / 1000.0,
                 requested_timeout_ms=timeout_ms,
                 pty_master_fd=pty_master_fd,
                 on_terminal=self.on_terminal,
             )
             self.active[command.command_id] = command
-        start_reader_threads(command)
-        self._start_watchdog(command)
-        if stdin_text:
-            command.write_input(stdin_text.encode("utf-8"))
-        if not tty:
-            command.close_stdin()
-        deadline = time.time() + max(0, min(yield_time_ms, 30_000)) / 1000.0
-        while time.time() < deadline and process.poll() is None:
+        try:
+            start_reader_threads(command)
+            self._start_watchdog(command)
+            if stdin_text:
+                try:
+                    command.write_input(stdin_text.encode("utf-8"))
+                except ReCTMError as exc:
+                    # A fast command may exit before it reads its initial
+                    # input. Return the actual exit result in that case.
+                    if exc.code != "COMMAND_CLOSED" or process.poll() is None:
+                        raise
+            if not tty:
+                command.close_stdin()
+        except Exception:
+            # The caller never received this command_id: do not leave an
+            # unobservable child running if reader/watchdog/input setup fails.
+            command.on_terminal = None
+            try:
+                command.request_termination(
+                    HARD_KILL_SIGNAL, source="startup_failure", force=True,
+                )
+                command.process.wait(timeout=COMMAND_TIMEOUT_GRACE_SECONDS)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            finally:
+                with self.lock:
+                    self.active.pop(command.command_id, None)
+                    self.retained.pop(command.command_id, None)
+            raise
+        deadline = time.monotonic() + max(0, min(yield_time_ms, 30_000)) / 1000.0
+        while time.monotonic() < deadline and process.poll() is None:
             time.sleep(0.02)
         command.refresh_status()
         payload = command.snapshot_since_cursor(max_output_bytes)
@@ -516,8 +572,8 @@ class CommandManager:
             raise ReCTMError("COMMAND_CLOSED", "Command is closed; stdin write blocked.", category="runtime")
         if chars and command.process.poll() is None:
             command.write_input(chars.encode("utf-8"))
-        deadline = time.time() + max(0, min(yield_time_ms, 30_000)) / 1000.0
-        while time.time() < deadline and command.process.poll() is None:
+        deadline = time.monotonic() + max(0, min(yield_time_ms, 30_000)) / 1000.0
+        while time.monotonic() < deadline and command.process.poll() is None:
             with command.lock:
                 has_output = (
                     len(command.stdout) > max(0, command.stdout_cursor - command.stdout_start_offset)
@@ -669,6 +725,21 @@ class CommandManager:
             active = list(self.active.values())
         for command in active:
             command.request_termination(signal.SIGTERM, source="parent_shutdown")
+        # One shared grace period bounds shutdown latency even when many
+        # commands ignore TERM. Existing watchdogs reap terminated children.
+        deadline = time.monotonic() + COMMAND_TIMEOUT_GRACE_SECONDS
+        for command in active:
+            if command.process.poll() is not None:
+                continue
+            try:
+                command.process.wait(timeout=max(0.0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                pass
+        for command in active:
+            if command.process.poll() is None:
+                command.request_termination(
+                    HARD_KILL_SIGNAL, source="parent_shutdown", force=True,
+                )
 
     def _get(self, command_id: str, *, stdin: bool) -> CommandRun:
         self._prune()
@@ -689,8 +760,11 @@ class CommandManager:
             command.refresh_status()
             if command.process.poll() is not None:
                 with self.lock:
-                    self.active.pop(command.command_id, None)
-                    self.retained[command.command_id] = command
+                    # kill_command may evict a command while refresh_status
+                    # runs outside the manager lock. Never resurrect it.
+                    if self.active.get(command.command_id) is command:
+                        self.active.pop(command.command_id)
+                        self.retained[command.command_id] = command
         cutoff = time.time() - COMPLETED_COMMAND_TTL_SECONDS
         with self.lock:
             expired = [
@@ -714,8 +788,13 @@ class CommandManager:
         terminal = payload.get("operation_outcome") != "running"
         if terminal:
             with self.lock:
-                self.active.pop(command.command_id, None)
-                self.retained[command.command_id] = command
+                # A concurrent kill may have explicitly evicted this run.
+                # Preserve that decision rather than re-inserting its output.
+                if self.active.get(command.command_id) is command:
+                    self.active.pop(command.command_id)
+                    self.retained[command.command_id] = command
+                elif self.retained.get(command.command_id) is command:
+                    self.retained.move_to_end(command.command_id)
         else:
             payload["next_action"] = {
                 "tool": "write_stdin",
@@ -750,11 +829,27 @@ class CommandManager:
             return
 
         def watchdog() -> None:
-            delay = max(0.0, command.timeout_at - time.time())
+            delay = max(0.0, (
+                command.timeout_monotonic_at - time.monotonic()
+                if command.timeout_monotonic_at is not None
+                else command.timeout_at - time.time()
+            ))
             try:
                 command.process.wait(timeout=delay)
             except subprocess.TimeoutExpired:
-                command.request_termination(signal.SIGTERM, source="command_timeout")
+                if command.request_termination(signal.SIGTERM, source="command_timeout"):
+                    try:
+                        command.process.wait(timeout=COMMAND_TIMEOUT_GRACE_SECONDS)
+                    except subprocess.TimeoutExpired:
+                        # Do not let a child that ignores TERM consume an active
+                        # slot forever. Reuse this watchdog; no extra thread.
+                        command.request_termination(
+                            HARD_KILL_SIGNAL, source="command_timeout", force=True,
+                        )
+                        try:
+                            command.process.wait(timeout=COMMAND_TIMEOUT_GRACE_SECONDS)
+                        except subprocess.TimeoutExpired:
+                            pass
             command.refresh_status()
 
         threading.Thread(target=watchdog, daemon=True).start()

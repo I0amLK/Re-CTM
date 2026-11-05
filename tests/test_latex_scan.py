@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from re_ctm.enums import LatexPolicy, NativeMode
+from re_ctm.enums import LatexPolicy
 from re_ctm.latex import LatexGate, static_latex_errors
 from re_ctm.latex_scan import scan_source
 
@@ -344,26 +344,30 @@ class LatexLiteralScanTestCase(unittest.TestCase):
             "forbidden LaTeX operation: bibliography_file",
         ])
 
-    def test_original_source_reaches_isolated_compiler_unchanged(self) -> None:
+    def test_original_source_reaches_host_compiler_unchanged(self) -> None:
         source = VERBATIM_APPENDIX.replace(r"\bibliography{references}", "References example.")
         source = source.replace(r"\input{literal}", r"\begin{document}")
         source = source.replace("Inline example:", "中文 inline example:").replace("\n", "\r\n")
         with tempfile.TemporaryDirectory() as temp:
-            with patch("re_ctm.latex.shutil.which", side_effect=lambda name: f"/usr/bin/{name}"):
-                with patch("re_ctm.latex.BubblewrapExecBackend") as backend_class:
-                    backend = backend_class.return_value
+            with patch("re_ctm.latex.find_host_executable", return_value=Path("/fixture/latexmk")), \
+                    patch("re_ctm.latex.prepare_host_command", side_effect=lambda invocation, **kwargs: (invocation.argv, ())), \
+                    patch("re_ctm.latex.CommandManager") as manager_class:
+                    manager = manager_class.return_value
 
-                    def execute(*, workspace: Path, **kwargs: object) -> dict[str, object]:
+                    def execute(command: list[str], *, cwd: str, **kwargs: object) -> dict[str, object]:
+                        workspace = Path(cwd)
                         self.assertEqual((workspace / "proof.tex").read_bytes(), source.encode("utf-8"))
-                        self.assertIn("-no-shell-escape", kwargs["argv"])
-                        self.assertEqual(kwargs["mode"], NativeMode.SAFE)
-                        backend.attest.assert_called_once()
-                        (workspace / "proof.pdf").write_bytes(b"mock PDF")
-                        return {"exit_code": 0, "timed_out": False, "stdout": "", "stderr": ""}
+                        self.assertIn("-no-shell-escape", command)
+                        self.assertIn("-norc", command)
+                        self.assertFalse(kwargs["creator_thread_required"])
+                        self.assertEqual(kwargs["env"]["openin_any"], "p")
+                        (workspace / "proof.pdf").write_bytes(b"%PDF-fixture")
+                        return {"status": "exited", "exit_code": 0, "timed_out": False, "stdout": "", "stderr": ""}
 
-                    backend.execute.side_effect = execute
+                    manager.start.side_effect = execute
                     result = LatexGate(LatexPolicy.REQUIRED).validate(source, Path(temp))
-                    backend.execute.assert_called_once()
+                    manager.start.assert_called_once()
+                    manager.close.assert_called_once()
         self.assertTrue(result.static_valid)
         self.assertTrue(result.compile_attempted)
         self.assertTrue(result.gate_passed)
@@ -371,13 +375,21 @@ class LatexLiteralScanTestCase(unittest.TestCase):
     def test_static_rejection_never_invokes_compiler(self) -> None:
         source = document(r"\openout1=file")
         with tempfile.TemporaryDirectory() as temp:
-            with patch("re_ctm.latex.shutil.which", side_effect=lambda name: f"/usr/bin/{name}"):
-                with patch("re_ctm.latex.BubblewrapExecBackend") as backend_class:
+            with patch("re_ctm.latex.find_host_executable", return_value=Path("/fixture/latexmk")):
+                with patch("re_ctm.latex.CommandManager") as manager_class:
                     result = LatexGate(LatexPolicy.REQUIRED).validate(source, Path(temp))
-                    backend_class.assert_not_called()
+                    manager_class.assert_not_called()
         self.assertFalse(result.static_valid)
         self.assertFalse(result.compile_attempted)
         self.assertFalse(result.gate_passed)
+
+    def test_class_and_package_loads_require_literal_search_path_names(self) -> None:
+        for loader in ("documentclass", "usepackage", "RequirePackage", "LoadClass", "RequirePackageWithOptions", "LoadClassWithOptions"):
+            for argument in ("/tmp/external", "../external", r"\dynamic", "{nested}", "file:external"):
+                with self.subTest(loader=loader, argument=argument):
+                    errors = static_latex_errors(document("\\" + loader + "{" + argument + "}"))
+                    self.assertIn("external_or_dynamic_class_package", " ".join(errors))
+        self.assertEqual(static_latex_errors(document(r"\usepackage[options]{amsmath,amssymb}")), [])
 
 
 if __name__ == "__main__":

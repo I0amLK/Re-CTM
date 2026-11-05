@@ -19,13 +19,15 @@ from . import ctm_compat
 from .debug import DebugEventBus, new_trace_id
 from .enums import NativeMode
 from .errors import ReCTMError, invalid_argument
-from .native_helper_bwrap import _bubblewrap_command, _helper_child_env
 from .native_changes import NativeTransaction
 from .native_replay import NativeReplay
-from .native_exec import ExecInvocation, collect_executable_facts
+from .native_exec import ExecInvocation, collect_executable_facts, prepare_host_command
 from .toolchains import DEFAULT_SANDBOX_PATH
 from .processes import CommandManager, MAX_ACTIVE_COMMANDS
-from .toolchains import ToolchainExposurePlan, build_toolchain_exposure_plan
+from .toolchains import (
+    ToolchainExposurePlan, build_toolchain_exposure_plan,
+    host_command_environment, host_toolchain_summary,
+)
 
 
 DEFAULT_EXCLUDED = {
@@ -52,6 +54,19 @@ _REQUIRED_ATTESTATION_TRUE = {
     "user_namespace",
     "pid_namespace",
 }
+
+
+def _bubblewrap_command(**arguments: Any) -> list[str]:
+    """Lazy compatibility entry for historical isolated-adapter regressions."""
+    from .native_helper_bwrap import _bubblewrap_command as legacy_command
+
+    return legacy_command(**arguments)
+
+
+def _helper_child_env() -> dict[str, str]:
+    from .native_helper_bwrap import _helper_child_env as legacy_environment
+
+    return legacy_environment()
 
 
 @dataclass(frozen=True)
@@ -390,14 +405,28 @@ class DisabledExecBackend:
     ) -> dict[str, Any]:
         raise ReCTMError(
             "NATIVE_ISOLATION_REQUIRED",
-            "Native command execution is disabled until an external hard-isolation backend is configured and manually validated.",
+            "Native command execution is disabled. Explicitly select RE_CTM_NATIVE_EXEC_BACKEND=host to allow service-account host execution without an OS sandbox.",
             category="security",
-            details={"mode": mode.value, "manual_validation_required": True},
+            details={"mode": mode.value, "backend": "disabled", "host_opt_in_required": True},
         )
 
 
+class HostExecBackend:
+    """Explicit same-account execution using the existing CommandManager.
+
+    No attestation is issued: workspace checks constrain request paths and
+    direct file tools, not the filesystem access of a host child process.
+    """
+
+    def __init__(self, *, extra_roots: Iterable[Path] = ()) -> None:
+        self.base_environment = host_command_environment(extra_roots=extra_roots)
+
+    def child_environment(self, overrides: Mapping[str, str]) -> dict[str, str]:
+        return {**self.base_environment, **overrides}
+
+
 class ExternalHelperExecBackend:
-    """JSON helper protocol; the helper owns the OS-level isolation boundary.
+    """Historical JSON helper adapter, no longer selectable by Settings.
 
     The helper is trusted, but every reply is still nonce-bound and checked
     for the minimum properties required by the Re-CTM authorization axioms.
@@ -585,7 +614,7 @@ class ExternalHelperExecBackend:
 
 
 class BubblewrapExecBackend(ExternalHelperExecBackend):
-    """Built-in Linux helper transported through a separate Python process."""
+    """Historical Linux adapter retained for isolated-backend regressions only."""
 
     def __init__(
         self,
@@ -731,7 +760,7 @@ class NativeRuntime:
         mode: NativeMode,
         debug: DebugEventBus,
         *,
-        exec_backend: NativeExecBackend | None = None,
+        exec_backend: NativeExecBackend | HostExecBackend | None = None,
     ) -> None:
         self.workspace = workspace
         self.mode = mode
@@ -769,11 +798,14 @@ class NativeRuntime:
             "workspace": str(self.workspace.root),
             "native_mode": self.mode.value,
             "workflow_authority_inherited": False,
-            "private_vault_visible": False,
+            "private_vault_visible": isinstance(self.exec_backend, HostExecBackend),
+            "os_sandbox": False if isinstance(self.exec_backend, (HostExecBackend, DisabledExecBackend)) else None,
             "native_exec_backend": type(self.exec_backend).__name__,
             "native_exec_attestation": attestation,
             "toolchain_exposure": (
-                exposure_plan.summary(include_paths=False)
+                host_toolchain_summary(self.exec_backend.base_environment)
+                if isinstance(self.exec_backend, HostExecBackend)
+                else exposure_plan.summary(include_paths=False)
                 if isinstance(exposure_plan, ToolchainExposurePlan)
                 else {
                     "policy": "unavailable",
@@ -801,15 +833,22 @@ class NativeRuntime:
         _ = arguments
         raw_attestation = getattr(self.exec_backend, "attestation", None)
         exposure_plan = getattr(self.exec_backend, "exposure_plan", None)
+        host = isinstance(self.exec_backend, HostExecBackend)
+        disabled = isinstance(self.exec_backend, DisabledExecBackend)
+        environment = self.exec_backend.base_environment if host else {}
         global_tmp = {
             NativeMode.SAFE: "blocked",
             NativeMode.TRUSTED: "tmp-prefix",
             NativeMode.DANGEROUS: "allowed",
         }[self.mode]
         warnings: list[str] = []
-        if self.mode is NativeMode.DANGEROUS:
-            warnings.append("permission_mode=dangerous disables MCP safety gates")
-        if not isinstance(self.exec_backend, BubblewrapExecBackend):
+        if host:
+            warnings.append(
+                "Host execution has no OS sandbox. Commands use the service account's permissions, including access to same-account private state; Rethlas API authorization remains independent."
+            )
+        elif disabled:
+            warnings.append("Native execution is disabled; explicitly select the host backend to enable it.")
+        elif not isinstance(self.exec_backend, BubblewrapExecBackend):
             warnings.append(
                 "Full interactive command lifecycle requires the built-in bubblewrap backend; disabled/external helpers may execute synchronously only."
             )
@@ -818,25 +857,30 @@ class NativeRuntime:
             "native_mode": self.mode.value,
             "permission_mode": self.mode.value,
             "workspace": str(self.workspace.root),
-            "network_allowed": self.mode is not NativeMode.SAFE,
-            "runtime_dir": "/tmp",
-            "home": "/home/re-ctm",
-            "tmpdir": "/tmp",
-            "cache_dir": "/tmp/cache",
+            "network_allowed": None if disabled else self.mode is not NativeMode.SAFE,
+            "runtime_dir": environment.get("XDG_RUNTIME_DIR") if host or disabled else "/tmp",
+            "home": environment.get("HOME") if host or disabled else "/home/re-ctm",
+            "tmpdir": (environment.get("TMPDIR") or tempfile.gettempdir()) if host else None if disabled else "/tmp",
+            "cache_dir": environment.get("XDG_CACHE_HOME") if host or disabled else "/tmp/cache",
+            "effective_path": environment.get("PATH"),
             "native_exec_backend": type(self.exec_backend).__name__,
             "hard_isolation_attested": bool(
                 isinstance(raw_attestation, Mapping)
                 and raw_attestation.get("hard_isolation") is True
                 and raw_attestation.get("private_vault_mounted") is False
             ),
-            "command_lifecycle_supported": isinstance(self.exec_backend, BubblewrapExecBackend),
+            "command_execution_available": not disabled,
+            "command_lifecycle_supported": host or isinstance(self.exec_backend, BubblewrapExecBackend),
             "max_active_commands": MAX_ACTIVE_COMMANDS,
-            "private_vault_visible": False,
+            "private_vault_visible": host,
+            "os_sandbox": False if host or disabled else None,
             "landlock_enabled": False,
             "landlock_abi": None,
-            "global_tmp_write": global_tmp,
+            "global_tmp_write": "host_account_permissions" if host else "unavailable" if disabled else global_tmp,
             "toolchain_exposure": (
-                exposure_plan.summary(include_paths=True)
+                host_toolchain_summary(environment, include_paths=True)
+                if host
+                else exposure_plan.summary(include_paths=True)
                 if isinstance(exposure_plan, ToolchainExposurePlan)
                 else {
                     "policy": "unavailable",
@@ -1120,6 +1164,8 @@ class NativeRuntime:
             raise ReCTMError("NOT_A_DIRECTORY", "workdir is not a directory.", category="validation")
         policy_text = invocation.cmd if invocation.cmd is not None else " ".join(invocation.argv)
         ctm_compat.check_command_policy(self.mode.value, policy_text, invocation.environment)
+        if isinstance(self.exec_backend, HostExecBackend):
+            return self._exec_host(invocation, resolved, policy_text=policy_text, trace_id=trace_id)
         if isinstance(self.exec_backend, DisabledExecBackend):
             return self.exec_backend.execute(
                 workspace=self.workspace.root, argv=invocation.argv, workdir=resolved.display,
@@ -1201,6 +1247,45 @@ class NativeRuntime:
                 "command_id", "operation_outcome", "status", "exit_code", "signal", "timed_out", "elapsed_ms", "termination",
             )})
         return result
+
+    def _exec_host(
+        self, invocation: ExecInvocation, resolved: NativePath, *, policy_text: str, trace_id: str,
+    ) -> dict[str, Any]:
+        if self.mode is not NativeMode.DANGEROUS:
+            raise ReCTMError(
+                "INVALID_NATIVE_MODE", "Host execution requires Native dangerous mode.", category="validation",
+            )
+        assert isinstance(self.exec_backend, HostExecBackend)
+        environment = self.exec_backend.child_environment(invocation.environment)
+        command_argv, facts = prepare_host_command(invocation, workdir=resolved.path, environment=environment)
+        self.debug.emit(
+            "native.exec_requested", "native_runtime", trace_id=trace_id, decision="allow",
+            reason="explicit_host_execution_without_os_sandbox", details={
+                "mode": self.mode.value,
+                "command_sha256": hashlib.sha256(policy_text.encode("utf-8")).hexdigest(),
+                "workdir": resolved.display, "timeout_ms": invocation.timeout_ms, "tty": invocation.tty,
+                "hard_isolation": False, "workflow_authority_inherited": False,
+            },
+        )
+        current_argv, current_facts = prepare_host_command(invocation, workdir=resolved.path, environment=environment)
+        if current_facts != facts or current_argv != command_argv:
+            raise ReCTMError("NATIVE_EXECUTABLE_CHANGED", "Command executable metadata changed before start.", category="security")
+        try:
+            return self.command_manager.start(
+                command_argv, env=environment, cwd=str(resolved.path), creator_thread_required=False,
+                timeout_ms=invocation.timeout_ms, yield_time_ms=invocation.yield_time_ms,
+                max_output_bytes=invocation.max_output_bytes, stdin_text=invocation.stdin,
+                tty=invocation.tty, verbosity=invocation.verbosity, preview_bytes=invocation.preview_bytes,
+            )
+        except OSError as exc:
+            self.debug.emit(
+                "native.exec_spawn_failed", "native_runtime", trace_id=trace_id, decision="deny",
+                reason="host_process_creation_failed", details={"errno": exc.errno},
+            )
+            raise ReCTMError(
+                "NATIVE_EXEC_SPAWN_FAILED", "The host process could not be started.",
+                category="runtime", details={"errno": exc.errno},
+            ) from exc
 
     def write_stdin(self, **arguments: Any) -> dict[str, Any]:
         return self.command_manager.poll(

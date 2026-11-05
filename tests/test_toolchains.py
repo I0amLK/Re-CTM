@@ -18,7 +18,7 @@ from re_ctm.toolchains import (
 class ToolchainExposurePolicyTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.workspace = self.root / "workspace"
         self.data = self.root / "server-data"
         self.private = self.data / "private"

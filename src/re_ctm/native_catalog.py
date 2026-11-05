@@ -58,7 +58,7 @@ _METADATA = (
     (
         'check_exec_environment',
         'Check exec environment',
-        'Read the actual Native sandbox PATH, exposed toolchain roots and execution capabilities before choosing a program. Do not assume the host login shell and sandbox are identical.',
+        'Read the selected Native backend, actual base child PATH and lifecycle capabilities before choosing a program. Host execution uses service-account permissions without an OS sandbox; same-account private files may be accessible. Per-command env.PATH replaces the reported base PATH. Disabled execution reports unavailable capabilities.',
         True,
         False,
         False,
@@ -121,7 +121,7 @@ _METADATA = (
     (
         'exec_command',
         'Execute command',
-        'Run a bounded Native command. Supply exactly one of argv (literal program and arguments) or cmd (non-login /bin/sh -c, no profile-based PATH reset). Prefer argv for a single program. workdir/cwd must be workspace-relative; use . for the workspace root and never pass the absolute host path from server_info.workspace. Set workdir and any env.PATH explicitly; executable checks use that same PATH. Poll command_id with write_stdin and page output_ref with read_output; never restart just to obtain output. A transport failure has unknown outcome. For unresolved executables inspect check_exec_environment and correct the request, not permissions.',
+        'Run a bounded Native command with the explicitly selected host backend, without an OS sandbox. Supply exactly one of argv (literal program and arguments) or cmd (non-login /bin/sh -c, no profile-based PATH reset). Prefer argv for a single program; its executable may be an absolute host path or a name resolved in the actual child PATH. workdir/cwd must be workspace-relative; use . for the workspace root. This starting-directory constraint does not confine host process access. env.PATH replaces the base PATH. Poll command_id with write_stdin and page output_ref with read_output; never restart just to obtain output. A transport failure has unknown outcome. For unresolved executables inspect check_exec_environment and correct the request.',
         False,
         True,
         True,
@@ -344,7 +344,8 @@ def _output_properties(name: str) -> dict[str, Any]:
         },
         "check_exec_environment": {
             "string": "native_mode permission_mode native_exec_backend",
-            "boolean": "private_vault_visible network_allowed", "array": "warnings",
+            "boolean": "private_vault_visible hard_isolation_attested command_execution_available command_lifecycle_supported",
+            "object": "toolchain_exposure", "array": "warnings",
         },
         "read_file": {
             "string": "path content revision sha256", "integer": "start_line end_line total_lines total_bytes line_byte_offset",
@@ -375,6 +376,9 @@ def _output_properties(name: str) -> dict[str, Any]:
     }
     kind = {"apply_changes": "apply_patch", "write_stdin": "exec_command", "kill_command": "exec_command"}.get(name, name)
     result = {key: {"type": data_type} for data_type, keys in fields[kind].items() for key in keys.split()}
+    if kind == "check_exec_environment":
+        result.update({key: {"type": ["boolean", "null"]} for key in ("network_allowed", "os_sandbox")})
+        result.update({key: {"type": ["string", "null"]} for key in ("effective_path", "home", "runtime_dir", "tmpdir", "cache_dir")})
     if kind in {"apply_patch", "read_file"}:
         result["revision_algorithm"] = _choice("sha256")
     if kind == "read_file":

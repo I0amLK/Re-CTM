@@ -44,8 +44,8 @@ jobs:
 
       - name: Verify installed command surfaces
         run: |
+          re-ctm --version
           re-ctm --help
-          re-ctm-native-helper --version
 
       - name: Upload validation evidence
         uses: actions/upload-artifact@v4
@@ -60,14 +60,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Confirm manual validation remains explicit
-        run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-
-          payload = json.loads(Path("manual-validation.json").read_text())
-          assert payload["status"] == "pending_post_push"
-          assert payload["checks"]
-          assert all(item["status"] in {"pending", "passed", "failed"} for item in payload["checks"])
-          print("manual validation boundary is explicit")
-          PY
+        run: python scripts/validate_documentation_consistency.py

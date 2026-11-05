@@ -1,3 +1,15 @@
+# Current candidate: 0.5.0rc1
+
+The user requested installation artifacts and will perform subsequent validation.
+Use [RELEASE_NOTES.md](../RELEASE_NOTES.md) for the current wheel and fresh-root
+installation instructions. This package-preparation phase does not install,
+execute or qualify the candidate. Current acceptance is pending in
+`manual-validation.json`; earlier 0.4.1/dev03 evidence is historical. The Linux
+Bubblewrap target drivers below describe older candidates and must not be used
+to claim acceptance of the explicit host backend.
+
+---
+
 # Target validation for Re-CTM 0.4.1
 
 ## Current status

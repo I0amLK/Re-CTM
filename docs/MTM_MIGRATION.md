@@ -1,5 +1,15 @@
 # MTM contract migration: source integration
 
+**OPT-027 update (2026-11-05):** the Native isolation/executable-view description
+below records the earlier Linux contract. Current source explicitly selects
+host/disabled, defaults to disabled, and uses actual host child PATH/cwd without
+an OS sandbox; LaTeX independently uses host latexmk. Legacy backend/helper and
+attestation settings are rejected. The tool catalog and Rethlas API authority
+remain unchanged. Current Mac source checks and actual host/required-LaTeX probes
+have subsequently passed; installed/browser/mathematical acceptance is pending. See
+[DEVELOPMENT_STATUS.md](../DEVELOPMENT_STATUS.md). Historical Linux evidence does
+not qualify this candidate.
+
 The user explicitly authorized migration to MTM's new contracts on 2026-10-14.
 The reference is MTM commit `b5dbd2577869d2aaf7b0933373df6671d104581c`, including
 `docs/MTM-018-CTM-050-INTEGRATION.md`. This is a source update, not installation,

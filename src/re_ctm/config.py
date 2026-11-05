@@ -5,9 +5,7 @@ import hashlib
 import ipaddress
 import os
 import secrets
-import shutil
 import stat
-import sys
 import tempfile
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -78,7 +76,7 @@ class Settings:
     workflow_protocol_version: int = 3
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls, *, backend_override: str | None = None) -> "Settings":
         workspace = Path(os.environ.get("RE_CTM_WORKSPACE") or os.getcwd()).expanduser().resolve()
         data_root = Path(os.environ.get("RE_CTM_DATA_ROOT") or "~/.re-ctm").expanduser().resolve()
         private_root = Path(
@@ -94,12 +92,9 @@ class Settings:
         raw_protocol = os.environ.get("RE_CTM_WORKFLOW_PROTOCOL_VERSION", "3")
         if raw_protocol not in {"2", "3"}:
             raise ReCTMError("INVALID_WORKFLOW_PROTOCOL", "RE_CTM_WORKFLOW_PROTOCOL_VERSION must be 2 or 3.", category="validation")
-        configured_backend = (os.environ.get("RE_CTM_NATIVE_EXEC_BACKEND") or "").strip()
-        native_exec_backend = configured_backend or (
-            "bubblewrap"
-            if sys.platform.startswith("linux") and shutil.which("bwrap") is not None
-            else "disabled"
-        )
+        configured_backend = (backend_override if backend_override is not None else os.environ.get("RE_CTM_NATIVE_EXEC_BACKEND") or "").strip()
+        # Host execution is an explicit operator choice on every platform.
+        native_exec_backend = configured_backend or "disabled"
         latex_policy = LatexPolicy(
             os.environ.get("RE_CTM_LATEX_POLICY") or LatexPolicy.REQUIRED
         )
@@ -189,30 +184,24 @@ class Settings:
                     "private_root": str(self.private_root),
                 },
             )
-        if self.native_exec_backend not in {"disabled", "external", "bubblewrap"}:
+        if self.native_exec_backend not in {"disabled", "host"}:
             raise ReCTMError(
                 "INVALID_NATIVE_EXEC_BACKEND",
-                "RE_CTM_NATIVE_EXEC_BACKEND must be disabled, external, or bubblewrap.",
+                "RE_CTM_NATIVE_EXEC_BACKEND must be disabled or host. Legacy bubblewrap/external configurations are retired; select host explicitly only after accepting same-account host access without an OS sandbox.",
                 category="validation",
                 details={"backend": self.native_exec_backend},
             )
-        if self.native_exec_backend == "external" and not self.native_isolation_attested:
+        if self.native_isolation_attested or self.native_exec_helper is not None:
             raise ReCTMError(
-                "NATIVE_ISOLATION_REQUIRED",
-                "External native command execution requires an explicitly attested hard-isolation backend.",
-                category="security",
+                "INVALID_NATIVE_EXEC_BACKEND",
+                "Remove retired RE_CTM_NATIVE_EXEC_HELPER and RE_CTM_NATIVE_ISOLATION_ATTESTED settings. Host mode provides no OS sandbox or isolation attestation.",
+                category="validation",
                 details={"backend": self.native_exec_backend},
             )
-        if self.native_exec_backend == "external" and self.native_exec_helper is None:
-            raise ReCTMError(
-                "NATIVE_HELPER_REQUIRED",
-                "RE_CTM_NATIVE_EXEC_HELPER is required for the external backend.",
-                category="validation",
-            )
-        if self.native_exec_allow_roots and self.native_exec_backend != "bubblewrap":
+        if self.native_exec_allow_roots and self.native_exec_backend != "host":
             raise ReCTMError(
                 "NATIVE_TOOLCHAIN_ROOTS_UNSUPPORTED",
-                "RE_CTM_NATIVE_EXEC_ALLOW_ROOTS currently requires the built-in Bubblewrap backend.",
+                "RE_CTM_NATIVE_EXEC_ALLOW_ROOTS requires the host backend; roots extend program discovery and do not restrict host access.",
                 category="validation",
                 details={"backend": self.native_exec_backend},
             )

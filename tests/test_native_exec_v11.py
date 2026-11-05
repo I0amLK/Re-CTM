@@ -71,7 +71,7 @@ class ExecInvocationV11Tests(unittest.TestCase):
 class ExecutableFactsV11Tests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.work = self.root / "workspace"
         self.private = self.root / "private"
         self.work.mkdir(); self.private.mkdir()

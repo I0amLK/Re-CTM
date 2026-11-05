@@ -41,7 +41,7 @@ class ReleaseTargetChecksTests(unittest.TestCase):
 
     def test_snapshot_excludes_private_state_and_preserves_original_report(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             source, copy = root / "source", root / "copy"
             source.mkdir()
             (source / "src").mkdir()
@@ -62,7 +62,7 @@ class ReleaseTargetChecksTests(unittest.TestCase):
     @unittest.skipUnless(hasattr(os, "symlink"), "Symlinks unavailable")
     def test_snapshot_rejects_symlinked_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             (root / "src").mkdir()
             (root / "outside.py").write_text("secret")
             (root / "src/leak.py").symlink_to(root / "outside.py")
@@ -71,7 +71,7 @@ class ReleaseTargetChecksTests(unittest.TestCase):
 
     def test_json_refuses_to_overwrite_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "report.json"
+            path = Path(directory).resolve() / "report.json"
             path.write_text("keep")
             with self.assertRaises(FileExistsError):
                 driver._json(path, {"replace": True})
@@ -79,13 +79,13 @@ class ReleaseTargetChecksTests(unittest.TestCase):
 
     def test_snapshot_rejects_source_destination_overlap(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             with self.assertRaises(ValueError):
                 driver._snapshot(root, root / "nested")
 
     def test_environment_has_no_real_secrets_or_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             with mock.patch.dict(os.environ, {
                 "RE_CTM_OAUTH_PASSWORD": "real-secret", "RE_CTM_DATA_ROOT": "/production",
                 "HTTPS_PROXY": "http://user:secret@proxy", "PIP_INDEX_URL": "https://private/",
@@ -100,7 +100,7 @@ class ReleaseTargetChecksTests(unittest.TestCase):
 
     def test_command_records_full_separate_streams(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             result = driver._command(
                 "fixture", [sys.executable, "-c", "import sys;print('out');print('err',file=sys.stderr)"],
                 cwd=root, environment=driver._environment(root, root),
@@ -113,7 +113,7 @@ class ReleaseTargetChecksTests(unittest.TestCase):
 
     def test_timeout_is_failed_and_owned_process_is_reaped(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             result = driver._command(
                 "timeout", [sys.executable, "-c", "import time; time.sleep(30)"],
                 cwd=root, environment=driver._environment(root, root),
@@ -127,7 +127,7 @@ class ReleaseTargetChecksTests(unittest.TestCase):
         from re_ctm.enums import LatexPolicy
         from re_ctm.errors import ReCTMError
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "strict.json"
+            path = Path(directory).resolve() / "strict.json"
             with mock.patch("re_ctm.app.build_application", side_effect=ReCTMError(
                 "NATIVE_ISOLATION_REQUIRED", "Fixture attestation denied", category="security",
             )) as build:
@@ -143,7 +143,7 @@ class ReleaseTargetChecksTests(unittest.TestCase):
 
     def test_control_plane_fixture_reports_static_only_without_browser_claim(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "fixture.json"
+            path = Path(directory).resolve() / "fixture.json"
             self.assertEqual(driver._fixture(path, control_plane_only=True), 0)
             result = json.loads(path.read_text())
             self.assertTrue(result["passed"])

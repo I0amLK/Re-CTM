@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 
 from .capabilities import CapabilityAuthority
@@ -9,9 +8,8 @@ from .debug import DebugEventBus, DebugObserver
 from .latex import LatexGate
 from .mcp import MCPDispatcher
 from .native import (
-    BubblewrapExecBackend,
     DisabledExecBackend,
-    ExternalHelperExecBackend,
+    HostExecBackend,
     NativeRuntime,
     NativeWorkspace,
 )
@@ -19,7 +17,7 @@ from .oauth import OAuthService, OAuthStore
 from .research import PaperSearchClient, ResearchHub, TheoremSearchClient
 from .storage import StateStore
 from .tools import ToolRuntime
-from .toolchains import build_toolchain_exposure_plan
+from .toolchains import host_command_environment
 from .vault import PrivateVault
 from .workflow import WorkflowEngine
 
@@ -70,7 +68,7 @@ def build_application(
         vault,
         capability,
         debug,
-        LatexGate(settings.latex_policy),
+        LatexGate(settings.latex_policy, environment=host_command_environment(extra_roots=settings.native_exec_allow_roots)),
         ResearchHub(
             TheoremSearchClient(
                 settings.theorem_search_url,
@@ -80,34 +78,14 @@ def build_application(
         ),
     )
     workspace = NativeWorkspace(settings.workspace, private_root=settings.private_root)
-    if settings.native_exec_backend == "external":
-        assert settings.native_exec_helper is not None
-        exec_backend = ExternalHelperExecBackend(settings.native_exec_helper)
-        exec_backend.attest(
-            workspace=settings.workspace,
-            forbidden_paths=(settings.data_root, settings.private_root),
-        )
-    elif settings.native_exec_backend == "bubblewrap":
-        exposure_plan = build_toolchain_exposure_plan(
-            mode=settings.native_mode,
-            workspace=settings.workspace,
-            forbidden_paths=(settings.data_root, settings.private_root),
-            explicit_roots=settings.native_exec_allow_roots,
-            host_path=os.environ.get("PATH", ""),
-        )
-        exec_backend = BubblewrapExecBackend(
-            exposure_plan=exposure_plan,
-        )
-        exec_backend.attest(
-            workspace=settings.workspace,
-            forbidden_paths=(settings.data_root, settings.private_root),
-        )
+    if settings.native_exec_backend == "host":
+        exec_backend = HostExecBackend(extra_roots=settings.native_exec_allow_roots)
         debug.emit(
-            "native.toolchain_exposure_planned",
+            "native.host_execution_selected",
             "application",
             decision="allow",
-            reason="validated_read_only_toolchain_mount_plan",
-            details=exposure_plan.summary(include_paths=False),
+            reason="explicit_host_backend_without_os_sandbox",
+            details={"hard_isolation": False, "workflow_authority_inherited": False},
         )
     else:
         exec_backend = DisabledExecBackend()

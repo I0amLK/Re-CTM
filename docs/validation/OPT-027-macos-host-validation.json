@@ -1,0 +1,538 @@
+{
+  "candidate": "OPT-027-host-dev03-source",
+  "generated_at": "2026-11-04T20:15:38.670306Z",
+  "environment": {
+    "python": "3.14.9 | packaged by Anaconda, Inc. | (main, Oct 23 2026, 01:02:22) [Clang 20.1.8 ]",
+    "platform": "macOS-27.2-arm64-arm-64bit-Mach-O"
+  },
+  "scope": "Actual current Mac source over loopback OAuth/MCP; fresh disposable state; no installed-package, browser or independent mathematical-quality acceptance.",
+  "os_sandbox": false,
+  "production_re_ctm_state_accessed": false,
+  "checks": [
+    {
+      "name": "explicit_host_without_os_sandbox",
+      "passed": true,
+      "details": {
+        "attestation": null
+      }
+    },
+    {
+      "name": "synchronous_success",
+      "passed": true,
+      "details": {
+        "result": {
+          "operation_outcome": "exited_0",
+          "exit_code": 0,
+          "signal": null,
+          "timed_out": false,
+          "elapsed_ms": 637,
+          "termination": {
+            "source": null,
+            "requested_timeout_ms": 5000,
+            "elapsed_ms": 637,
+            "observed_signal": null,
+            "term_sent_by_re_ctm": false,
+            "kill_sent_by_re_ctm": false
+          }
+        }
+      }
+    },
+    {
+      "name": "async_short_yield_success",
+      "passed": true,
+      "details": {
+        "initial": {
+          "operation_outcome": "running",
+          "exit_code": null,
+          "signal": null,
+          "timed_out": false,
+          "elapsed_ms": 58,
+          "termination": {
+            "source": null,
+            "requested_timeout_ms": 5000,
+            "elapsed_ms": 58,
+            "observed_signal": null,
+            "term_sent_by_re_ctm": false,
+            "kill_sent_by_re_ctm": false
+          }
+        },
+        "final": {
+          "operation_outcome": "exited_0",
+          "exit_code": 0,
+          "signal": null,
+          "timed_out": false,
+          "elapsed_ms": 631,
+          "termination": {
+            "source": null,
+            "requested_timeout_ms": 5000,
+            "elapsed_ms": 631,
+            "observed_signal": null,
+            "term_sent_by_re_ctm": false,
+            "kill_sent_by_re_ctm": false
+          }
+        }
+      }
+    },
+    {
+      "name": "async_success_after_ready_and_http_request_return",
+      "passed": true,
+      "details": {
+        "ready_in_initial_response": true,
+        "initial": {
+          "operation_outcome": "running",
+          "exit_code": null,
+          "signal": null,
+          "timed_out": false,
+          "elapsed_ms": 513,
+          "termination": {
+            "source": null,
+            "requested_timeout_ms": 5000,
+            "elapsed_ms": 513,
+            "observed_signal": null,
+            "term_sent_by_re_ctm": false,
+            "kill_sent_by_re_ctm": false
+          }
+        },
+        "final": {
+          "operation_outcome": "exited_0",
+          "exit_code": 0,
+          "signal": null,
+          "timed_out": false,
+          "elapsed_ms": 643,
+          "termination": {
+            "source": null,
+            "requested_timeout_ms": 5000,
+            "elapsed_ms": 643,
+            "observed_signal": null,
+            "term_sent_by_re_ctm": false,
+            "kill_sent_by_re_ctm": false
+          }
+        }
+      }
+    },
+    {
+      "name": "initial_stdin_after_request_return",
+      "passed": true,
+      "details": {
+        "result": {
+          "operation_outcome": "exited_0",
+          "exit_code": 0,
+          "signal": null,
+          "timed_out": false,
+          "elapsed_ms": 326,
+          "termination": {
+            "source": null,
+            "requested_timeout_ms": 5000,
+            "elapsed_ms": 326,
+            "observed_signal": null,
+            "term_sent_by_re_ctm": false,
+            "kill_sent_by_re_ctm": false
+          }
+        }
+      }
+    },
+    {
+      "name": "tty_stdin_in_later_http_request",
+      "passed": true,
+      "details": {
+        "result": {
+          "operation_outcome": "exited_0",
+          "exit_code": 0,
+          "signal": null,
+          "timed_out": false,
+          "elapsed_ms": 534,
+          "termination": {
+            "source": null,
+            "requested_timeout_ms": 5000,
+            "elapsed_ms": 534,
+            "observed_signal": null,
+            "term_sent_by_re_ctm": false,
+            "kill_sent_by_re_ctm": false
+          }
+        }
+      }
+    },
+    {
+      "name": "explicit_kill",
+      "passed": true,
+      "details": {
+        "result": {
+          "operation_outcome": "signal",
+          "exit_code": -9,
+          "signal": "SIGKILL",
+          "timed_out": false,
+          "elapsed_ms": 511,
+          "termination": {
+            "source": "explicit_kill",
+            "requested_timeout_ms": 5000,
+            "elapsed_ms": 511,
+            "observed_signal": "SIGKILL",
+            "term_sent_by_re_ctm": false,
+            "kill_sent_by_re_ctm": true
+          }
+        }
+      }
+    },
+    {
+      "name": "command_timeout",
+      "passed": true,
+      "details": {
+        "result": {
+          "operation_outcome": "timeout",
+          "exit_code": -15,
+          "signal": "SIGTERM",
+          "timed_out": true,
+          "elapsed_ms": 410,
+          "termination": {
+            "source": "command_timeout",
+            "requested_timeout_ms": 400,
+            "elapsed_ms": 410,
+            "observed_signal": "SIGTERM",
+            "term_sent_by_re_ctm": true,
+            "kill_sent_by_re_ctm": false
+          }
+        }
+      }
+    },
+    {
+      "name": "actual_host_git",
+      "passed": true,
+      "details": {
+        "executable": "/opt/homebrew/bin/git",
+        "result": {
+          "operation_outcome": "exited_0",
+          "exit_code": 0,
+          "signal": null,
+          "timed_out": false,
+          "elapsed_ms": 19,
+          "termination": {
+            "source": null,
+            "requested_timeout_ms": 180000,
+            "elapsed_ms": 19,
+            "observed_signal": null,
+            "term_sent_by_re_ctm": false,
+            "kill_sent_by_re_ctm": false
+          }
+        },
+        "stdout_sha256": "c9e40977101870d17ec3a0ac1e444ceb5e268d1c0a37d6edd8a5ed477734a53c",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "actual_host_python",
+      "passed": true,
+      "details": {
+        "executable": "/Users/lk/miniconda3/bin/python3",
+        "result": {
+          "operation_outcome": "exited_0",
+          "exit_code": 0,
+          "signal": null,
+          "timed_out": false,
+          "elapsed_ms": 22,
+          "termination": {
+            "source": null,
+            "requested_timeout_ms": 180000,
+            "elapsed_ms": 22,
+            "observed_signal": null,
+            "term_sent_by_re_ctm": false,
+            "kill_sent_by_re_ctm": false
+          }
+        },
+        "stdout_sha256": "f0b5c2c2211c8d67ed15e75e656c7862d086e9245420892a7de62cd9ec582a06",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "actual_host_sage_absolute",
+      "passed": true,
+      "details": {
+        "executable": "/Users/lk/miniconda3/envs/sage/bin/sage",
+        "result": {
+          "operation_outcome": "exited_0",
+          "exit_code": 0,
+          "signal": null,
+          "timed_out": false,
+          "elapsed_ms": 1631,
+          "termination": {
+            "source": null,
+            "requested_timeout_ms": 180000,
+            "elapsed_ms": 1631,
+            "observed_signal": null,
+            "term_sent_by_re_ctm": false,
+            "kill_sent_by_re_ctm": false
+          }
+        },
+        "stdout_sha256": "f0b5c2c2211c8d67ed15e75e656c7862d086e9245420892a7de62cd9ec582a06",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "actual_host_sage_per_call_path",
+      "passed": true,
+      "details": {
+        "executable": "sage",
+        "result": {
+          "operation_outcome": "exited_0",
+          "exit_code": 0,
+          "signal": null,
+          "timed_out": false,
+          "elapsed_ms": 1093,
+          "termination": {
+            "source": null,
+            "requested_timeout_ms": 180000,
+            "elapsed_ms": 1093,
+            "observed_signal": null,
+            "term_sent_by_re_ctm": false,
+            "kill_sent_by_re_ctm": false
+          }
+        },
+        "stdout_sha256": "f0b5c2c2211c8d67ed15e75e656c7862d086e9245420892a7de62cd9ec582a06",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "actual_host_magma",
+      "passed": true,
+      "details": {
+        "executable": "/Users/lk/.local/bin/magma",
+        "result": {
+          "operation_outcome": "exited_0",
+          "exit_code": 0,
+          "signal": null,
+          "timed_out": false,
+          "elapsed_ms": 1324,
+          "termination": {
+            "source": null,
+            "requested_timeout_ms": 180000,
+            "elapsed_ms": 1324,
+            "observed_signal": null,
+            "term_sent_by_re_ctm": false,
+            "kill_sent_by_re_ctm": false
+          }
+        },
+        "stdout_sha256": "f0b5c2c2211c8d67ed15e75e656c7862d086e9245420892a7de62cd9ec582a06",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "actual_required_latex_and_mechanical_workflow",
+      "passed": true,
+      "details": {
+        "latex": {
+          "policy": "required",
+          "static_valid": true,
+          "compile_available": true,
+          "compile_attempted": true,
+          "compile_passed": true,
+          "gate_passed": true
+        },
+        "final_sha256": "1a098cbc6044a98365e30e2c7d99f905ec1e3a668e665cd170a07d06d39e0a57",
+        "terminal_replay_unchanged": true
+      }
+    },
+    {
+      "name": "no_active_bubblewrap_helper_import",
+      "passed": true,
+      "details": {}
+    },
+    {
+      "name": "real_oauth_dcr_pkce_mcp",
+      "passed": true,
+      "details": {}
+    },
+    {
+      "name": "graceful_owned_host_command_cleanup",
+      "passed": true,
+      "details": {}
+    }
+  ],
+  "passed": true,
+  "source_sha256": {
+    "src/re_ctm/__init__.py": "0559f2386cac611de6a1ecaf33a2aeb66a61ea08a8e6619c94e341a777d99ea8",
+    "src/re_ctm/__main__.py": "9db74feb31653aa7028ab831a0843a1e259585d87b5119b918e5abe7f1309819",
+    "src/re_ctm/app.py": "5c93d2d3c90e73f6fadb46ef5376d35458c617b112977ead574449aec9c55898",
+    "src/re_ctm/capabilities.py": "b337038956e002225181794e1e1cd36275041a75c821ecd1f3426e97429ca7b2",
+    "src/re_ctm/cli.py": "f9d45fee2b68c5948e5350dec4994c1e1bb960492b6aac5bc9e122e63ecb1bec",
+    "src/re_ctm/config.py": "820ce07f406891c556159a4a85568a96ea6fab0ff3ecb602c77cb64355050555",
+    "src/re_ctm/ctm_compat.py": "a4063efa1e7c9d007d8151e09dfaff59b4e3bd65f5a12b76161e6e8e545abd8b",
+    "src/re_ctm/debug.py": "665e16d760b3c320ae72b31205d215e2b3069e5cf0caefb99e064d19826a49c4",
+    "src/re_ctm/diagnostics.py": "40c1e68484167744999c9660cc7f88074c1c4e4721d2e8d11a15e4f62cc5a5ed",
+    "src/re_ctm/engineering_graph.py": "2523b5e615480908d2d175cb75feb125035dc729fdd9424be58793bd3dfe1301",
+    "src/re_ctm/enums.py": "c663fd1b3b898844386045874faa932a7ba5126ebd53860ba8695132b785a7a3",
+    "src/re_ctm/errors.py": "390921c4b5853d865462751749b892e2e3366d6004e11708cc629bdc11a42e1a",
+    "src/re_ctm/fact_graph.py": "32c51618dd603f931ba435a20a2dcd4377fc9ca6785ca900fa9bac9d352e67f2",
+    "src/re_ctm/fact_memory.py": "be250917e2f3ab2208108da89b902a5c6faa2d7ce5f7eeda6e0f7ac9193450ef",
+    "src/re_ctm/fact_store.py": "60c23a4f5ba4b037166e2a2562812c55d22a3490823b68fb660daaed5c52d916",
+    "src/re_ctm/latex.py": "b124d76a383f86ac2758d105d54cef21aa2411a95abf1119850502387eb64148",
+    "src/re_ctm/latex_scan.py": "6e19ec2c1836a293b3f039c41befa5e383e293074bc53467f7c26ca6fbcea8e7",
+    "src/re_ctm/mcp.py": "c0798ddf80bf816c58068e8c3140822aaad1e40d2a4205f1f44b99a688af8775",
+    "src/re_ctm/methodology.py": "836a36f6cb53048f740b33794ce84d825abecc473e63f12442b030b1acac4e80",
+    "src/re_ctm/native.py": "8be17d5e68f67e24973bc55930e21872de832e55b7babc2bd9e5eeea1a3a846e",
+    "src/re_ctm/native_catalog.py": "664990376915a1c43e251e5d635f76ca0500996d77a5587028ff442b58ea5943",
+    "src/re_ctm/native_changes.py": "45290dd22b19cf51b9a265cb0046b9796ac2cce3565619ffa8f6c7e8c41b2ac8",
+    "src/re_ctm/native_exec.py": "af1b6eafe7f504082c3c056a2404af654de786c10058c0378506c3d6654208db",
+    "src/re_ctm/native_helper_bwrap.py": "38bd333d6191dece3f8acd1b75e55591ab3562b1f768d1cc8cd630e1a790defc",
+    "src/re_ctm/native_patch.py": "74bdad3f980489466b072b50e85472e3f099b8fedd173f6cb1c9fddbb9e1c5c7",
+    "src/re_ctm/native_replay.py": "6769933daec6bc351e21999b104e3da78948c48ea474d02cb609fc2b7e87fec5",
+    "src/re_ctm/oauth.py": "b31cc7b57f92ae85c4c08d1b2f89de75941b9e88076f5714c3b2eba60c65d320",
+    "src/re_ctm/processes.py": "194c703d1944ad7c356cb4d8e8e83034216fd93378c048e886792f76339e2e44",
+    "src/re_ctm/quick_tunnel.py": "3a691af4c553796424ee219987270dabf22dc8e1573c36605168b18c49a652f3",
+    "src/re_ctm/research.py": "afd3b24e591d0899c546cd93dd58832b456d089479cf2363656ac1fa7eb8580a",
+    "src/re_ctm/research_state/__init__.py": "9ca99cafeb514e40260757e2a7eb3b91963bb7b2c8892cd997a78bc7ce146617",
+    "src/re_ctm/research_state/model.py": "c3b09fbbb0db3b27f0ef3a707b6139819a8f8e09d5ec3535218b294be3769878",
+    "src/re_ctm/research_state/normalize.py": "0179e864cd88e088d2828fe3537d1d5b7c64e453d57fb8f305cec63134721843",
+    "src/re_ctm/research_state/protocol.py": "ac6d00212ca4b6ba36681cbc5de8f8e55743319f1d12776814d9ad3697d51def",
+    "src/re_ctm/research_state/view.py": "dc0d6929f17e7ae25fff554c75180c061f08dccf40127aa97fca9881011a3681",
+    "src/re_ctm/resources/engineering-graph.json": "545de6483c8392b78664ca70d7e4cd13bc6e2d66dab75d1f83bf11908fdb166a",
+    "src/re_ctm/resources/methodology.json": "0403ba1f6caeabfef563e3b2b22bf1472a84c470a76ddbcb5bafce1d5f18a4e8",
+    "src/re_ctm/resources/methodology_protocol3.json": "178f29ae00cc8f3668cd202254389a3b0520c5d01277f77ef0e3cc5bf52a9425",
+    "src/re_ctm/rethlas_contracts.py": "c5830128bdd2013e5d2f202afa96c253a62c3701db76d6a085a1df21686fd4fb",
+    "src/re_ctm/server.py": "b3a88b8b7d6fc720d8636cf5a4aaa184bdb5b65957f953721528e962ea02b60b",
+    "src/re_ctm/storage.py": "2c64536c1b474fdb07ca468169d86f7e660b57b1442ee958a0f76d62e3115270",
+    "src/re_ctm/storage_actions.py": "80f4480e91bb63f037f02503818b527bfc4b982a47c595b616d00ca846ca3990",
+    "src/re_ctm/storage_creation.py": "c469ef75bfdbe28ae4d9876db7a6f9a82c33ebc946a24e7c943f60ff29d7806d",
+    "src/re_ctm/storage_receipts.py": "fe7d54d41e54b9df54986932185a9f107dd8e844e99260ede49ebdfe03002575",
+    "src/re_ctm/storage_recovery.py": "082cde3329d3cf50e554e9bbab185ae60113133394d5c6dca5072156624b421c",
+    "src/re_ctm/storage_schema.py": "d9f31c12b4a6c64ee5ec6cd120743f76b9517d6ae00ca00e53315e685726dde9",
+    "src/re_ctm/terminal_ui.py": "f8160baaecd319a14cd1216b220bed7a8d4e1e5181ff1bd0382c0940fd6f8e7a",
+    "src/re_ctm/toolchains.py": "6afff12161da403293ef247afa43507b3500088d2671f87e053214ae6f4f1493",
+    "src/re_ctm/tools.py": "c3e6276243df96c31a96c92a5014ec8d4705481efe3c24d1c8f57345d733f6f1",
+    "src/re_ctm/vault.py": "4bb09804dedd43435bdaf4add0f55862f1187bb49fef0a9d08a30d2c539aa9a2",
+    "src/re_ctm/vault_effects.py": "f13a613479c0d11e98fdb4344df40fa88352217204bbf12eb25cf61e1de5bd4d",
+    "src/re_ctm/workflow.py": "c86eb52f6f95fe85fcb236a807d3e4b04982fda49fed5981750e504660bf4d09",
+    "src/re_ctm/workflow_actions.py": "d2895e83bc3fe5fe28230694791e84d3846f0f91f04d4585a78893315d1b4753",
+    "src/re_ctm/workflow_creation.py": "14c0c8c2a682f4c822f2a4a5138babed974dd96777f32624b457080c1056e9c8",
+    "src/re_ctm/workflow_submission.py": "173c67705f1b216ef27f8de3e97c0d0e8df5aec5bd8ed5ec6a81bb96249387eb"
+  },
+  "magma_environment": "Per-call HOME uses the existing operator environment; the separate fresh-HOME failure is preserved in magma-diagnostic.json and source-host-acceptance.json. No product application-specific branch was added.",
+  "workflow": {
+    "passed": true,
+    "transport": "oauth_authenticated_mcp_http",
+    "tools_exercised": [
+      "rethlas_artifact",
+      "rethlas_control",
+      "rethlas_inspect",
+      "rethlas_start",
+      "rethlas_step"
+    ],
+    "workflow_protocol": 3,
+    "state_schema": 8,
+    "terminal_state": "done",
+    "latex": {
+      "policy": "required",
+      "static_valid": true,
+      "compile_available": true,
+      "compile_attempted": true,
+      "compile_passed": true,
+      "gate_passed": true
+    },
+    "final_sha256": "1a098cbc6044a98365e30e2c7d99f905ec1e3a668e665cd170a07d06d39e0a57",
+    "final_bytes": 189,
+    "terminal_replay_unchanged": true,
+    "verified_fact_count": 1,
+    "scope": "Synthetic procedural fixture; no independent model or mathematical-quality acceptance."
+  },
+  "local_checks": {
+    "command": "python3 scripts/run_local_checks.py",
+    "exit_code": 0,
+    "tests_run": 573,
+    "tests_passed": 550,
+    "tests_skipped": 23,
+    "failures": 0,
+    "errors": 0,
+    "checks": [
+      {
+        "name": "compileall",
+        "passed": true,
+        "exit_code": 0
+      },
+      {
+        "name": "unittest",
+        "passed": true,
+        "exit_code": 0
+      },
+      {
+        "name": "engineering_graph",
+        "passed": true,
+        "exit_code": 0
+      },
+      {
+        "name": "code_optimization_graph",
+        "passed": true,
+        "exit_code": 0
+      },
+      {
+        "name": "error_contract",
+        "passed": true,
+        "exit_code": 0
+      },
+      {
+        "name": "documentation_consistency",
+        "passed": true,
+        "exit_code": 0
+      }
+    ],
+    "retained_report": ".release-validation/opt027-20261104T195921Z/final-local-validation.json",
+    "final_metadata_synchronized": true
+  },
+  "skip_inventory": [
+    {
+      "count": 12,
+      "reason": "Linux PR_SET_PDEATHSIG creator-thread regressions; historical adapter only"
+    },
+    {
+      "count": 1,
+      "reason": "Linux /proc process-identity fixture"
+    },
+    {
+      "count": 7,
+      "reason": "Historical Linux Bubblewrap helper regressions; unavailable on macOS"
+    },
+    {
+      "count": 2,
+      "reason": "Historical Bubblewrap lifecycle/TTY fixture unavailable"
+    },
+    {
+      "count": 1,
+      "reason": "macOS filesystem rejects creation of an invalid UTF-8 filename (EILSEQ); Git production rejection is retained"
+    }
+  ],
+  "preserved_failures": {
+    "baseline": {
+      "tests_run": 555,
+      "failures": 8,
+      "errors": 7,
+      "skipped": 27,
+      "report": ".release-validation/opt027-20261104T195921Z/baseline-local-validation.json"
+    },
+    "first_targeted": {
+      "tests_run": 121,
+      "failures": 1,
+      "errors": 1,
+      "skipped": 13,
+      "report": ".release-validation/opt027-20261104T195921Z/targeted-tests-01.log"
+    },
+    "first_real_probe": {
+      "passed": false,
+      "reason": "Magma exits 1 with an artificial fresh HOME; existing operator HOME succeeds without any product special case. Initial aggregate consequently failed.",
+      "report": ".release-validation/opt027-20261104T195921Z/source-host-acceptance.json"
+    }
+  },
+  "fixes": [
+    "Synchronize retired backend/helper/launcher fixtures and exact host documentation contract.",
+    "Reject nonliteral or path-valued documentclass/usepackage/RequirePackage/LoadClass arguments before host compilation; actual TeX had accepted an external absolute class despite IO environment settings.",
+    "Correct the new Native test helper to validate only declared output schemas. No Rethlas authority or database schema change."
+  ],
+  "limits": [
+    "Source on this actual Mac only; no installed wheel/launcher qualification or deployment.",
+    "Real OAuth/MCP is scripted loopback HTTP, not actual browser interaction.",
+    "The mathematical fixture uses scripted submissions/verdicts; it does not certify mathematical quality, cognitive independence or 95-percent equivalence.",
+    "Host execution has no OS sandbox; private-vault process invisibility is not a passing claim.",
+    "The first fresh-HOME Magma failure remains a documented environment limitation. No raw program output, credentials, private proof or reasoning bodies are retained in this report."
+  ],
+  "skip_inventory_basis": "Observed aggregate skip count, the retained targeted log, and current platform/legacy skip declarations; skipped checks are not counted as passed.",
+  "runtime_changed_during_testing": [
+    "src/re_ctm/latex.py"
+  ],
+  "runtime_sha256_matches_actual_host_probe": true
+}

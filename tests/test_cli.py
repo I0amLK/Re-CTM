@@ -43,7 +43,7 @@ class CLITestCase(unittest.TestCase):
         )
         self.assertEqual(args.allow_root, ["/opt/vendor/one", "/srv/runtime/two"])
 
-    def test_linux_bubblewrap_is_automatic_native_backend(self) -> None:
+    def test_native_backend_defaults_to_disabled_without_auto_detection(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             workspace = root / "workspace"
@@ -55,11 +55,9 @@ class CLITestCase(unittest.TestCase):
                 "RE_CTM_DEBUG_ROOT": str(root / "data" / "debug"),
                 "RE_CTM_NATIVE_MODE": "dangerous",
             }
-            with mock.patch.dict(os.environ, env, clear=True), mock.patch(
-                "re_ctm.config.sys.platform", "linux"
-            ), mock.patch("re_ctm.config.shutil.which", return_value="/usr/bin/bwrap"):
+            with mock.patch.dict(os.environ, env, clear=True):
                 settings = Settings.from_env()
-            self.assertEqual(settings.native_exec_backend, "bubblewrap")
+            self.assertEqual(settings.native_exec_backend, "disabled")
             self.assertFalse(settings.native_isolation_attested)
             settings.validate()
 
@@ -79,7 +77,7 @@ class CLITestCase(unittest.TestCase):
                 "RE_CTM_PRIVATE_ROOT": str(data / "private"),
                 "RE_CTM_DEBUG_ROOT": str(data / "debug"),
                 "RE_CTM_NATIVE_MODE": "dangerous",
-                "RE_CTM_NATIVE_EXEC_BACKEND": "bubblewrap",
+                "RE_CTM_NATIVE_EXEC_BACKEND": "host",
                 "RE_CTM_NATIVE_EXEC_ALLOW_ROOTS": os.pathsep.join(
                     (str(first), str(second))
                 ),
@@ -92,8 +90,9 @@ class CLITestCase(unittest.TestCase):
             payload = output.getvalue()
             self.assertIn(str(first.resolve()), payload)
             self.assertIn(str(second.resolve()), payload)
-            self.assertIn('"mount_mode": "read_only"', payload)
-            self.assertIn('"explicit_root_count": 2', payload)
+            self.assertIn('"mount_mode": "none"', payload)
+            self.assertIn('"access_restricted_by_roots": false', payload)
+            self.assertFalse(data.exists(), "check-config must not materialize private state or secrets")
 
     def test_allow_roots_fail_closed_for_disabled_backend(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -24,6 +24,7 @@ SOURCE_ITEMS = (
     "src", "tests", "scripts", "docs", "AGENTS.md", "pyproject.toml", "README.md", "LICENSE",
     "NOTICE", "engineering-graph.json", "code-optimization-graph.json",
     "manual-validation.json", "project-progress.json", "config.example.env", "MANIFEST.in",
+    "DEVELOPMENT_STATUS.md", "Re-CTM_TASK_RECORD.md", "RELEASE_NOTES.md", ".gitignore", ".github",
 )
 FIXTURE_MODULES = (
     "test_native_catalog_v11", "test_command_v11", "test_command_parent_lifetime",
@@ -32,6 +33,7 @@ FIXTURE_MODULES = (
     "test_storage_boundaries", "test_fact_store", "test_fact_memory",
     "test_fact_workflow", "test_submission_recovery_integration",
     "test_packaged_engineering_graph", "test_release_package_checks", "test_activate_release_launcher",
+    "test_native_host", "test_cli", "test_latex_scan",
 )
 INSPECT_INSTALLED = r"""
 import hashlib, importlib, importlib.metadata, json, pkgutil, sys
@@ -56,6 +58,9 @@ for name in ("methodology.json", "methodology_protocol3.json", "engineering-grap
     json.loads(data)
     resources[name] = hashlib.sha256(data).hexdigest()
 assert re_ctm.__version__ == importlib.metadata.version("re-ctm")
+console = sorted(ep.name for ep in importlib.metadata.distribution("re-ctm").entry_points
+                 if ep.group == "console_scripts")
+assert console == ["re-ctm"], console
 assert len(NATIVE_TOOL_NAMES) == 19 and len(RETHLAS_TOOL_NAMES) == 6
 assert TOOL_CONTRACT_VERSION == "mtm-tools-v11" and STATE_SCHEMA_VERSION == 8
 print(json.dumps({"version": re_ctm.__version__, "module_file": re_ctm.__file__,
@@ -230,7 +235,7 @@ def run_package_checks(
         run("install-wheel", [installed_python, "-I", "-m", "pip", "install",
             "--no-index", "--no-deps", str(wheel)], output_dir)
         run("pip-check", [installed_python, "-I", "-m", "pip", "check"], output_dir)
-        for executable in ("re-ctm", "re-ctm-native-helper"):
+        for executable in ("re-ctm",):
             path = venv / "bin" / executable
             report["console_shebangs"][executable] = path.read_text().splitlines()[0]
             for option in ("--version", "--help"):

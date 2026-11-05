@@ -1,10 +1,13 @@
 include AGENTS.md README.md LICENSE NOTICE pyproject.toml MANIFEST.in
 include config.example.env engineering-graph.json code-optimization-graph.json
 include manual-validation.json project-progress.json
+include DEVELOPMENT_STATUS.md Re-CTM_TASK_RECORD.md
+include RELEASE_NOTES.md .gitignore
 recursive-include src *.py *.json *.md
 recursive-include tests *.py
 recursive-include scripts *.py
 recursive-include docs *.md *.json
+recursive-include .github *.yml *.yaml
 prune .release-validation
 prune .git
 prune .venv

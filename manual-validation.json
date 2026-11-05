@@ -2,9 +2,9 @@
   "schema_version": "1.1.0",
   "project": "Re-CTM",
   "status": "pending_target_validation",
-  "rule": "The active release checklist is RC-001 through RC-011 for the MTM v11/protocol-3/schema-8 candidate. Mark a check passed only after its stated evidence scope has been exercised on the actual candidate, with content-minimized evidence. Repository publication is separate and is not a prerequisite for local target qualification. Host-only deployment/testing does not authorize public ingress, live private-state access, security-policy changes, commits or pushes. Historical checks and reports remain historical and cannot confer current acceptance.",
+  "rule": "The user requested release installation artifacts and will perform subsequent validation. The 0.5.0rc1 candidate has build/archive/metadata evidence only; installation, application, browser and mathematical acceptance are pending. The prior dev03/0.4.1 source results remain historical and are preserved in docs/validation/manual-validation-before-0.5.0rc1.json and OPT-027-macos-host-validation.json. Host mode has no OS sandbox. No installation, deployment, live-state access, commit, tag, push or publication was performed.",
   "current_contract": {
-    "source_version": "0.4.1",
+    "source_version": "0.5.0rc1",
     "tool_contract": "mtm-tools-v11",
     "native_tool_count": 19,
     "workflow_tool_count": 6,
@@ -22,12 +22,19 @@
       "safe",
       "trusted"
     ],
-    "retired_workflow_alias_count": 11
+    "retired_workflow_alias_count": 11,
+    "native_exec_backends": [
+      "disabled",
+      "host"
+    ],
+    "native_exec_backend_default": "disabled",
+    "native_os_sandbox": false,
+    "latex_execution_backend": "host"
   },
   "prerequisites": [
     "A uniquely identified candidate source/package and the actual target host/runtime",
     "Fresh disposable workspace/data/private roots with no overlap and no production state",
-    "A functioning attested hard-isolation backend for Native execution and real required LaTeX",
+    "Explicit host opt-in acknowledging same-account private-file access without an OS sandbox, and an actual host LaTeX toolchain",
     "A real intended webpage MCP client and separately authorized ingress when needed",
     "Authorized fixed-provider network access for real retrieval checks",
     "Operator review for mathematical quality and final release acceptance"
@@ -51,8 +58,7 @@
       "commands": [
         "python3 scripts/run_local_checks.py",
         "python3 -m build",
-        "re-ctm --help",
-        "re-ctm-native-helper --version"
+        "re-ctm --help"
       ],
       "steps": [
         "Run the complete local gate on the candidate source and record the source/package hashes, Python version, OS, exit codes, test count and every skipped test.",
@@ -60,8 +66,8 @@
         "Preserve historical validation reports separately; do not carry a previous host's passing report or source fingerprint forward."
       ],
       "expected": [
-        "All deterministic checks and package/installed-command probes pass for the actual candidate.",
-        "A skipped or host-blocked real isolation/LaTeX test remains an unmet target gate; disabled execution or static_only is not equivalent evidence."
+        "After testing is scheduled, all current source and installed-package checks must pass with every skip and limitation recorded.",
+        "Legacy isolation fixtures do not demonstrate host execution; disabled or static_only results cannot substitute for actual host commands and required compilation."
       ],
       "evidence": [
         {
@@ -75,7 +81,15 @@
           "generated_at": "2026-10-15T07:07:00Z"
         }
       ],
-      "bounded_release_scope": "Baseline 528/178 machine gates reused only for byte-identical runtime; final source/package and host launcher gates remain pending."
+      "bounded_release_scope": "New 0.5.0rc1 package candidate awaits user validation. Build/archive checks alone do not pass this RC acceptance scope.",
+      "evidence_applicability": "Historical only; prior source/candidates do not certify installation or acceptance of re-ctm 0.5.0rc1.",
+      "partial_evidence": [
+        {
+          "report": "docs/validation/OPT-027-macos-host-validation.json",
+          "generated_at": "2026-11-04T20:19:50.426100Z",
+          "scope": "Actual current Mac source; 573 tests (550 pass/23 platform or legacy skips), six local gates, real OAuth/MCP host lifecycle and tool probes, and required host LaTeX through mechanical finalization/export. No installed/browser/independent mathematical-quality acceptance."
+        }
+      ]
     },
     {
       "id": "RC-002",
@@ -117,12 +131,13 @@
           "generated_at": "2026-10-15T07:07:00Z"
         }
       ],
-      "bounded_release_scope": "Deterministic 19 Native plus six Rethlas catalog/contract evidence and current connected Native execution passed; broader state-by-state exercise unclaimed."
+      "bounded_release_scope": "New 0.5.0rc1 package candidate awaits user validation. Build/archive checks alone do not pass this RC acceptance scope.",
+      "evidence_applicability": "Historical only; prior source/candidates do not certify installation or acceptance of re-ctm 0.5.0rc1."
     },
     {
       "id": "RC-003",
       "name": "Loopback OAuth and MCP protocol smoke",
-      "status": "passed",
+      "status": "pending",
       "evidence_scope": "local_protocol",
       "sources": [
         "scripts/smoke_oauth_mcp.py",
@@ -155,9 +170,15 @@
           "report": "docs/validation/release-0.4.1-evidence.json",
           "scope": "Current exact-runtime strict scripted OAuth/MCP fixture and supplement passed.",
           "generated_at": "2026-10-15T07:07:00Z"
+        },
+        {
+          "report": "docs/validation/OPT-027-macos-host-validation.json",
+          "generated_at": "2026-11-04T20:19:50.426100Z",
+          "scope": "Actual current Mac source; 573 tests (550 pass/23 platform or legacy skips), six local gates, real OAuth/MCP host lifecycle and tool probes, and required host LaTeX through mechanical finalization/export. No installed/browser/independent mathematical-quality acceptance."
         }
       ],
-      "bounded_release_scope": "Current exact-runtime strict scripted OAuth/MCP fixture and supplement passed."
+      "bounded_release_scope": "New 0.5.0rc1 package candidate awaits user validation. Build/archive checks alone do not pass this RC acceptance scope.",
+      "evidence_applicability": "Historical only; prior source/candidates do not certify installation or acceptance of re-ctm 0.5.0rc1."
     },
     {
       "id": "RC-004",
@@ -189,44 +210,50 @@
           "generated_at": "2026-10-15T07:07:00Z"
         }
       ],
-      "bounded_release_scope": "Actual current browser-connected MCP operation and async Native smoke passed; broader fresh-context routing, informal opt-out and reconnect/steering unclaimed."
+      "bounded_release_scope": "New 0.5.0rc1 package candidate awaits user validation. Build/archive checks alone do not pass this RC acceptance scope.",
+      "evidence_applicability": "Historical only; prior source/candidates do not certify installation or acceptance of re-ctm 0.5.0rc1."
     },
     {
       "id": "RC-005",
-      "name": "Target Native isolation and command lifecycle",
+      "name": "Target host Native execution and command lifecycle",
       "status": "pending",
-      "evidence_scope": "target_isolation",
+      "evidence_scope": "target_host_execution",
       "sources": [
-        "scripts/manual_native_isolation_test.py",
-        "tests/test_native_helper.py",
-        "tests/test_ctm_native_compat.py",
-        "docs/DEPLOYMENT.md"
+        "src/re_ctm/config.py",
+        "src/re_ctm/app.py",
+        "src/re_ctm/native.py",
+        "src/re_ctm/native_exec.py",
+        "src/re_ctm/processes.py",
+        "docs/MACOS_HOST_MIGRATION_STATUS.md"
       ],
-      "commands": [
-        "re-ctm attest-native --backend bubblewrap --workspace <disposable-workspace> --data-root <disposable-data> --private-root <disposable-private>",
-        "python3 scripts/manual_native_isolation_test.py --backend bubblewrap --workspace <disposable-workspace> --data-root <disposable-data> --private-root <disposable-private> --output <native-isolation-report.json>",
-        "PYTHONPATH=src:tests python3 -m unittest test_native_helper test_ctm_native_compat -v"
-      ],
+      "commands": [],
       "steps": [
-        "Run fresh startup attestation and the adversarial harness on the actual deployment kernel/packaging; repeat --allow-root for every declared explicit product root.",
-        "Use only test-created canaries in disposable private/data roots. Verify mounts, namespace/capability/environment properties, private-state invisibility and no privilege escalation.",
-        "Verify generic PATH/symlink and explicit toolchain discovery, read-only roots, rejection of broad/relative/missing/overlapping roots and exclusion of links into private state.",
-        "Run representative installed scientific tools when available, plus command_id polling, retained-output pagination, TTY interaction, timeout and owned-command termination; inspect termination provenance.",
-        "Retain internal SAFE isolation probes for the compiler/harness even though safe/trusted public configuration is retired. Never change host security policy or weaken the sandbox merely to pass a test."
+        "Only when the user schedules testing, start the actual changed Re-CTM on fresh non-overlapping workspace/data/private roots; keep production services, private state and host security settings untouched.",
+        "Confirm omitted backend remains disabled and old bubblewrap/external/helper/attestation configurations are rejected instead of silently becoming host execution.",
+        "Through Re-CTM, exercise generic absolute executables, service PATH, per-call env.PATH replacement, relative PATH entries against command cwd, executable symlinks, shell builtins and inline shell PATH assignments. Do not guess named environments or use CTM success as Re-CTM evidence.",
+        "Exercise independent per-command cwd without global chdir, stdout/stderr, bounded output, polling, stdin/PTY, timeout, TERM/KILL and service shutdown.",
+        "Confirm reports expose the actual base PATH and no OS sandbox; process access to same-account private files is an accepted risk, not an isolation pass. Use disposable test canaries only.",
+        "Separately confirm direct-file workspace restrictions, root non-overlap, OAuth/run/capability/role/state ownership and lack of Native-to-Rethlas authority inheritance."
       ],
       "expected": [
-        "The actual target can start the attested backend, use its workspace and execute the required toolchains without exposing private state.",
-        "Failure to create nested namespaces is a target execution blocker, not evidence that the Re-CTM isolation gate passed.",
-        "Timeout/kill results distinguish server actions from external_or_unknown signals and dangerous does not confer L2 authority."
+        "Actual host commands and lifecycle work through changed Re-CTM without any Bubblewrap startup or execution dependency.",
+        "Host access and diagnostics are truthful; no private-vault invisibility, network namespace or read-only-mount guarantee is claimed.",
+        "No current result may be inferred from historical Linux acceptance."
       ],
       "evidence": [
         {
           "report": "docs/validation/release-0.4.1-evidence.json",
           "scope": "Strict adversarial native isolation, 13 real HTTP/Bubblewrap groups, and six current live connector lifecycle checks passed for bounded engineering scope.",
           "generated_at": "2026-10-15T07:07:00Z"
+        },
+        {
+          "report": "docs/validation/OPT-027-macos-host-validation.json",
+          "generated_at": "2026-11-04T20:19:50.426100Z",
+          "scope": "Actual current Mac source; 573 tests (550 pass/23 platform or legacy skips), six local gates, real OAuth/MCP host lifecycle and tool probes, and required host LaTeX through mechanical finalization/export. No installed/browser/independent mathematical-quality acceptance."
         }
       ],
-      "bounded_release_scope": "Strict adversarial native isolation, 13 real HTTP/Bubblewrap groups, and six current live connector lifecycle checks passed for bounded engineering scope."
+      "bounded_release_scope": "New 0.5.0rc1 package candidate awaits user validation. Build/archive checks alone do not pass this RC acceptance scope.",
+      "evidence_applicability": "Historical only; prior source/candidates do not certify installation or acceptance of re-ctm 0.5.0rc1."
     },
     {
       "id": "RC-006",
@@ -243,6 +270,7 @@
         "PYTHONPATH=src:tests python3 -m unittest test_latex test_latex_scan -v"
       ],
       "steps": [
+        "Exercise actual host latexmk without bwrap: static checks remain mandatory, RC loading/shell escape are disabled, required compilation needs a successful exit, no timeout and a fresh regular PDF with a PDF header. Test missing compiler, spawn error, nonzero exit, timeout and missing/stale output; none may silently downgrade required.",
         "Use RE_CTM_LATEX_POLICY=required, real latexmk/TeX Live and the attested isolated compiler on the candidate target.",
         "Reject malformed, external-input and shell-operation documents; compile a valid self-contained document and prove a host-only class/file outside compiler scratch is unreadable even by absolute path.",
         "Complete independent verification with empty critical_errors and gaps, then advance rethlas_step to done and inspect the automatically exported workspace_export_path.",
@@ -263,9 +291,15 @@
           "report": "docs/validation/release-0.4.1-evidence.json",
           "scope": "Strict required isolated LaTeX, workflow finalization and identical terminal replay passed; procedural fixture is not mathematical quality.",
           "generated_at": "2026-10-15T07:07:00Z"
+        },
+        {
+          "report": "docs/validation/OPT-027-macos-host-validation.json",
+          "generated_at": "2026-11-04T20:19:50.426100Z",
+          "scope": "Actual current Mac source; 573 tests (550 pass/23 platform or legacy skips), six local gates, real OAuth/MCP host lifecycle and tool probes, and required host LaTeX through mechanical finalization/export. No installed/browser/independent mathematical-quality acceptance."
         }
       ],
-      "bounded_release_scope": "Strict required isolated LaTeX, workflow finalization and identical terminal replay passed; procedural fixture is not mathematical quality."
+      "bounded_release_scope": "New 0.5.0rc1 package candidate awaits user validation. Build/archive checks alone do not pass this RC acceptance scope.",
+      "evidence_applicability": "Historical only; prior source/candidates do not certify installation or acceptance of re-ctm 0.5.0rc1."
     },
     {
       "id": "RC-007",
@@ -306,7 +340,8 @@
           "generated_at": "2026-10-15T07:07:00Z"
         }
       ],
-      "bounded_release_scope": "Candidate-bound full and installed workflow/role/repair regressions passed; no claim of fresh-context cognitive independence."
+      "bounded_release_scope": "New 0.5.0rc1 package candidate awaits user validation. Build/archive checks alone do not pass this RC acceptance scope.",
+      "evidence_applicability": "Historical only; prior source/candidates do not certify installation or acceptance of re-ctm 0.5.0rc1."
     },
     {
       "id": "RC-008",
@@ -347,7 +382,8 @@
           "generated_at": "2026-10-15T07:07:00Z"
         }
       ],
-      "bounded_release_scope": "Candidate-bound schema/recovery regression fixtures passed; universal power-loss acceptance unclaimed."
+      "bounded_release_scope": "New 0.5.0rc1 package candidate awaits user validation. Build/archive checks alone do not pass this RC acceptance scope.",
+      "evidence_applicability": "Historical only; prior source/candidates do not certify installation or acceptance of re-ctm 0.5.0rc1."
     },
     {
       "id": "RC-009",
@@ -390,7 +426,8 @@
           "generated_at": "2026-10-15T07:07:00Z"
         }
       ],
-      "bounded_release_scope": "Project/fact/reference-boundary regressions and fixture promotion passed; substantive live source/provider quality unclaimed."
+      "bounded_release_scope": "New 0.5.0rc1 package candidate awaits user validation. Build/archive checks alone do not pass this RC acceptance scope.",
+      "evidence_applicability": "Historical only; prior source/candidates do not certify installation or acceptance of re-ctm 0.5.0rc1."
     },
     {
       "id": "RC-010",
@@ -425,7 +462,8 @@
           "generated_at": "2026-10-15T07:07:00Z"
         }
       ],
-      "bounded_release_scope": "Prior accepted runtime terminal behavior retained; new short-command activation and real launcher template startup/shutdown pending."
+      "bounded_release_scope": "New 0.5.0rc1 package candidate awaits user validation. Build/archive checks alone do not pass this RC acceptance scope.",
+      "evidence_applicability": "Historical only; prior source/candidates do not certify installation or acceptance of re-ctm 0.5.0rc1."
     },
     {
       "id": "RC-011",
@@ -455,7 +493,8 @@
           "generated_at": "2026-10-15T07:07:00Z"
         }
       ],
-      "bounded_release_scope": "Mathematical quality and 95 percent methodology equivalence remain unvalidated; no new broad research gate inferred."
+      "bounded_release_scope": "New 0.5.0rc1 package candidate awaits user validation. Build/archive checks alone do not pass this RC acceptance scope.",
+      "evidence_applicability": "Historical only; prior source/candidates do not certify installation or acceptance of re-ctm 0.5.0rc1."
     }
   ],
   "historical_checklists": [
@@ -747,6 +786,12 @@
     "0.4.1 OPT-024 changes Native managed-child creator-thread lifetime only; fresh candidate-specific host/installed HTTP+bwrap acceptance is required.",
     "Actual connected 0.4.0 async SIGKILL failure remains recorded in .local-install/workspace/human-authorized-test-20261015T0434Z/human-authorized-test-report.json; do not overwrite or count it as passed.",
     "Browser login UI, broad mathematical quality and strict cognitive independence must retain their own stated evidence boundaries.",
-    "2026-10-15: exact-runtime strict baseline, corrected HTTP/Bubblewrap supplement and actual connector lifecycle accepted at their stated scopes. Launcher activation/final source packaging remain separate; historical failures retained."
-  ]
+    "2026-10-15: exact-runtime strict baseline, corrected HTTP/Bubblewrap supplement and actual connector lifecycle accepted at their stated scopes. Launcher activation/final source packaging remain separate; historical failures retained.",
+    "2026-11-05 OPT-027 source delivery: explicit host/disabled Native and host LaTeX, no tests or validators run by user instruction. Historical Linux scripts and the pinned launcher do not qualify this source. Version field is unchanged; identify actual source hashes. Legacy-backend test fixtures need synchronization in the later testing phase.",
+    "2026-11-05 user subsequently authorized testing: current Mac source checks and disposable host/LaTeX/loopback probes are now in progress. The earlier no-testing statements describe the preceding source-delivery checkpoint only.",
+    "Current source testing passed after repairing the reproduced external-class static-check hole. First baseline and targeted failures, plus the fresh-HOME Magma failure, remain preserved. Native host mode and required LaTeX were exercised through actual loopback HTTP without importing the Bubblewrap helper. No existing service or production Re-CTM state was used.",
+    "2026-11-05 OPT-028: user requested installation artifacts and delegated subsequent validation to themselves. Distinct 0.5.0rc1 avoids reuse of the historical Linux 0.4.1 package identity. No tests, packaged-runtime execution or installation are part of this artifact-preparation phase; all current checks remain pending."
+  ],
+  "candidate": "re-ctm-0.5.0rc1",
+  "previous_candidate_checklist": "docs/validation/manual-validation-before-0.5.0rc1.json"
 }

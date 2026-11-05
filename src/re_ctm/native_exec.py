@@ -1,11 +1,11 @@
 """Validated Native command requests and pre-start executable identity checks.
 
-Resolution uses the sandbox's PATH and workdir, never the server's current
-directory. Shell collection follows MTM's bounded literal-list/loop policy; it
-is not a full shell interpreter and does not evaluate user code during checks.
+Host resolution uses the actual child's PATH and cwd. Legacy isolated-backend
+inspection remains separate; its /workspace mapping is never used by host mode.
 """
 from __future__ import annotations
 
+import os
 import re
 import shlex
 import stat
@@ -102,6 +102,55 @@ class ExecInvocation:
         if script is not None:
             candidates.extend(shell_candidates(script, 1))
         return candidates
+
+
+def find_host_executable(requested: str, *, workdir: Path, environment: Mapping[str, str]) -> Path | None:
+    """Follow exec PATH rules, including relative/empty entries and symlinks."""
+    direct = "/" in requested
+    candidates = [requested] if direct else [
+        str(Path(entry) / requested) for entry in os.get_exec_path(dict(environment))
+    ]
+    for value in candidates:
+        raw = Path(value)
+        candidate = raw if raw.is_absolute() else workdir / raw
+        try:
+            resolved = candidate.resolve(strict=True)
+            if resolved.is_file() and os.access(resolved, os.X_OK):
+                # Preserve the invocation name: sh/bash and multicall tools
+                # may select behavior from argv[0], even through a symlink.
+                return candidate.absolute()
+        except (OSError, RuntimeError):
+            continue
+    return None
+
+
+def prepare_host_command(
+    invocation: ExecInvocation, *, workdir: Path, environment: Mapping[str, str],
+) -> tuple[list[str], tuple[Any, ...]]:
+    """Pin argv[0] and capture identity immediately before host process creation.
+
+    Shell text stays shell text. Inspecting shell tokens as independent programs
+    would misresolve builtins, inline PATH assignments and shell expansions.
+    These checks detect incidental changes; they do not sandbox host execution.
+    """
+    executable = find_host_executable(invocation.argv[0], workdir=workdir, environment=environment)
+    if executable is None:
+        raise ReCTMError(
+            "NATIVE_EXECUTABLE_UNRESOLVED",
+            "Command executable is unavailable in the child's host PATH or at the supplied path.",
+            category="security",
+            details={"recovery": {"automatic_retry": False, "side_effects": "none",
+                                  "next_tool": "check_exec_environment"}},
+        )
+    try:
+        metadata = executable.stat()
+        directory = workdir.stat()
+    except OSError as exc:
+        raise _security("NATIVE_EXECUTABLE_INSPECTION_FAILED", "Host command identity could not be inspected") from exc
+    facts = (str(workdir), directory.st_dev, directory.st_ino, directory.st_mode,
+             str(executable), metadata.st_dev, metadata.st_ino, metadata.st_mode,
+             metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns)
+    return [str(executable), *invocation.argv[1:]], facts
 
 
 def _shell_script(words: list[str]) -> str | None:

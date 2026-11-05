@@ -19,7 +19,7 @@ SPEC.loader.exec_module(CHECKS)
 class OfflinePackageCheckTests(unittest.TestCase):
     def test_snapshot_excludes_generated_trees_and_python_cache(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             for relative in ("src/re_ctm/__init__.py", "src/re_ctm/__pycache__/a.pyc",
                              "src/re_ctm.egg-info/PKG-INFO", ".release-validation/private.json",
                              ".git/config", "dist/old.whl"):
@@ -30,7 +30,7 @@ class OfflinePackageCheckTests(unittest.TestCase):
 
     def test_snapshot_rejects_source_symlinks(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             (root / "src").mkdir()
             (root / "outside").write_text("not package input")
             (root / "src/linked.py").symlink_to(root / "outside")
@@ -39,7 +39,7 @@ class OfflinePackageCheckTests(unittest.TestCase):
 
     def test_snapshot_rejects_source_root_symlink(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             (root / "outside").mkdir()
             (root / "outside/private.py").write_text("outside package")
             (root / "src").symlink_to(root / "outside", target_is_directory=True)
@@ -48,14 +48,14 @@ class OfflinePackageCheckTests(unittest.TestCase):
 
     def test_output_inside_source_inputs_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             with self.assertRaisesRegex(ValueError, "outside source-input"):
                 CHECKS.run_package_checks(root, root / "src/generated")
             self.assertFalse((root / "src/generated").exists())
 
     def test_output_symlink_ancestor_is_rejected_before_creation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             repo, outside = root / "repo", root / "outside"
             repo.mkdir()
             outside.mkdir()
@@ -67,7 +67,7 @@ class OfflinePackageCheckTests(unittest.TestCase):
 
     def test_output_cannot_contain_source_repository(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             repo = root / "repo"
             repo.mkdir()
             with self.assertRaisesRegex(ValueError, "contain the source"):
@@ -75,7 +75,7 @@ class OfflinePackageCheckTests(unittest.TestCase):
 
     def test_existing_output_is_never_reused(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             output = root / "output"
             output.mkdir()
             sentinel = output / "keep"
@@ -86,7 +86,7 @@ class OfflinePackageCheckTests(unittest.TestCase):
 
     def test_failure_is_reported_with_isolated_offline_environment(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             repo, output = root / "repo", root / "output"
             repo.mkdir()
             (repo / "pyproject.toml").write_text("[project]\nname='example'\n")

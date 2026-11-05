@@ -69,10 +69,14 @@ def validate_manual_validation(payload: dict[str, Any]) -> int:
         "public_native_modes": ["dangerous"],
         "retired_native_modes": ["safe", "trusted"],
         "retired_workflow_alias_count": len(HIDDEN_LEGACY_ALIAS_SEMANTICS),
+        "native_exec_backends": ["disabled", "host"],
+        "native_exec_backend_default": "disabled",
+        "native_os_sandbox": False,
+        "latex_execution_backend": "host",
     }
     if payload.get("current_contract") != expected_contract:
         raise ValueError("manual-validation.json active contract differs from the current runtime")
-    if payload.get("status") not in {"pending_target_validation", "passed", "failed"}:
+    if payload.get("status") not in {"pending_target_validation", "pending_host_source_validation", "passed", "failed"}:
         raise ValueError("manual-validation.json must record current target acceptance status")
     checks = payload.get("checks")
     if not isinstance(checks, list) or any(not isinstance(item, dict) for item in checks):
@@ -88,6 +92,8 @@ def validate_manual_validation(payload: dict[str, Any]) -> int:
             raise ValueError(f"{item['id']} must retain an evidence list")
         if item["status"] == "passed" and not item["evidence"]:
             raise ValueError(f"{item['id']} cannot pass without scope-specific evidence")
+        if item["status"] == "passed" and str(item.get("evidence_applicability", "")).startswith("Historical only"):
+            raise ValueError(f"{item['id']} cannot pass with historical-only evidence; scope-specific evidence is required")
     if payload["status"] == "passed" and any(item["status"] != "passed" for item in checks):
         raise ValueError("overall acceptance cannot pass while a release check remains incomplete")
     history = payload.get("historical_checklists")

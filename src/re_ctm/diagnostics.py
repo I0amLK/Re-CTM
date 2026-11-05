@@ -101,7 +101,7 @@ def build_debug_bundle(data_root: Path, run_id: str) -> dict[str, Any]:
             "locally_validated": "Deterministic authorization, persistence, state-machine, protocol, and static checks only.",
             "still_manual": [
                 "real webpage OAuth/MCP compatibility",
-                "target-PC hard isolation under native dangerous mode",
+                "target host Native behavior and accepted same-account access without an OS sandbox",
                 "external retrieval and mathematical reasoning quality",
                 "real target LaTeX compilation",
                 "end-to-end 95-percent functional-equivalence acceptance",

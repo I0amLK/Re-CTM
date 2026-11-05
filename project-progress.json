@@ -1,9 +1,9 @@
 {
   "project": {
     "name": "Re-CTM",
-    "status": "runtime_machine_accepted_final_launcher_activation_pending",
+    "status": "release_050rc1_artifacts_prepared_user_validation_pending",
     "target": "A single installable OAuth MCP runtime combining exact CTM computer tools, a Rethlas-derived verified mathematical workflow, and a private cross-run Verified Research Workspace.",
-    "updated_at": "2026-10-21T07:54:03.793493Z",
+    "updated_at": "2026-11-05T05:45:12.168388Z",
     "source_references": {
       "cmt_local_repo": "../coding-tools-mcp",
       "rethlas_local_repo": "../Rethlas",
@@ -260,6 +260,16 @@
       "id": "AD-046",
       "status": "accepted",
       "decision": "Version the bounded OPT-024 Native HTTP parent-thread lifetime repair as Re-CTM 0.4.1. Keep 25 public tools, protocol 3, schema 8, OAuth ownership, Bubblewrap --die-with-parent and all isolation. A dedicated creator thread owns each child until terminal; do not replace active installations or claim new-host acceptance from the old candidate."
+    },
+    {
+      "id": "AD-047",
+      "decision": "OPT-027 explicitly selects host/disabled and removes Bubblewrap from Native and LaTeX active execution paths. Host processes can access same-account private files; only application API authority boundaries remain. No new service/database migration or app-specific tool discovery.",
+      "status": "accepted_by_user_source_unvalidated"
+    },
+    {
+      "id": "AD-048",
+      "decision": "Use distinct 0.5.0rc1 prerelease artifacts for the explicit host-execution migration rather than reusing historical Linux 0.4.1. Runtime behavior is unchanged from tested dev03 except the version marker; prior evidence remains historical and new candidate acceptance is delegated to the user.",
+      "status": "release_candidate_user_validation_pending"
     }
   ],
   "authorization_model": {
@@ -611,12 +621,13 @@
       "P5"
     ],
     "current_phase_id": "P3/P4/P6/P7/P8",
-    "current_focus": "OPT-024 runtime fix has ordinary-host full528/528, installed178/178, isolation and requiredLaTeX evidence. Corrected a disposable HTTP harness signing-secret bootstrap bug;22affectedregressionspass. Await only candidate-bound22installedregressions+13realHTTP/Bubblewrap supplement before side-by-side installation.",
+    "current_focus": "OPT-028: prepare 0.5.0rc1 wheel/sdist and release notes without installation or subsequent application/browser/mathematical validation; user will perform those checks.",
     "next_actions": [
       "Freeze current harness/test/governance-only changes and verify every runtime/packagefile equals priorqualifiedwheel.",
       "Run scoped installed HTTP lifecycle supplement without repeating unrelatedfullsuite; preserve originalfailedreport.",
       "Independently review supplement then install newside-by-sidevenv; onlineactivation remains separate."
-    ]
+    ],
+    "metrics_applicability": "Historical checkpoint percentages only; no current OPT-027 validation percentage or acceptance is claimed."
   },
   "local_validation": {
     "report": "local-validation.json",
@@ -778,7 +789,8 @@
       "stress_report": ".release-validation/terminal-probe-20261014/source-final-diagnostic-result-20261014T174027Z-acdc72.json",
       "scope": "Actual source-process PTY/pipe I/O; Native disabled/static_only is not installed physical acceptance.",
       "release_ready": false
-    }
+    },
+    "current_candidate_applicability": "Current source: 573 tests, 550 pass, 23 platform/legacy skips and all six checks pass; real host/LaTeX evidence is separate in docs/validation/OPT-027-macos-host-validation.json."
   },
   "git": {
     "initialized": true,
@@ -1164,6 +1176,22 @@
     {
       "timestamp": "2026-10-21T07:54:03.793493Z",
       "event": "Completed OPT-026 locally: production code changes only secrets.token_hex(3) to secrets.token_hex(16). New collision/legacy-capability/receipt-replay regressions failed 3/3 on the old line and pass 3/3 on the repair; related tests 53/53 and full local gate 554/554 plus all validators pass. Existing short IDs survive reopening and exact replays do not duplicate writes. No install, live-state change, commit or push; manual target/browser acceptance remains unchanged."
+    },
+    {
+      "timestamp": "2026-11-04T18:11:13.759177Z",
+      "event": "OPT-027 source connects config/app/Native exec_command to existing CommandManager and independently routes host latexmk, with generic actual PATH/cwd and explicit no-sandbox diagnostics. Old backend/helper settings are rejected; default stays disabled. Required compilation retains static checks, timeout and fresh-PDF requirements. No tests/validators/compilation/probes, installation, live-state access, service restart, commit or push. Prior acceptance is archived; this candidate is modified, not run, not validated."
+    },
+    {
+      "timestamp": "2026-11-04T20:19:50.426100Z",
+      "event": "User began testing OPT-027. Preserved initial failures, synchronized legacy fixtures and host documentation contracts, fixed a reproduced external absolute class/package loading hole in static LaTeX checks, and passed 573 tests (550 pass/23 skips) plus all local validators. Actual Mac OAuth/MCP host probes pass for Git/Python, absolute/PATH Sage, Magma with existing HOME, command lifecycle, real required LaTeX, mechanical finalization/idempotent export and cleanup; no Bubblewrap helper import. Fresh-HOME Magma failure retained. No installed/browser/independent mathematical acceptance, deployment, live-state access, project commit or push. OPT-027 remains in_progress pending release acceptance."
+    },
+    {
+      "timestamp": "2026-11-05T05:39:31.304857Z",
+      "event": "User requested release installation artifacts and retained subsequent validation. Started OPT-028: distinct 0.5.0rc1 version; fix packaging source-document omissions and retired helper/CI expectations; construct wheel/sdist plus notes/hashes only. No runtime behavior, installation, deployment, production private state, commit, tag, push or publication changes. New candidate RC checklist remains pending; old source results are preserved."
+    },
+    {
+      "timestamp": "2026-11-05T05:45:12.168388Z",
+      "event": "OPT-028 preliminary offline wheel/sdist build and archive inspection passed. Source archive matches all 156 selected source inputs, wheel matches every runtime file, metadata is 0.5.0rc1/Python>=3.11/py3-none-any, RECORD is valid, resources are present and only re-ctm is exposed as a console command. Runtime differs from tested dev03 only at __version__. Final artifact manifest/checksums are delivered outside source inputs. No installation, packaged-runtime execution or application/browser/mathematical acceptance; user retains subsequent validation."
     }
   ],
   "opt024_source_checkpoint": {
@@ -1232,5 +1260,65 @@
     "validation_scope": "Disposable local source/public-tool tests only; no installed, live-service, target-PC or browser acceptance.",
     "installation": "unchanged",
     "publication": "not_performed"
+  },
+  "opt027_host_migration": {
+    "status": "current_mac_source_engineering_validation_passed_release_pending",
+    "receipt": "REC-2026-11-05-033",
+    "validation": "573 tests: 550 pass, 23 skip; six local checks pass; 17 actual host HTTP/tool/required-LaTeX groups pass",
+    "source_baseline": "c6c0424c9faa3eb4287ae404f23be2060acec74e plus preserved initial working-tree changes",
+    "native_backends": [
+      "disabled",
+      "host"
+    ],
+    "default_backend": "disabled",
+    "latex_backend": "host",
+    "os_sandbox": false,
+    "api_authorization_changes": false,
+    "database_schema_changes": false,
+    "production_service": "untouched",
+    "delivery_directory": "dist/opt027-host-dev03",
+    "historical_acceptance": "docs/validation/manual-validation-before-opt027.json",
+    "validation_report": "docs/validation/OPT-027-macos-host-validation.json",
+    "pending_acceptance": [
+      "Installed-package/launcher qualification has not been performed; no installation is authorized.",
+      "Actual intended browser/client and operator mathematical-quality acceptance remain pending.",
+      "User review/release acceptance; no production deployment, commits, pushes or publication were performed."
+    ]
+  },
+  "opt028_release_artifacts": {
+    "status": "candidate_build_and_archive_checks_passed_user_validation_pending",
+    "version": "0.5.0rc1",
+    "output_directory": "dist/release-0.5.0rc1",
+    "build_only": true,
+    "installation_performed": false,
+    "packaged_runtime_executed": false,
+    "subsequent_validation_owner": "user",
+    "prior_source_evidence": "docs/validation/OPT-027-macos-host-validation.json",
+    "build_and_archive_checks": {
+      "sdist_source_exact": true,
+      "wheel_runtime_exact": true,
+      "metadata_version": "0.5.0rc1",
+      "requires_python": ">=3.11",
+      "wheel_tag": "py3-none-any",
+      "console_scripts": {
+        "re-ctm": "re_ctm.cli:main"
+      },
+      "retired_helper_console_absent": true,
+      "record_integrity": true,
+      "runtime_file_count": 55,
+      "source_file_count": 156,
+      "resources": [
+        "methodology.json",
+        "methodology_protocol3.json",
+        "engineering-graph.json"
+      ],
+      "private_state_and_cache_excluded": true
+    },
+    "runtime_changes_from_tested_dev03": [
+      "src/re_ctm/__init__.py"
+    ],
+    "artifact_manifest": "dist/release-0.5.0rc1/release-manifest.json",
+    "sha256_file": "dist/release-0.5.0rc1/SHA256SUMS",
+    "new_candidate_application_tests_run": false
   }
 }
